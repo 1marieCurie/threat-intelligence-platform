@@ -12,11 +12,17 @@ class Threat:
     independent of its source (NVD, MITRE, GitHub, CISA...).
     """
 
+    # Provenance is handled at attribute level, not at Threat level.
+    # A Threat can be composed from multiple intelligence sources.
+
     # --- Identity ---
     id: str  # e.g. CVE-2026-XXXX
+    
+    #a vulnerability name if provided
+    title: Optional[str] = None
 
     # --- Core information ---
-    description: str
+    description: str = "" # different sources providing descriptions
 
     # --- Classification ---
     severity: Optional[str] = None  # LOW, MEDIUM, HIGH, CRITICAL
@@ -34,10 +40,19 @@ class Threat:
     # --- External knowledge ---
     references: List[str] = field(default_factory=list)
 
-    # --- Source tracking ---
-    source: str = ""  # NVD, MITRE, etc.
-
-    # --- Metadata ---
+    # Date when CISA added the vulnerability to the KEV catalog,
+    # indicating confirmed exploitation in the wild.
+    known_exploited_date: Optional[str] = None
+    
+    #Actions to be done by the SOC or cybersecurity team
+    remediation: Optional[str] = None
+    
+    # Indicates whether this vulnerability is known to be used in ransomware campaigns.
+    # Values: Known, Unknown, No
+    ransomware_campaign_use: Optional[str] = None    
+   
+ 
+     # Dates
     published_date: Optional[str] = None
     last_modified_date: Optional[str] = None
 

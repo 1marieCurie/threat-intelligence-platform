@@ -2,6 +2,7 @@ from typing import List, Any
 from datetime import datetime, timedelta
 
 from application.ports.inbound.threat_source import ThreatSource
+from domain.collection_result import CollectionResult
 from infrastructure.adapters.outbound.nvd_connector import NVDConnector
 from domain.threat import Threat
 
@@ -28,9 +29,25 @@ class NVDThreatSource(ThreatSource):
     def name(self) -> str:
         return "NVD"
 
-    def collect(self) -> List[Threat]:
+    def collect(self)-> CollectionResult: # static typing
+
         raw = self.fetch_raw()
-        return self.parse(raw)
+
+        threats = self.parse(raw)
+
+        metadata = {
+            "source": "NVD",
+            "total_results": raw.get("totalResults"),
+            "results_per_page": raw.get("resultsPerPage"),
+            "start_index": raw.get("startIndex"),
+            "version": raw.get("version"),
+            "timestamp": raw.get("timestamp")
+        }
+
+        return CollectionResult(
+            threats=threats,
+            metadata=metadata
+        )
 
     def fetch_raw(self) -> Any:
         """
@@ -71,10 +88,9 @@ class NVDThreatSource(ThreatSource):
             description=self._extract_description(cve),
             severity=self._extract_severity(cve),
             cvss_score=self._extract_cvss(cve),
-            affected_products=cve.get("affected", []),
+            affected_products=self._extract_affected_products(cve),
             weaknesses=self._extract_weaknesses(cve),
             references=self._extract_references(cve),
-            source="NVD",
             published_date=cve.get("published"),
             last_modified_date=cve.get("lastModified"),
             raw=cve
@@ -84,7 +100,7 @@ class NVDThreatSource(ThreatSource):
     # Helper parsing methods
     # -------------------------
 
-    def _extract_description(self, cve: dict) -> str:
+    def _extract_description(self, cve: dict[str, Any]) -> str:
         """
         Return the English description if available.
         """
@@ -93,10 +109,10 @@ class NVDThreatSource(ThreatSource):
 
         for description in descriptions:
             if description.get("lang") == "en":
-                return description.get("value", "")
+                return description.get("value", "").replace("\u00a0", " ").strip() #resolving the weird encoding characters
 
         if descriptions:
-            return descriptions[0].get("value", "")
+            return descriptions[0].get("value", "").replace("\u00a0", " ").strip()
 
         return ""
 
@@ -116,6 +132,34 @@ class NVDThreatSource(ThreatSource):
         # CVSS v2
         return metric.get("baseSeverity")
     
+    def _extract_affected_products(self, cve):
+
+        products = []
+
+        for affected in cve.get("affected", []):
+
+            for item in affected.get("affectedData", []):
+
+                vendor = item.get("vendor")
+                product = item.get("product")
+
+                if vendor == "n/a":
+                    vendor = None
+
+                if product == "n/a":
+                    product = None
+
+                products.append(
+                    {
+                        "vendor": vendor,
+                        "product": product,
+                        "platforms": item.get("platforms", []),
+                        "versions": item.get("versions", [])
+                    }
+                )
+
+        return products
+        
     def _extract_cvss(self, cve: dict):
 
         metric = self._extract_cvss_metric(cve)

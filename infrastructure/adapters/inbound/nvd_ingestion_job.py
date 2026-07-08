@@ -13,7 +13,7 @@ class NVDIngestionJob:
     - CLI command
     """
 
-    def __init__(self, threat_source : NVDThreatSource):
+    def __init__(self, threat_source : NVDThreatSource): #dependency injection
         self.threat_source  = threat_source 
 
     def run(self):
@@ -22,8 +22,12 @@ class NVDIngestionJob:
         """
         print("[INFO] Starting NVD ingestion job...")
 
-        threats = self.threat_source.collect()
+        
+        result = self.threat_source.collect()
 
-        print(f"[INFO] Collected {len(threats)} threats.")
+        print(
+            f"[INFO] Collected {len(result.threats)} threats "
+            f"from {self.threat_source.name()}."
+        )
 
-        return threats
+        return result
