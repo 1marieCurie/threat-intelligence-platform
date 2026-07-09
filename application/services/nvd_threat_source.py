@@ -1,5 +1,5 @@
 from typing import List, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
@@ -54,7 +54,7 @@ class NVDThreatSource(ThreatSource):
         Fetch raw CVE data from the NVD API for the last 7 days.
         """
 
-        end_date = datetime.utcnow()
+        end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=7)
 
         return self.connector.fetch(
