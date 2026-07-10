@@ -40,6 +40,22 @@ def _assert_valid_threat(threat: Threat):
         threat.cvss_score is None
         or isinstance(threat.cvss_score, (int, float))
     )
+    
+    # EPSS enrichment fields
+    assert (
+        threat.epss_score is None
+        or isinstance(threat.epss_score, (int, float))
+    )
+
+    assert (
+        threat.epss_percentile is None
+        or isinstance(threat.epss_percentile, (int, float))
+    )
+
+    assert (
+        threat.epss_date is None
+        or isinstance(threat.epss_date, str)
+    )
 
     # Collections
     assert isinstance(threat.affected_products, list)

@@ -27,6 +27,13 @@ class Threat:
     # --- Classification ---
     severity: Optional[str] = None  # LOW, MEDIUM, HIGH, CRITICAL
     cvss_score: Optional[float] = None
+    
+    # --- EPSS exploitation probability ---
+    # EPSS estimates the probability that a CVE will be exploited in the wild.
+    # Values are provided by FIRST EPSS API.
+    epss_score: Optional[float] = None
+    epss_percentile: Optional[float] = None
+    epss_date: Optional[str] = None
 
     # --- Impacted systems ---
     affected_products: List[Dict] = field(default_factory=list)
