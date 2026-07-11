@@ -426,24 +426,15 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             isinstance(legacy_cvss, dict)
             and not has_cvss_v3
         ):
-            score = cls._to_float(
-                legacy_cvss.get("score")
+            # Reuse the same validation rules as cvss_severities.
+            # This prevents a legacy placeholder such as
+            # {"score": 0.0, "vector_string": None}
+            # from becoming the primary score.
+            cls._add_cvss_metric(
+                metrics=metrics,
+                fallback_version="3",
+                data=legacy_cvss,
             )
-
-            vector = cls._clean_string(
-                legacy_cvss.get("vector_string")
-            )
-
-            version = (
-                cls._extract_cvss_version(vector)
-                or "3"
-            )
-
-            if score is not None or vector is not None:
-                metrics[version] = {
-                    "score": score,
-                    "vector": vector,
-                }
 
         return metrics
 
@@ -455,6 +446,21 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         fallback_version: str,
         data: Any,
     ) -> None:
+        """
+        Add one CVSS metric supplied by GitHub.
+
+        GitHub may return placeholder CVSS objects such as:
+
+            {
+                "score": 0.0,
+                "vector_string": None
+            }
+
+        Such an object does not provide enough information to be
+        considered an effective CVSS metric and must not override
+        another valid version.
+        """
+
         if not isinstance(data, dict):
             return
 
@@ -466,7 +472,13 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             data.get("vector_string")
         )
 
+        # No usable CVSS information.
         if score is None and vector is None:
+            return
+
+        # GitHub sometimes exposes an unavailable CVSS version as
+        # score=0.0 without any vector. Treat it as a placeholder.
+        if score == 0.0 and vector is None:
             return
 
         version = (
@@ -517,9 +529,14 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         Select the main normalized CVSS score.
 
         Priority:
-        1. CVSS 4.x
-        2. CVSS 3.x
-        3. Any remaining available score
+        1. A valid positive CVSS 4.x score
+        2. A valid positive CVSS 3.x score
+        3. Any other positive score
+        4. A valid zero score, only when no positive score exists
+
+        A score of 0.0 is valid in CVSS, but GitHub can also use it
+        in placeholder objects. Placeholder filtering is primarily
+        performed in _add_cvss_metric().
         """
 
         priority: list[str] = []
@@ -533,8 +550,10 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         priority.extend(
             version
             for version in metrics
-            if version.startswith("3")
-            and version not in priority
+            if (
+                version.startswith("3")
+                and version not in priority
+            )
         )
 
         priority.extend(
@@ -543,15 +562,23 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             if version not in priority
         )
 
+        zero_score: float | None = None
+
         for version in priority:
             score = cls._to_float(
                 metrics[version].get("score")
             )
 
-            if score is not None:
+            if score is None:
+                continue
+
+            if score > 0.0:
                 return score
 
-        return None
+            if score == 0.0:
+                zero_score = score
+
+        return zero_score
 
     # ============================================================
     # EPSS

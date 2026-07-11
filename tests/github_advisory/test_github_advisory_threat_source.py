@@ -1176,3 +1176,111 @@ def test_unit_collect_with_empty_connector_result() -> None:
     assert result.metadata["collected_count"] == 0
     assert result.metadata["parsed_count"] == 0
     assert result.metadata["skipped_count"] == 0
+
+def test_unit_ignores_placeholder_cvss_v4_and_uses_v3():
+    source = GitHubAdvisoryThreatSource()
+
+    advisory = {
+        "ghsa_id": "GHSA-jfh8-c2jp-5v3q",
+        "cve_id": "CVE-2021-44228",
+        "summary": "Remote code injection in Log4j",
+        "description": "Log4Shell vulnerability",
+        "severity": "critical",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v3": {
+                "score": 10.0,
+                "vector_string": (
+                    "CVSS:3.1/AV:N/AC:L/PR:N/"
+                    "UI:N/S:C/C:H/I:H/A:H"
+                ),
+            },
+            "cvss_v4": {
+                "score": 0.0,
+                "vector_string": None,
+            },
+        },
+    }
+
+    threats = source.parse(
+        [advisory]
+    )
+
+    assert len(threats) == 1
+
+    threat = threats[0]
+
+    assert threat.cvss_score == 10.0
+
+    assert "3.1" in threat.cvss_metrics
+    assert "4" not in threat.cvss_metrics
+
+def test_unit_preserves_real_zero_cvss_when_vector_exists():
+    source = GitHubAdvisoryThreatSource()
+
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "summary": "Zero impact advisory",
+        "description": "Example advisory",
+        "severity": "low",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v4": {
+                "score": 0.0,
+                "vector_string": (
+                    "CVSS:4.0/AV:N/AC:H/AT:P/"
+                    "PR:H/UI:P/VC:N/VI:N/VA:N/"
+                    "SC:N/SI:N/SA:N"
+                ),
+            },
+        },
+    }
+
+    threats = source.parse(
+        [advisory]
+    )
+
+    assert len(threats) == 1
+
+    threat = threats[0]
+
+    assert threat.cvss_score == 0.0
+    assert "4.0" in threat.cvss_metrics
+    
+def test_unit_prefers_positive_cvss_v4_over_v3():
+    source = GitHubAdvisoryThreatSource()
+
+    advisory = {
+        "ghsa_id": "GHSA-1111-2222-3333",
+        "summary": "Example advisory",
+        "description": "Example vulnerability",
+        "severity": "high",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v3": {
+                "score": 8.8,
+                "vector_string": (
+                    "CVSS:3.1/AV:N/AC:L/PR:L/"
+                    "UI:N/S:U/C:H/I:H/A:H"
+                ),
+            },
+            "cvss_v4": {
+                "score": 9.1,
+                "vector_string": (
+                    "CVSS:4.0/AV:N/AC:L/AT:N/"
+                    "PR:L/UI:N/VC:H/VI:H/VA:H/"
+                    "SC:N/SI:N/SA:N"
+                ),
+            },
+        },
+    }
+
+    threats = source.parse(
+        [advisory]
+    )
+
+    threat = threats[0]
+
+    assert threat.cvss_score == 9.1
+    assert "3.1" in threat.cvss_metrics
+    assert "4.0" in threat.cvss_metrics
