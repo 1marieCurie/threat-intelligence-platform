@@ -13,6 +13,7 @@ from application.services.mitre_threat_source import MITREThreatSource
 
 from infrastructure.persistence.mitre_sync_state import MITRESyncState
 
+import pytest
 
 def _build_fake_collection_results():
     """
@@ -205,7 +206,7 @@ def test_correlation_metadata():
         }
     ]
 
-
+@pytest.mark.integration
 def test_correlation_with_real_sources(tmp_path):
     """
     Integration test using the real NVD, CISA and MITRE services.

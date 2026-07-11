@@ -1,7 +1,9 @@
+import pytest
+
 from application.services.cisa_threat_source import CISAThreatSource
 from infrastructure.adapters.inbound.cisa_ingestion_job import CISAIngestionJob
 
-
+@pytest.mark.integration
 def test_collection():
 
     source = CISAThreatSource()

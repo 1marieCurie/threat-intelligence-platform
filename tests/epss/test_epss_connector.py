@@ -1,6 +1,11 @@
-from infrastructure.adapters.outbound.epss_connector import EPSSConnector
+import pytest
+
+from infrastructure.adapters.outbound.epss_connector import (
+    EPSSConnector,
+)
 
 
+@pytest.mark.integration
 def test_fetch_single_cve_epss():
 
     connector = EPSSConnector()
@@ -39,14 +44,14 @@ def test_fetch_single_cve_epss():
     assert "date" in item
 
 
-
+@pytest.mark.integration
 def test_fetch_multiple_cves_epss():
 
     connector = EPSSConnector()
 
     cve_ids = [
         "CVE-2021-44228",
-        "CVE-2024-4577"
+        "CVE-2024-4577",
     ]
 
     response = connector.fetch_by_cves(
@@ -72,6 +77,7 @@ def test_fetch_multiple_cves_epss():
     ]
 
     print("Returned CVEs:")
+
     for cve in returned_cves:
         print(f"  - {cve}")
 
@@ -79,7 +85,7 @@ def test_fetch_multiple_cves_epss():
     assert "CVE-2024-4577" in returned_cves
 
 
-
+@pytest.mark.integration
 def test_epss_response_fields_are_valid():
 
     connector = EPSSConnector()
@@ -96,7 +102,10 @@ def test_epss_response_fields_are_valid():
     print(f"Percentile : {item.get('percentile')}")
     print(f"Date       : {item.get('date')}")
 
-    assert isinstance(item.get("cve"), str)
+    assert isinstance(
+        item.get("cve"),
+        str,
+    )
 
     epss_score = float(
         item.get("epss")
@@ -111,9 +120,8 @@ def test_epss_response_fields_are_valid():
 
     assert isinstance(
         item.get("date"),
-        str
+        str,
     )
-
 
 
 def test_clean_cve_ids():
@@ -126,7 +134,7 @@ def test_clean_cve_ids():
         "",
         None,
         "INVALID-ID",
-        "CVE-2024-4577"
+        "CVE-2024-4577",
     ]
 
     cleaned = connector._clean_cve_ids(
@@ -135,14 +143,14 @@ def test_clean_cve_ids():
 
     print("\n[EPSS CONNECTOR] CVE ID cleaning")
     print("Cleaned CVEs:")
+
     for cve in cleaned:
         print(f"  - {cve}")
 
     assert cleaned == [
         "CVE-2021-44228",
-        "CVE-2024-4577"
+        "CVE-2024-4577",
     ]
-
 
 
 def test_fetch_empty_cve_list_returns_empty_response():
@@ -162,7 +170,6 @@ def test_fetch_empty_cve_list_returns_empty_response():
     assert response["data"] == []
 
 
-
 def test_build_cve_batches_respects_query_limit():
 
     connector = EPSSConnector()
@@ -180,8 +187,10 @@ def test_build_cve_batches_respects_query_limit():
     print(f"Input CVEs : {len(cve_ids)}")
     print(f"Batches    : {len(batches)}")
 
-    for index, batch in enumerate(batches, start=1):
-
+    for index, batch in enumerate(
+        batches,
+        start=1,
+    ):
         query = ",".join(batch)
 
         print(
@@ -190,7 +199,10 @@ def test_build_cve_batches_respects_query_limit():
             f"query length = {len(query)}"
         )
 
-        assert len(query) <= connector.MAX_CVE_QUERY_LENGTH
+        assert (
+            len(query)
+            <= connector.MAX_CVE_QUERY_LENGTH
+        )
 
     total_cves_in_batches = sum(
         len(batch)
@@ -200,7 +212,7 @@ def test_build_cve_batches_respects_query_limit():
     assert total_cves_in_batches == len(cve_ids)
 
 
-
+@pytest.mark.integration
 def test_fetch_by_batches():
 
     connector = EPSSConnector()
@@ -208,7 +220,7 @@ def test_fetch_by_batches():
     cve_ids = [
         "CVE-2021-44228",
         "CVE-2024-4577",
-        "CVE-2019-19781"
+        "CVE-2019-19781",
     ]
 
     responses = connector.fetch_by_batches(
@@ -216,7 +228,9 @@ def test_fetch_by_batches():
     )
 
     print("\n[EPSS CONNECTOR] Batch fetch validation")
-    print(f"Number of API responses: {len(responses)}")
+    print(
+        f"Number of API responses: {len(responses)}"
+    )
 
     assert isinstance(responses, list)
     assert len(responses) >= 1
@@ -224,7 +238,6 @@ def test_fetch_by_batches():
     total_returned = 0
 
     for response in responses:
-
         assert response.get("status") == "OK"
         assert "data" in response
 
@@ -232,6 +245,9 @@ def test_fetch_by_batches():
             response["data"]
         )
 
-    print(f"Total EPSS records returned: {total_returned}")
+    print(
+        f"Total EPSS records returned: "
+        f"{total_returned}"
+    )
 
     assert total_returned >= 1

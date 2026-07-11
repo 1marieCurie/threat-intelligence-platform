@@ -1,73 +1,145 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
 class Threat:
     """
-    Domain Entity
+    Normalized cybersecurity threat or vulnerability.
 
-    Represents a normalized cybersecurity vulnerability (CVE, advisory, etc.)
-    independent of its source (NVD, MITRE, GitHub, CISA...).
+    A Threat may progressively combine intelligence collected
+    from NVD, MITRE, CISA, GitHub Advisory and other sources.
     """
 
-    # Provenance is handled at attribute level, not at Threat level.
-    # A Threat can be composed from multiple intelligence sources.
+    # ============================================================
+    # Identity
+    # ============================================================
 
-    # --- Identity ---
-    id: str  # e.g. CVE-2026-XXXX
-    
-    #a vulnerability name if provided
+    # Canonical identifier.
+    # Prefer CVE when available, otherwise use GHSA or another
+    # source-specific identifier.
+    id: str
+
+    # All identifiers associated with the threat.
+    #
+    # Example:
+    # {
+    #     "CVE": ["CVE-2021-44228"],
+    #     "GHSA": ["GHSA-jfh8-c2jp-5v3q"]
+    # }
+    external_ids: Dict[str, List[str]] = field(
+        default_factory=dict
+    )
+
+    # ============================================================
+    # Core information
+    # ============================================================
+
     title: Optional[str] = None
+    description: str = ""
 
-    # --- Core information ---
-    description: str = "" # different sources providing descriptions
+    # reviewed, unreviewed, malware, etc.
+    advisory_type: Optional[str] = None
 
-    # --- Classification ---
-    severity: Optional[str] = None  # LOW, MEDIUM, HIGH, CRITICAL
+    # ============================================================
+    # Severity and CVSS
+    # ============================================================
+
+    severity: Optional[str] = None
+
+    # Main normalized score selected by the application.
     cvss_score: Optional[float] = None
-    
-    # --- EPSS exploitation probability ---
-    # EPSS estimates the probability that a CVE will be exploited in the wild.
-    # Values are provided by FIRST EPSS API.
+
+    # All CVSS versions provided by the sources.
+    #
+    # Example:
+    # {
+    #     "3.1": {
+    #         "score": 9.8,
+    #         "vector": "CVSS:3.1/..."
+    #     },
+    #     "4.0": {
+    #         "score": 9.3,
+    #         "vector": "CVSS:4.0/..."
+    #     }
+    # }
+    cvss_metrics: Dict[str, Dict[str, Any]] = field(
+        default_factory=dict
+    )
+
+    # ============================================================
+    # EPSS
+    # ============================================================
+
     epss_score: Optional[float] = None
     epss_percentile: Optional[float] = None
     epss_date: Optional[str] = None
 
-    # --- Impacted systems ---
-    affected_products: List[Dict] = field(default_factory=list)
+    # ============================================================
+    # Affected systems and packages
+    # ============================================================
 
-    # --- Weakness mapping (CWE) ---
+    affected_products: List[Dict[str, Any]] = field(
+        default_factory=list
+    )
+
+    # ============================================================
+    # Weaknesses
+    # ============================================================
+
     weaknesses: List[str] = field(default_factory=list)
-    
-    # generic appelation for the tags fields (cve_tags, etc..)
+
+    weakness_details: List[Dict[str, Any]] = field(
+        default_factory=list
+    )
+
     labels: List[str] = field(default_factory=list)
 
-    # --- External knowledge ---
+    # ============================================================
+    # References and source locations
+    # ============================================================
+
     references: List[str] = field(default_factory=list)
 
-    # Date when CISA added the vulnerability to the KEV catalog,
-    # indicating confirmed exploitation in the wild.
+    source_urls: Dict[str, str] = field(
+        default_factory=dict
+    )
+
+    source_code_locations: List[str] = field(
+        default_factory=list
+    )
+
+    # ============================================================
+    # Exploitation and remediation
+    # ============================================================
+
     known_exploited_date: Optional[str] = None
-    
-    #Actions to be done by the SOC or cybersecurity team
     remediation: Optional[str] = None
-    
-    # Indicates whether this vulnerability is known to be used in ransomware campaigns.
-    # Values: Known, Unknown, No
-    ransomware_campaign_use: Optional[str] = None    
-   
- 
-     # Dates
+    ransomware_campaign_use: Optional[str] = None
+
+    # ============================================================
+    # Dates
+    # ============================================================
+
     published_date: Optional[str] = None
     last_modified_date: Optional[str] = None
+    reviewed_date: Optional[str] = None
+    withdrawn_date: Optional[str] = None
 
-    # --- Raw data (VERY IMPORTANT for future AI + debugging) ---
-    raw: Dict = field(default_factory=dict)
+    # Dates with source-specific semantics.
+    source_dates: Dict[str, str] = field(
+        default_factory=dict
+    )
 
-    # --- AI / future enrichment fields ---
+    # ============================================================
+    # Raw data
+    # ============================================================
+
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+    # ============================================================
+    # AI and enrichment
+    # ============================================================
+
     risk_score: Optional[float] = None
     embedding: Optional[List[float]] = None
-    
-    
