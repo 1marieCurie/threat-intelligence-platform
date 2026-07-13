@@ -7,12 +7,13 @@ from domain.collection_result import CollectionResult
 
 class ThreatSource(ABC):
     """
-    Inbound Port (Hexagonal Architecture)
+    Inbound port for cybersecurity intelligence sources.
 
-    This interface defines the contract that every Threat Source must respect.
+    Every external source must implement this contract.
 
-    A Threat Source is responsible for collecting vulnerabilities from any external provider
-    (NVD, MITRE, CISA, GitHub, etc.) and returning a normalized collection result.
+    A source is responsible for retrieving cybersecurity
+    intelligence from an external provider and converting it
+    into normalized Threat objects.
     """
 
     @abstractmethod
