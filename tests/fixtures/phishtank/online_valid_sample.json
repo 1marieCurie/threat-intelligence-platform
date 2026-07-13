@@ -1,0 +1,73 @@
+[
+  {
+    "phish_id": 9477391,
+    "url": "https://fake-login-one.example.invalid/account/verify",
+    "phish_detail_url": "https://www.phishtank.com/phish_detail.php?phish_id=9477391",
+    "submission_time": "2026-07-13T11:03:01+00:00",
+    "verified": "yes",
+    "verification_time": "2026-07-13T11:52:26+00:00",
+    "online": "yes",
+    "details": [
+      {
+        "ip_address": "192.0.2.10",
+        "cidr_block": "192.0.2.0/24",
+        "announcing_network": "64500",
+        "rir": "arin",
+        "country": "MA",
+        "detail_time": "2026-07-13T11:12:10+00:00"
+      }
+    ],
+    "target": "Other"
+  },
+  {
+    "phish_id": 9477387,
+    "url": "https://allegro-security.example.invalid/verification",
+    "phish_detail_url": "https://www.phishtank.com/phish_detail.php?phish_id=9477387",
+    "submission_time": "2026-07-13T10:59:59+00:00",
+    "verified": "yes",
+    "verification_time": "2026-07-13T11:03:40+00:00",
+    "online": "yes",
+    "details": [
+      {
+        "ip_address": "198.51.100.25",
+        "cidr_block": "198.51.100.0/24",
+        "announcing_network": "64501",
+        "rir": "arin",
+        "country": "US",
+        "detail_time": "2026-07-13T11:00:30+00:00"
+      }
+    ],
+    "target": "Allegro"
+  },
+  {
+    "phish_id": 9477335,
+    "url": "https://parcel-tracking.example.invalid/status",
+    "phish_detail_url": "https://www.phishtank.com/phish_detail.php?phish_id=9477335",
+    "submission_time": "2026-07-13T10:08:56+00:00",
+    "verified": "yes",
+    "verification_time": "2026-07-13T10:32:37+00:00",
+    "online": "yes",
+    "details": [],
+    "target": "Other"
+  },
+  {
+    "phish_id": 9477330,
+    "url": "https://cloud-login.example.invalid/session",
+    "phish_detail_url": "https://www.phishtank.com/phish_detail.php?phish_id=9477330",
+    "submission_time": "2026-07-13T10:06:55+00:00",
+    "verified": "yes",
+    "verification_time": null,
+    "online": "yes",
+    "details": [
+      {
+        "ip_address": "203.0.113.50",
+        "cidr_block": null,
+        "announcing_network": null,
+        "rir": null,
+        "country": null,
+        "detail_time": null
+      }
+    ],
+    "target": null
+  }
+]

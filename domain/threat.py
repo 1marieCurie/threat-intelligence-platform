@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from domain.indicator import Indicator
+
 
 @dataclass
 class Threat:
@@ -40,6 +42,27 @@ class Threat:
 
     # reviewed, unreviewed, malware, etc.
     advisory_type: Optional[str] = None
+    
+    # Normalized category of the threat.
+    #
+    # Examples:
+    # vulnerability, phishing, malware_distribution,
+    # malicious_domain, malicious_ip
+    threat_type: Optional[str] = None
+
+    # Source that produced this normalized record.
+    #
+    # Examples:
+    # NVD, CISA, MITRE, GITHUB_ADVISORY, PHISHTANK
+    source: Optional[str] = None
+    
+    # ============================================================
+    # Indicators of compromise and observables
+    # ============================================================
+
+    indicators: List[Indicator] = field(
+        default_factory=list
+    )
 
     # ============================================================
     # Severity and CVSS
