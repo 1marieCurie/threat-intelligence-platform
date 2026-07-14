@@ -171,7 +171,7 @@ def test_source_name_is_urlhaus() -> None:
         connector=FakeURLhausConnector()
     )
 
-    assert source.name == "URLHAUS"
+    assert source.name() == "URLHAUS"
 
 
 @pytest.mark.parametrize(

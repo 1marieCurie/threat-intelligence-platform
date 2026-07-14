@@ -87,7 +87,6 @@ class URLhausThreatSource(ThreatSource):
         self._enrich_with_details = enrich_with_details
         self._max_detail_requests = max_detail_requests
 
-    @property
     def name(self) -> str:
         """
         Return the normalized source name.
@@ -190,7 +189,7 @@ class URLhausThreatSource(ThreatSource):
         )
 
         metadata: Dict[str, Any] = {
-            "source": self.name,
+            "source": self.name(),
             "query_status": raw_data.get("query_status"),
             "requested_limit": self._limit,
             "received_records": received_records,

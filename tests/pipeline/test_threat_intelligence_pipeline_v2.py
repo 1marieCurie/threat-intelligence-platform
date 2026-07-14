@@ -3,8 +3,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, List, Optional
 
-from domain.indicator import Indicator
 import pytest
+
+from domain.indicator import Indicator
 
 from application.ports.inbound.threat_source import (
     ThreatSource,
@@ -247,10 +248,11 @@ class FailingEPSSEnrichmentService(
 
 def build_fake_sources() -> List[FakeThreatSource]:
     """
-    Create four sources containing the same CVE, plus
-    source-specific vulnerabilities.
+    Create six deterministic threat sources.
 
-    The common CVE demonstrates correlation without fusion.
+    Four vulnerability sources share the same CVE. URLhaus and
+    PhishTank add operational non-CVE threats. The common CVE
+    demonstrates correlation without field-level fusion.
     """
 
     nvd_threats = [
@@ -547,6 +549,109 @@ def build_fake_sources() -> List[FakeThreatSource]:
     ),
 ]
 
+    phishtank_threats = [
+        Threat(
+            id="PHISHTANK-9876543",
+            external_ids={
+                "PHISHTANK": ["9876543"],
+            },
+            title=(
+                "Verified online phishing URL "
+                "targeting Example Bank"
+            ),
+            description=(
+                "A verified phishing URL targeting Example Bank "
+                "was reported by PhishTank and is currently online."
+            ),
+            threat_type="phishing",
+            source="PHISHTANK",
+            indicators=[
+                Indicator(
+                    type="url",
+                    value=(
+                        "https://login-example-bank.test/"
+                        "account/verify"
+                    ),
+                    confidence=1.0,
+                    metadata={
+                        "source": "PHISHTANK",
+                        "verified": True,
+                        "online": True,
+                    },
+                ),
+                Indicator(
+                    type="domain",
+                    value="login-example-bank.test",
+                    confidence=1.0,
+                    metadata={
+                        "source": "PHISHTANK",
+                        "verified": True,
+                        "online": True,
+                        "derived_from": "url",
+                    },
+                ),
+                Indicator(
+                    type="ipv4",
+                    value="192.0.2.25",
+                    confidence=1.0,
+                    metadata={
+                        "source": "PHISHTANK",
+                        "verified": True,
+                        "online": True,
+                        "cidr_block": "192.0.2.0/24",
+                        "announcing_network": "64500",
+                        "rir": "arin",
+                        "country": "US",
+                    },
+                ),
+                Indicator(
+                    type="cidr",
+                    value="192.0.2.0/24",
+                    confidence=1.0,
+                    metadata={
+                        "source": "PHISHTANK",
+                        "verified": True,
+                        "online": True,
+                        "announcing_network": "64500",
+                        "rir": "arin",
+                        "country": "US",
+                    },
+                ),
+            ],
+            labels=[
+                "phishing",
+                "malicious-url",
+                "verified",
+                "online",
+                "target:example-bank",
+            ],
+            references=[
+                (
+                    "https://phishtank.org/"
+                    "phish_detail.php?phish_id=9876543"
+                ),
+            ],
+            source_urls={
+                "PHISHTANK": (
+                    "https://phishtank.org/"
+                    "phish_detail.php?phish_id=9876543"
+                ),
+            },
+            published_date="2026-07-14T10:00:00+00:00",
+            reviewed_date="2026-07-14T10:05:00+00:00",
+            source_dates={
+                "submission_time": "2026-07-14T10:00:00+00:00",
+                "verification_time": "2026-07-14T10:05:00+00:00",
+            },
+            raw={
+                "phish_id": 9876543,
+                "verified": "yes",
+                "online": "yes",
+                "target": "Example Bank",
+            },
+        ),
+    ]
+
     return [
         FakeThreatSource(
             source_name="NVD",
@@ -584,6 +689,17 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 "received_records": 1,
                 "parsed_threats": 1,
                 "skipped_records": 0,
+            },
+        ),
+        FakeThreatSource(
+            source_name="PHISHTANK",
+            threats=phishtank_threats,
+            metadata={
+                "raw_record_count": 1,
+                "threat_count": 1,
+                "skipped_record_count": 0,
+                "verified_only": True,
+                "online_only": True,
             },
         ),
     ]
@@ -725,12 +841,12 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     """
     Validate the complete deterministic pipeline:
 
-    - four sources collect source-specific Threat objects;
+    - six sources collect source-specific Threat objects;
     - one CVE is common to all sources;
-    - correlation groups the four objects;
+    - correlation groups the four CVE objects;
     - source-specific information is preserved;
     - no field-level fusion is performed;
-    - EPSS enriches all four source-specific records.
+    - EPSS enriches the four CVE source-specific records only.
     """
 
     sources = build_fake_sources()
@@ -762,7 +878,7 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # Source execution
     # --------------------------------------------------------
 
-    assert len(result.source_executions) == 5
+    assert len(result.source_executions) == 6
 
     assert result.successful_sources() == [
         "NVD",
@@ -770,6 +886,7 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
         "MITRE",
         "GITHUB_ADVISORY",
         "URLHAUS",
+        "PHISHTANK",
     ]
 
     assert result.failed_sources() == []
@@ -782,15 +899,15 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # --------------------------------------------------------
 
     assert result.metadata["status"] == "SUCCESS"
-    assert result.metadata["configured_sources"] == 5
-    assert result.metadata["successful_sources"] == 5
+    assert result.metadata["configured_sources"] == 6
+    assert result.metadata["successful_sources"] == 6
     assert result.metadata["failed_sources"] == 0
 
-    # Two records from each of four sources.
-    assert result.metadata["total_source_records"] == 9
+    # Eight vulnerability records plus URLhaus and PhishTank.
+    assert result.metadata["total_source_records"] == 10
 
-    # Common CVE + three source-only CVEs + one GHSA-only ID.
-    assert result.metadata["unique_threats"] == 6
+    # Common CVE + three source-only CVEs + GHSA + URLhaus + PhishTank.
+    assert result.metadata["unique_threats"] == 7
 
     assert (
         result.metadata["multi_source_threats"]
@@ -918,6 +1035,100 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     }
 
     # --------------------------------------------------------
+    # URLhaus non-CVE group
+    # --------------------------------------------------------
+
+    urlhaus_group = result.get_group(
+        "URLHAUS-3886385"
+    )
+
+    assert urlhaus_group is not None
+    assert urlhaus_group.id == "URLHAUS-3886385"
+    assert urlhaus_group.is_multi_source is False
+    assert urlhaus_group.source_count == 1
+    assert urlhaus_group.sources == ["URLHAUS"]
+    assert len(urlhaus_group.threats) == 1
+
+    urlhaus_threat = (
+        urlhaus_group
+        .threats_by_source["URLHAUS"][0]
+    )
+
+    assert urlhaus_threat.source == "URLHAUS"
+    assert (
+        urlhaus_threat.threat_type
+        == "malware_distribution"
+    )
+    assert (
+        urlhaus_threat.advisory_type
+        == "malware_download"
+    )
+
+    urlhaus_indicator_types = {
+        indicator.type
+        for indicator in urlhaus_threat.indicators
+    }
+
+    assert urlhaus_indicator_types == {
+        "url",
+        "domain",
+        "sha256",
+    }
+
+    assert urlhaus_threat.epss_score is None
+    assert urlhaus_threat.epss_percentile is None
+    assert urlhaus_threat.epss_date is None
+
+    # --------------------------------------------------------
+    # PhishTank non-CVE group
+    # --------------------------------------------------------
+
+    phishtank_group = result.get_group(
+        "PHISHTANK-9876543"
+    )
+
+    assert phishtank_group is not None
+    assert phishtank_group.id == "PHISHTANK-9876543"
+    assert phishtank_group.is_multi_source is False
+    assert phishtank_group.source_count == 1
+    assert phishtank_group.sources == ["PHISHTANK"]
+    assert len(phishtank_group.threats) == 1
+
+    phishtank_threat = (
+        phishtank_group
+        .threats_by_source["PHISHTANK"][0]
+    )
+
+    assert phishtank_threat.source == "PHISHTANK"
+    assert phishtank_threat.threat_type == "phishing"
+    assert phishtank_threat.external_ids == {
+        "PHISHTANK": ["9876543"],
+    }
+
+    phishtank_indicator_types = {
+        indicator.type
+        for indicator in phishtank_threat.indicators
+    }
+
+    assert phishtank_indicator_types == {
+        "url",
+        "domain",
+        "ipv4",
+        "cidr",
+    }
+
+    assert "verified" in phishtank_threat.labels
+    assert "online" in phishtank_threat.labels
+    assert (
+        "target:example-bank"
+        in phishtank_threat.labels
+    )
+
+    assert phishtank_threat.epss_score is None
+    assert phishtank_threat.epss_percentile is None
+    assert phishtank_threat.epss_date is None
+
+    # --------------------------------------------------------
     # EPSS enrichment
     # --------------------------------------------------------
 
@@ -944,7 +1155,7 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
         result.epss_enrichment_result.metadata[
             "non_cve_threats"
         ]
-        == 1
+        == 3
     )
 
     assert result.metadata["epss_status"] == "SUCCESS"
@@ -953,8 +1164,8 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # Pipeline result helper methods
     # --------------------------------------------------------
 
-    assert len(result.all_threats()) == 8
-    assert len(result.unique_ids()) == 5
+    assert len(result.all_threats()) == 10
+    assert len(result.unique_ids()) == 7
     assert len(result.multi_source_groups()) == 1
     assert result.errors == []
 
@@ -1047,6 +1258,22 @@ def test_pipeline_can_skip_epss_enrichment() -> None:
         assert threat.epss_percentile is None
         assert threat.epss_date is None
 
+    for non_cve_id in (
+        "GHSA-xxxx-yyyy-zzzz",
+        "URLHAUS-3886385",
+        "PHISHTANK-9876543",
+    ):
+        non_cve_group = result.get_group(
+            non_cve_id
+        )
+
+        assert non_cve_group is not None
+
+        for threat in non_cve_group.threats:
+            assert threat.epss_score is None
+            assert threat.epss_percentile is None
+            assert threat.epss_date is None
+
 
 # ============================================================
 # Partial source failure test
@@ -1075,8 +1302,8 @@ def test_pipeline_continues_when_one_source_fails() -> None:
         "PARTIAL_SUCCESS"
     )
 
-    assert result.metadata["configured_sources"] == 5
-    assert result.metadata["successful_sources"] == 4
+    assert result.metadata["configured_sources"] == 7
+    assert result.metadata["successful_sources"] == 6
     assert result.metadata["failed_sources"] == 1
 
     assert result.failed_sources() == [
