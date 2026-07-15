@@ -1,11 +1,14 @@
+# application/services/github_advisory_threat_source.py
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.github_advisory_connector import (
     GitHubAdvisoryConnector,
 )
@@ -22,6 +25,13 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
     SOURCE_NAME = "github_advisory"
 
+    CWE_PLACEHOLDERS = {
+        "NVD-CWE-NOINFO",
+        "NVD-CWE-OTHER",
+        "CWE-NOINFO",
+        "CWE-OTHER",
+    }
+
     def __init__(
         self,
         connector: GitHubAdvisoryConnector | None = None,
@@ -33,7 +43,11 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         per_page: int = 100,
         max_pages: int | None = 1,
     ) -> None:
-        self.connector = connector or GitHubAdvisoryConnector()
+        self.connector = (
+            connector
+            if connector is not None
+            else GitHubAdvisoryConnector()
+        )
 
         self.advisory_type = advisory_type
         self.ecosystem = ecosystem
@@ -58,7 +72,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         threats = self.parse(raw_advisories)
 
         metadata: dict[str, Any] = {
-            "source": self.SOURCE_NAME,
+            "source": self.name(),
             "api_version": self.connector.API_VERSION,
             "advisory_type": self.advisory_type,
             "ecosystem": self.ecosystem,
@@ -68,9 +82,12 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             "max_pages": self.max_pages,
             "collected_count": len(raw_advisories),
             "parsed_count": len(threats),
-            "skipped_count": len(raw_advisories) - len(threats),
+            "skipped_count": (
+                len(raw_advisories)
+                - len(threats)
+            ),
             "collected_at": datetime.now(
-                timezone.utc
+                UTC
             ).isoformat(),
         }
 
@@ -79,7 +96,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             metadata=metadata,
         )
 
-    def fetch_raw(self) -> list[dict[str, Any]]:
+    def fetch_raw(
+        self,
+    ) -> list[dict[str, Any]]:
         """
         Retrieve raw advisories through the outbound connector.
         """
@@ -100,14 +119,13 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         """
         Convert raw GitHub advisory dictionaries into Threat entities.
 
-        Invalid elements that are not dictionaries are ignored.
-        Advisories without any usable CVE or GHSA identifier are ignored.
+        Invalid top-level values and non-dictionary advisory elements
+        are ignored safely. Advisories without any usable CVE or GHSA
+        identifier are skipped.
         """
 
         if not isinstance(raw_data, list):
-            raise ValueError(
-                "GitHub Advisory raw data must be a list."
-            )
+            return []
 
         threats: list[Threat] = []
 
@@ -115,7 +133,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             if not isinstance(advisory, dict):
                 continue
 
-            threat = self._map_advisory(advisory)
+            threat = self._map_advisory(
+                advisory
+            )
 
             if threat is not None:
                 threats.append(threat)
@@ -157,24 +177,26 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             advisory
         )
 
-        cvss_score = self._select_primary_cvss_score(
-            cvss_metrics
+        cvss_score = (
+            self._select_primary_cvss_score(
+                cvss_metrics
+            )
         )
 
         epss_score, epss_percentile = (
             self._extract_epss(advisory)
         )
 
-        affected_products = self._extract_affected_products(
-            advisory
+        affected_products = (
+            self._extract_affected_products(
+                advisory
+            )
         )
 
-        weaknesses = self._extract_weaknesses(
-            advisory
-        )
-
-        weakness_details = self._extract_weakness_details(
-            advisory
+        weakness_references = (
+            self._extract_weakness_references(
+                advisory
+            )
         )
 
         references = self._extract_references(
@@ -206,6 +228,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         return Threat(
             id=canonical_id,
+            source=self.name(),
             external_ids=external_ids,
             title=self._clean_string(
                 advisory.get("summary")
@@ -226,20 +249,27 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             epss_percentile=epss_percentile,
             epss_date=None,
             affected_products=affected_products,
-            weaknesses=weaknesses,
-            weakness_details=weakness_details,
+            weakness_references=(
+                weakness_references
+            ),
             labels=labels,
             references=references,
             source_urls=source_urls,
-            source_code_locations=source_code_locations,
+            source_code_locations=(
+                source_code_locations
+            ),
             published_date=self._clean_string(
                 advisory.get("published_at")
             ),
-            last_modified_date=self._clean_string(
-                advisory.get("updated_at")
+            last_modified_date=(
+                self._clean_string(
+                    advisory.get("updated_at")
+                )
             ),
             reviewed_date=self._clean_string(
-                advisory.get("github_reviewed_at")
+                advisory.get(
+                    "github_reviewed_at"
+                )
             ),
             withdrawn_date=self._clean_string(
                 advisory.get("withdrawn_at")
@@ -250,16 +280,19 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             },
         )
 
-    # ============================================================
+    # =========================================================
     # Identity
-    # ============================================================
+    # =========================================================
 
     @staticmethod
     def _choose_canonical_id(
         *,
         cve_id: str | None,
         ghsa_id: str | None,
-        external_ids: dict[str, list[str]],
+        external_ids: dict[
+            str,
+            list[str],
+        ],
     ) -> str | None:
         """
         Select the canonical Threat identifier.
@@ -314,30 +347,49 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         }
         """
 
-        external_ids: dict[str, list[str]] = {}
+        external_ids: dict[
+            str,
+            list[str],
+        ] = {}
 
-        identifiers = advisory.get("identifiers")
+        identifiers = advisory.get(
+            "identifiers"
+        )
 
         if isinstance(identifiers, list):
             for identifier in identifiers:
-                if not isinstance(identifier, dict):
+                if not isinstance(
+                    identifier,
+                    dict,
+                ):
                     continue
 
-                identifier_type = cls._clean_string(
-                    identifier.get("type")
+                identifier_type = (
+                    cls._clean_string(
+                        identifier.get("type")
+                    )
                 )
 
-                identifier_value = cls._clean_string(
-                    identifier.get("value")
+                identifier_value = (
+                    cls._clean_string(
+                        identifier.get("value")
+                    )
                 )
 
-                if not identifier_type or not identifier_value:
+                if (
+                    not identifier_type
+                    or not identifier_value
+                ):
                     continue
 
                 cls._append_unique_identifier(
                     external_ids=external_ids,
-                    identifier_type=identifier_type.upper(),
-                    identifier_value=identifier_value,
+                    identifier_type=(
+                        identifier_type.upper()
+                    ),
+                    identifier_value=(
+                        identifier_value
+                    ),
                 )
 
         if cve_id:
@@ -359,7 +411,10 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     @staticmethod
     def _append_unique_identifier(
         *,
-        external_ids: dict[str, list[str]],
+        external_ids: dict[
+            str,
+            list[str],
+        ],
         identifier_type: str,
         identifier_value: str,
     ) -> None:
@@ -371,9 +426,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         if identifier_value not in values:
             values.append(identifier_value)
 
-    # ============================================================
+    # =========================================================
     # CVSS
-    # ============================================================
+    # =========================================================
 
     @classmethod
     def _extract_cvss_metrics(
@@ -382,39 +437,37 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     ) -> dict[str, dict[str, Any]]:
         """
         Preserve all CVSS versions supplied by GitHub.
-
-        Expected structure:
-
-        cvss_severities:
-            cvss_v3:
-                score
-                vector_string
-            cvss_v4:
-                score
-                vector_string
         """
 
-        metrics: dict[str, dict[str, Any]] = {}
+        metrics: dict[
+            str,
+            dict[str, Any],
+        ] = {}
 
         cvss_severities = advisory.get(
             "cvss_severities"
         )
 
-        if isinstance(cvss_severities, dict):
+        if isinstance(
+            cvss_severities,
+            dict,
+        ):
             cls._add_cvss_metric(
                 metrics=metrics,
                 fallback_version="3",
-                data=cvss_severities.get("cvss_v3"),
+                data=cvss_severities.get(
+                    "cvss_v3"
+                ),
             )
 
             cls._add_cvss_metric(
                 metrics=metrics,
                 fallback_version="4",
-                data=cvss_severities.get("cvss_v4"),
+                data=cvss_severities.get(
+                    "cvss_v4"
+                ),
             )
 
-        # Compatibility with older GitHub responses or fixtures
-        # containing only a top-level "cvss" object.
         legacy_cvss = advisory.get("cvss")
 
         has_cvss_v3 = any(
@@ -426,10 +479,6 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             isinstance(legacy_cvss, dict)
             and not has_cvss_v3
         ):
-            # Reuse the same validation rules as cvss_severities.
-            # This prevents a legacy placeholder such as
-            # {"score": 0.0, "vector_string": None}
-            # from becoming the primary score.
             cls._add_cvss_metric(
                 metrics=metrics,
                 fallback_version="3",
@@ -442,23 +491,18 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     def _add_cvss_metric(
         cls,
         *,
-        metrics: dict[str, dict[str, Any]],
+        metrics: dict[
+            str,
+            dict[str, Any],
+        ],
         fallback_version: str,
         data: Any,
     ) -> None:
         """
-        Add one CVSS metric supplied by GitHub.
+        Add one usable CVSS metric supplied by GitHub.
 
-        GitHub may return placeholder CVSS objects such as:
-
-            {
-                "score": 0.0,
-                "vector_string": None
-            }
-
-        Such an object does not provide enough information to be
-        considered an effective CVSS metric and must not override
-        another valid version.
+        Placeholder values such as score=0.0 without a vector are
+        ignored.
         """
 
         if not isinstance(data, dict):
@@ -472,17 +516,16 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             data.get("vector_string")
         )
 
-        # No usable CVSS information.
         if score is None and vector is None:
             return
 
-        # GitHub sometimes exposes an unavailable CVSS version as
-        # score=0.0 without any vector. Treat it as a placeholder.
         if score == 0.0 and vector is None:
             return
 
         version = (
-            cls._extract_cvss_version(vector)
+            cls._extract_cvss_version(
+                vector
+            )
             or fallback_version
         )
 
@@ -497,16 +540,14 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     ) -> str | None:
         """
         Extract the version from a CVSS vector.
-
-        Examples:
-            CVSS:3.1/... -> 3.1
-            CVSS:4.0/... -> 4.0
         """
 
         if not vector:
             return None
 
-        if not vector.upper().startswith("CVSS:"):
+        if not vector.upper().startswith(
+            "CVSS:"
+        ):
             return None
 
         version_section = vector.split(
@@ -514,8 +555,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             1,
         )[0]
 
-        _, _, version = version_section.partition(
-            ":"
+        _, _, version = (
+            version_section.partition(":")
         )
 
         return version or None
@@ -523,20 +564,18 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     @classmethod
     def _select_primary_cvss_score(
         cls,
-        metrics: dict[str, dict[str, Any]],
+        metrics: dict[
+            str,
+            dict[str, Any],
+        ],
     ) -> float | None:
         """
-        Select the main normalized CVSS score.
+        Select the primary normalized CVSS score.
 
         Priority:
-        1. A valid positive CVSS 4.x score
-        2. A valid positive CVSS 3.x score
-        3. Any other positive score
-        4. A valid zero score, only when no positive score exists
-
-        A score of 0.0 is valid in CVSS, but GitHub can also use it
-        in placeholder objects. Placeholder filtering is primarily
-        performed in _add_cvss_metric().
+        1. CVSS 4.x
+        2. CVSS 3.x
+        3. Other versions
         """
 
         priority: list[str] = []
@@ -566,7 +605,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         for version in priority:
             score = cls._to_float(
-                metrics[version].get("score")
+                metrics[version].get(
+                    "score"
+                )
             )
 
             if score is None:
@@ -580,15 +621,22 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         return zero_score
 
-    # ============================================================
+    # =========================================================
     # EPSS
-    # ============================================================
+    # =========================================================
 
     @classmethod
     def _extract_epss(
         cls,
         advisory: dict[str, Any],
-    ) -> tuple[float | None, float | None]:
+    ) -> tuple[
+        float | None,
+        float | None,
+    ]:
+        """
+        Extract EPSS percentage and percentile supplied by GitHub.
+        """
+
         epss = advisory.get("epss")
 
         if not isinstance(epss, dict):
@@ -603,9 +651,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             ),
         )
 
-    # ============================================================
+    # =========================================================
     # Affected products
-    # ============================================================
+    # =========================================================
 
     @classmethod
     def _extract_affected_products(
@@ -616,20 +664,30 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         Normalize GitHub package vulnerability information.
         """
 
-        affected_products: list[dict[str, Any]] = []
+        affected_products: list[
+            dict[str, Any]
+        ] = []
 
         vulnerabilities = advisory.get(
             "vulnerabilities"
         )
 
-        if not isinstance(vulnerabilities, list):
+        if not isinstance(
+            vulnerabilities,
+            list,
+        ):
             return affected_products
 
         for vulnerability in vulnerabilities:
-            if not isinstance(vulnerability, dict):
+            if not isinstance(
+                vulnerability,
+                dict,
+            ):
                 continue
 
-            package = vulnerability.get("package")
+            package = vulnerability.get(
+                "package"
+            )
 
             ecosystem: str | None = None
             package_name: str | None = None
@@ -639,11 +697,16 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                     package.get("ecosystem")
                 )
 
-                package_name = cls._clean_string(
-                    package.get("name")
+                package_name = (
+                    cls._clean_string(
+                        package.get("name")
+                    )
                 )
 
-            normalized_product: dict[str, Any] = {
+            normalized_product: dict[
+                str,
+                Any,
+            ] = {
                 "ecosystem": ecosystem,
                 "package_name": package_name,
                 "vulnerable_version_range": (
@@ -669,8 +732,10 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                 ),
             }
 
-            source_code_location = vulnerability.get(
-                "source_code_location"
+            source_code_location = (
+                vulnerability.get(
+                    "source_code_location"
+                )
             )
 
             if source_code_location is not None:
@@ -684,7 +749,10 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                 )
             )
 
-            if normalized_product not in affected_products:
+            if (
+                normalized_product
+                not in affected_products
+            ):
                 affected_products.append(
                     normalized_product
                 )
@@ -696,6 +764,10 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         cls,
         value: Any,
     ) -> str | None:
+        """
+        Extract the first patched version identifier.
+        """
+
         if isinstance(value, dict):
             return cls._clean_string(
                 value.get("identifier")
@@ -703,94 +775,226 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         return cls._clean_string(value)
 
-    # ============================================================
-    # CWE weaknesses
-    # ============================================================
+    # =========================================================
+    # CWE weakness references
+    # =========================================================
 
     @classmethod
-    def _extract_weaknesses(
+    def _extract_weakness_references(
         cls,
         advisory: dict[str, Any],
-    ) -> list[str]:
+    ) -> list[WeaknessReference]:
         """
-        Extract normalized CWE identifiers.
+        Convert GitHub CWE assertions into WeaknessReference objects.
 
-        Names and other details are preserved separately in
-        weakness_details.
+        GitHub usually returns values such as:
+
+        {
+            "cwe_id": "CWE-79",
+            "name": "Improper Neutralization of Input"
+        }
+
+        The GitHub-provided name is preserved as source_description.
         """
-
-        weaknesses: list[str] = []
 
         cwes = advisory.get("cwes")
 
         if not isinstance(cwes, list):
-            return weaknesses
+            return []
+
+        references: list[
+            WeaknessReference
+        ] = []
+
+        seen: set[
+            tuple[
+                str | None,
+                str | None,
+                str,
+            ]
+        ] = set()
 
         for cwe in cwes:
-            raw_cwe_id: Any
-
-            if isinstance(cwe, dict):
-                raw_cwe_id = cwe.get("cwe_id")
-            else:
-                raw_cwe_id = cwe
-
-            cwe_id = cls._normalize_cwe_id(
-                raw_cwe_id
+            reference = (
+                cls._parse_cwe_assertion(cwe)
             )
 
-            if cwe_id and cwe_id not in weaknesses:
-                weaknesses.append(cwe_id)
+            if reference is None:
+                continue
 
-        return weaknesses
+            key = (
+                reference.cwe_id,
+                reference.source_description,
+                reference.resolution_status,
+            )
+
+            if key in seen:
+                continue
+
+            references.append(reference)
+            seen.add(key)
+
+        return references
 
     @classmethod
-    def _extract_weakness_details(
+    def _parse_cwe_assertion(
         cls,
-        advisory: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        raw_cwe: Any,
+    ) -> WeaknessReference | None:
         """
-        Preserve CWE details supplied directly by GitHub Advisory.
-
-        These values represent a source assertion. They may later
-        be complemented by the official MITRE CWE catalog without
-        overwriting GitHub's original information.
+        Convert one GitHub CWE value into a WeaknessReference.
         """
 
-        details: list[dict[str, Any]] = []
-
-        cwes = advisory.get("cwes")
-
-        if not isinstance(cwes, list):
-            return details
-
-        for cwe in cwes:
-            if not isinstance(cwe, dict):
-                continue
-
-            cwe_id = cls._normalize_cwe_id(
-                cwe.get("cwe_id")
+        if isinstance(raw_cwe, dict):
+            raw_cwe_id = raw_cwe.get(
+                "cwe_id"
             )
 
-            if not cwe_id:
-                continue
-
-            name = cls._clean_string(
-                cwe.get("name")
+            source_description = (
+                cls._clean_string(
+                    raw_cwe.get("name")
+                )
             )
 
-            detail: dict[str, Any] = {
-                "cwe_id": cwe_id,
-                "source": cls.SOURCE_NAME,
-                "is_official": False,
+            raw = raw_cwe
+
+        else:
+            raw_cwe_id = raw_cwe
+            source_description = None
+            raw = {
+                "value": raw_cwe,
             }
 
-            if name:
-                detail["name"] = name
+        if cls._is_cwe_placeholder(
+            raw_cwe_id
+        ):
+            return WeaknessReference(
+                source=cls.SOURCE_NAME,
+                cwe_id=None,
+                source_description=(
+                    source_description
+                    or cls._clean_string(
+                        raw_cwe_id
+                    )
+                ),
+                source_type="CWE",
+                language=None,
+                origin="github_advisory",
+                resolution_status="placeholder",
+                resolution_method=(
+                    "source_placeholder"
+                ),
+                raw=raw,
+            )
 
-            if detail not in details:
-                details.append(detail)
+        normalized_id = (
+            cls._normalize_cwe_id(
+                raw_cwe_id
+            )
+        )
 
-        return details
+        if normalized_id is not None:
+            return WeaknessReference(
+                source=cls.SOURCE_NAME,
+                cwe_id=normalized_id,
+                source_description=(
+                    source_description
+                ),
+                source_type="CWE",
+                language=None,
+                origin="github_advisory",
+                resolution_status="resolved",
+                resolution_method="explicit_id",
+                raw=raw,
+            )
+
+        cleaned_id = cls._clean_string(
+            raw_cwe_id
+        )
+
+        if cleaned_id is None:
+            if source_description is None:
+                return None
+
+            return WeaknessReference(
+                source=cls.SOURCE_NAME,
+                cwe_id=None,
+                source_description=(
+                    source_description
+                ),
+                source_type="CWE",
+                language=None,
+                origin="github_advisory",
+                resolution_status="unresolved",
+                resolution_method=None,
+                raw=raw,
+            )
+
+        extracted_id = (
+            cls._extract_cwe_id_from_text(
+                cleaned_id
+            )
+        )
+
+        if extracted_id is not None:
+            return WeaknessReference(
+                source=cls.SOURCE_NAME,
+                cwe_id=extracted_id,
+                source_description=(
+                    source_description
+                    or cleaned_id
+                ),
+                source_type="CWE",
+                language=None,
+                origin="github_advisory",
+                resolution_status="resolved",
+                resolution_method="extracted_id",
+                raw=raw,
+            )
+
+        status = (
+            "invalid"
+            if cleaned_id.upper().startswith(
+                "CWE-"
+            )
+            else "unresolved"
+        )
+
+        return WeaknessReference(
+            source=cls.SOURCE_NAME,
+            cwe_id=None,
+            source_description=(
+                source_description
+                or cleaned_id
+            ),
+            source_type="CWE",
+            language=None,
+            origin="github_advisory",
+            resolution_status=status,
+            resolution_method=None,
+            raw=raw,
+        )
+
+    @classmethod
+    def _is_cwe_placeholder(
+        cls,
+        value: Any,
+    ) -> bool:
+        """
+        Identify explicit source placeholders.
+        """
+
+        normalized = cls._clean_string(
+            value
+        )
+
+        if normalized is None:
+            return False
+
+        return (
+            normalized.upper()
+            in cls.CWE_PLACEHOLDERS
+        )
 
     @classmethod
     def _normalize_cwe_id(
@@ -807,13 +1011,18 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             "CWE-79" -> CWE-79
         """
 
+        if isinstance(value, bool):
+            return None
+
         if isinstance(value, int):
-            if value < 0:
+            if value <= 0:
                 return None
 
             return f"CWE-{value}"
 
-        normalized = cls._clean_string(value)
+        normalized = cls._clean_string(
+            value
+        )
 
         if not normalized:
             return None
@@ -821,25 +1030,70 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         normalized = normalized.upper()
 
         if normalized.startswith("CWE-"):
-            numeric_part = normalized[4:].strip()
+            numeric_part = (
+                normalized[4:].strip()
+            )
         else:
             numeric_part = normalized
 
         if not numeric_part.isdigit():
             return None
 
-        return f"CWE-{numeric_part}"
+        number = int(numeric_part)
 
-    # ============================================================
+        if number <= 0:
+            return None
+
+        return f"CWE-{number}"
+
+    @classmethod
+    def _extract_cwe_id_from_text(
+        cls,
+        value: str,
+    ) -> str | None:
+        """
+        Extract a canonical CWE identifier from combined text.
+
+        Example:
+            CWE-79: Improper Neutralization of Input
+        """
+
+        normalized_text = (
+            value
+            .replace(":", " ")
+            .replace(",", " ")
+            .replace("(", " ")
+            .replace(")", " ")
+            .replace("[", " ")
+            .replace("]", " ")
+        )
+
+        for token in normalized_text.split():
+            cwe_id = cls._normalize_cwe_id(
+                token
+            )
+
+            if cwe_id is not None:
+                return cwe_id
+
+        return None
+
+    # =========================================================
     # References and URLs
-    # ============================================================
+    # =========================================================
 
     @classmethod
     def _extract_references(
         cls,
         advisory: dict[str, Any],
     ) -> list[str]:
-        references = advisory.get("references")
+        """
+        Extract unique GitHub advisory reference URLs.
+        """
+
+        references = advisory.get(
+            "references"
+        )
 
         if not isinstance(references, list):
             return []
@@ -847,16 +1101,22 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         result: list[str] = []
 
         for reference in references:
-            reference_url: str | None = None
+            reference_url: (
+                str | None
+            ) = None
 
             if isinstance(reference, str):
-                reference_url = cls._clean_string(
-                    reference
+                reference_url = (
+                    cls._clean_string(
+                        reference
+                    )
                 )
 
             elif isinstance(reference, dict):
-                reference_url = cls._clean_string(
-                    reference.get("url")
+                reference_url = (
+                    cls._clean_string(
+                        reference.get("url")
+                    )
                 )
 
             if (
@@ -872,47 +1132,67 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         cls,
         advisory: dict[str, Any],
     ) -> dict[str, str]:
+        """
+        Preserve GitHub API, HTML and repository advisory URLs.
+        """
+
         candidates = {
             "api": advisory.get("url"),
-            "html": advisory.get("html_url"),
-            "repository_advisory": advisory.get(
-                "repository_advisory_url"
+            "html": advisory.get(
+                "html_url"
+            ),
+            "repository_advisory": (
+                advisory.get(
+                    "repository_advisory_url"
+                )
             ),
         }
 
         result: dict[str, str] = {}
 
         for key, value in candidates.items():
-            normalized_value = cls._clean_string(
-                value
+            normalized_value = (
+                cls._clean_string(value)
             )
 
             if normalized_value:
-                result[key] = normalized_value
+                result[key] = (
+                    normalized_value
+                )
 
         return result
 
-    # ============================================================
+    # =========================================================
     # Dates
-    # ============================================================
+    # =========================================================
 
     @classmethod
     def _extract_source_dates(
         cls,
         advisory: dict[str, Any],
     ) -> dict[str, str]:
+        """
+        Preserve source-specific GitHub and NVD dates.
+        """
+
         candidates = {
-            "github_published_at": advisory.get(
-                "published_at"
+            "github_published_at": (
+                advisory.get(
+                    "published_at"
+                )
             ),
-            "github_updated_at": advisory.get(
-                "updated_at"
+            "github_updated_at": (
+                advisory.get("updated_at")
             ),
-            "github_reviewed_at": advisory.get(
-                "github_reviewed_at"
+            "github_reviewed_at": (
+                advisory.get(
+                    "github_reviewed_at"
+                )
             ),
-            "nvd_published_at": advisory.get(
-                "nvd_published_at"
+            "nvd_published_at": (
+                advisory.get(
+                    "nvd_published_at"
+                )
             ),
             "withdrawn_at": advisory.get(
                 "withdrawn_at"
@@ -922,24 +1202,30 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         result: dict[str, str] = {}
 
         for key, value in candidates.items():
-            normalized_value = cls._clean_string(
-                value
+            normalized_value = (
+                cls._clean_string(value)
             )
 
             if normalized_value:
-                result[key] = normalized_value
+                result[key] = (
+                    normalized_value
+                )
 
         return result
 
-    # ============================================================
-    # Source code locations
-    # ============================================================
+    # =========================================================
+    # Source-code locations
+    # =========================================================
 
     @classmethod
     def _extract_source_code_locations(
         cls,
         advisory: dict[str, Any],
     ) -> list[str]:
+        """
+        Extract source-code locations from advisory and package data.
+        """
+
         locations: list[str] = []
 
         cls._append_source_location(
@@ -953,9 +1239,15 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             "vulnerabilities"
         )
 
-        if isinstance(vulnerabilities, list):
+        if isinstance(
+            vulnerabilities,
+            list,
+        ):
             for vulnerability in vulnerabilities:
-                if not isinstance(vulnerability, dict):
+                if not isinstance(
+                    vulnerability,
+                    dict,
+                ):
                     continue
 
                 cls._append_source_location(
@@ -974,8 +1266,14 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         locations: list[str],
         value: Any,
     ) -> None:
+        """
+        Recursively normalize source-code location representations.
+        """
+
         if isinstance(value, str):
-            normalized = cls._clean_string(value)
+            normalized = cls._clean_string(
+                value
+            )
 
             if (
                 normalized
@@ -996,27 +1294,38 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                 "path",
                 "location",
             ):
-                normalized = cls._clean_string(
-                    value.get(key)
+                normalized = (
+                    cls._clean_string(
+                        value.get(key)
+                    )
                 )
 
                 if (
                     normalized
-                    and normalized not in locations
+                    and normalized
+                    not in locations
                 ):
-                    locations.append(normalized)
+                    locations.append(
+                        normalized
+                    )
 
-    # ============================================================
-    # Labels and normalization helpers
-    # ============================================================
+    # =========================================================
+    # Labels
+    # =========================================================
 
     @classmethod
     def _build_labels(
         cls,
         *,
         advisory: dict[str, Any],
-        affected_products: list[dict[str, Any]],
+        affected_products: list[
+            dict[str, Any]
+        ],
     ) -> list[str]:
+        """
+        Build normalized labels from advisory type and ecosystems.
+        """
+
         labels: list[str] = []
 
         advisory_type = cls._clean_string(
@@ -1025,7 +1334,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         if advisory_type:
             labels.append(
-                f"github:{advisory_type.lower()}"
+                "github:"
+                f"{advisory_type.lower()}"
             )
 
         for product in affected_products:
@@ -1037,18 +1347,29 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                 continue
 
             ecosystem_label = (
-                f"ecosystem:{ecosystem.lower()}"
+                "ecosystem:"
+                f"{ecosystem.lower()}"
             )
 
             if ecosystem_label not in labels:
-                labels.append(ecosystem_label)
+                labels.append(
+                    ecosystem_label
+                )
 
         return labels
+
+    # =========================================================
+    # Generic normalization helpers
+    # =========================================================
 
     @staticmethod
     def _normalize_severity(
         value: Any,
     ) -> str | None:
+        """
+        Normalize severity to uppercase.
+        """
+
         if not isinstance(value, str):
             return None
 
@@ -1060,10 +1381,18 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     def _clean_string(
         value: Any,
     ) -> str | None:
+        """
+        Return a stripped non-empty string.
+        """
+
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip()
+        normalized = (
+            value
+            .replace("\u00a0", " ")
+            .strip()
+        )
 
         return normalized or None
 
@@ -1071,11 +1400,22 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     def _to_float(
         value: Any,
     ) -> float | None:
+        """
+        Convert a numeric value to float.
+
+        Booleans are explicitly rejected because bool is a subtype
+        of int in Python.
+        """
+
         if value is None:
+            return None
+
+        if isinstance(value, bool):
             return None
 
         try:
             return float(value)
+
         except (TypeError, ValueError):
             return None
 
@@ -1084,15 +1424,24 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         cls,
         value: Any,
     ) -> list[str]:
+        """
+        Extract unique non-empty strings from a list.
+        """
+
         if not isinstance(value, list):
             return []
 
         result: list[str] = []
 
         for item in value:
-            normalized = cls._clean_string(item)
+            normalized = cls._clean_string(
+                item
+            )
 
-            if normalized and normalized not in result:
+            if (
+                normalized
+                and normalized not in result
+            ):
                 result.append(normalized)
 
         return result
@@ -1111,3 +1460,4 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             for key, value in data.items()
             if value is not None
         }
+

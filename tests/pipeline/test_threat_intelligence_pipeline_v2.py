@@ -25,6 +25,7 @@ from application.services.threat_intelligence_pipeline_service import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.weakness_reference import WeaknessReference
 
 
 COMMON_CVE = "CVE-2021-44228"
@@ -284,8 +285,15 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     ],
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-502",
+                    origin="nvd_primary",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                    raw={"value": "CWE-502"},
+                ),
             ],
             references=[
                 "https://nvd.example/CVE-2021-44228",
@@ -329,8 +337,15 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     "product": "Log4j2",
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="CISA",
+                    cwe_id="CWE-502",
+                    origin="cisa_kev",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                    raw={"value": "CWE-502"},
+                ),
             ],
             references=[
                 "https://cisa.example/CVE-2021-44228",
@@ -374,10 +389,26 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     ],
                 }
             ],
-            weaknesses=[
-                (
-                    "Deserialization of Untrusted Data"
-                )
+            weakness_references=[
+                WeaknessReference(
+                    source="MITRE",
+                    cwe_id=None,
+                    source_description=(
+                        "Deserialization of Untrusted Data"
+                    ),
+                    source_type="CWE",
+                    language="en",
+                    origin="cna",
+                    resolution_status="unresolved",
+                    resolution_method=None,
+                    raw={
+                        "type": "CWE",
+                        "lang": "en",
+                        "description": (
+                            "Deserialization of Untrusted Data"
+                        ),
+                    },
+                ),
             ],
             references=[
                 "https://mitre.example/CVE-2021-44228",
@@ -431,8 +462,23 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     ),
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="GITHUB_ADVISORY",
+                    cwe_id="CWE-502",
+                    source_description=(
+                        "Deserialization of Untrusted Data"
+                    ),
+                    origin="github_advisory",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                    raw={
+                        "cwe_id": "CWE-502",
+                        "name": (
+                            "Deserialization of Untrusted Data"
+                        ),
+                    },
+                ),
             ],
             references=[
                 (
@@ -802,8 +848,12 @@ def display_pipeline_result(
                     f"{len(threat.affected_products)}"
                 )
                 print(
-                    f"    Weaknesses  : "
-                    f"{threat.weaknesses}"
+                    f"    Weakness IDs: "
+                    f"{threat.weakness_ids}"
+                )
+                print(
+                    f"    Weakness refs: "
+                    f"{threat.weakness_references}"
                 )
                 print(
                     f"    References  : "
@@ -1018,6 +1068,51 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
             "ecosystem"
         ]
         == "MAVEN"
+    )
+
+    # --------------------------------------------------------
+    # Source-specific weakness references are preserved
+    # --------------------------------------------------------
+
+    assert nvd_threat.weakness_ids == ["CWE-502"]
+    assert cisa_threat.weakness_ids == ["CWE-502"]
+    assert github_threat.weakness_ids == ["CWE-502"]
+
+    assert len(nvd_threat.weakness_references) == 1
+    assert (
+        nvd_threat.weakness_references[0].source
+        == "NVD"
+    )
+    assert (
+        nvd_threat.weakness_references[0].origin
+        == "nvd_primary"
+    )
+
+    assert len(cisa_threat.weakness_references) == 1
+    assert (
+        cisa_threat.weakness_references[0].source
+        == "CISA"
+    )
+
+    assert len(github_threat.weakness_references) == 1
+    assert (
+        github_threat.weakness_references[0]
+        .source_description
+        == "Deserialization of Untrusted Data"
+    )
+
+    # MITRE supplied only a textual description in this fixture.
+    assert mitre_threat.weakness_ids == []
+    assert len(mitre_threat.weakness_references) == 1
+    assert (
+        mitre_threat.weakness_references[0]
+        .resolution_status
+        == "unresolved"
+    )
+    assert (
+        mitre_threat.weakness_references[0]
+        .source_description
+        == "Deserialization of Untrusted Data"
     )
 
     # The four descriptions are preserved separately.

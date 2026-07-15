@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from domain.indicator import Indicator
+from domain.weakness_reference import WeaknessReference
 
 
 @dataclass
@@ -110,12 +111,9 @@ class Threat:
     # Weaknesses
     # ============================================================
 
-    weaknesses: List[str] = field(default_factory=list)
-
-    weakness_details: List[Dict[str, Any]] = field(
+    weakness_references: list[WeaknessReference] = field(
         default_factory=list
     )
-
     labels: List[str] = field(default_factory=list)
 
     # ============================================================
@@ -166,3 +164,25 @@ class Threat:
 
     risk_score: Optional[float] = None
     embedding: Optional[List[float]] = None
+
+    # ============================================================
+    # Derived weakness information
+    # ============================================================
+    
+    @property
+    def weakness_ids(self) -> List[str]:
+        """
+        Return unique resolved canonical CWE identifiers.
+        """
+
+        return list(
+            dict.fromkeys(
+                reference.cwe_id
+                for reference in self.weakness_references
+                if (
+                    reference.cwe_id is not None
+                    and reference.resolution_status
+                    == "resolved"
+                )
+            )
+        )

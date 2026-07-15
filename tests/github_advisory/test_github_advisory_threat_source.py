@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -9,6 +10,7 @@ from application.services.github_advisory_threat_source import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.github_advisory_connector import (
     GitHubAdvisoryConnector,
 )
@@ -19,7 +21,9 @@ from infrastructure.adapters.outbound.github_advisory_connector import (
 # ============================================================
 
 
-class FakeGitHubAdvisoryConnector(GitHubAdvisoryConnector):
+class FakeGitHubAdvisoryConnector(
+    GitHubAdvisoryConnector
+):
     """
     Fake outbound connector used to test the application service
     without calling the real GitHub API.
@@ -29,10 +33,14 @@ class FakeGitHubAdvisoryConnector(GitHubAdvisoryConnector):
         self,
         advisories: list[dict[str, Any]] | None = None,
     ) -> None:
-        super().__init__()
+        # No real HTTP session is required for this fake.
+        self.advisories = deepcopy(
+            advisories or []
+        )
 
-        self.advisories = advisories or []
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[
+            dict[str, Any]
+        ] = []
 
     def fetch_advisories(
         self,
@@ -81,7 +89,7 @@ class FakeGitHubAdvisoryConnector(GitHubAdvisoryConnector):
             }
         )
 
-        return self.advisories
+        return deepcopy(self.advisories)
 
 
 # ============================================================
@@ -112,13 +120,18 @@ def complete_advisory() -> dict[str, Any]:
         "severity": "critical",
         "summary": "Log4Shell vulnerability",
         "description": (
-            "Remote code execution vulnerability in Apache Log4j."
+            "Remote code execution vulnerability "
+            "in Apache Log4j."
         ),
         "published_at": "2021-12-10T00:00:00Z",
         "updated_at": "2023-01-01T00:00:00Z",
-        "github_reviewed_at": "2021-12-10T12:00:00Z",
+        "github_reviewed_at": (
+            "2021-12-10T12:00:00Z"
+        ),
         "withdrawn_at": None,
-        "nvd_published_at": "2021-12-10T10:15:00Z",
+        "nvd_published_at": (
+            "2021-12-10T10:15:00Z"
+        ),
         "vulnerabilities": [
             {
                 "package": {
@@ -179,7 +192,9 @@ def complete_advisory() -> dict[str, Any]:
         "cwes": [
             {
                 "cwe_id": "CWE-502",
-                "name": "Deserialization of Untrusted Data",
+                "name": (
+                    "Deserialization of Untrusted Data"
+                ),
             },
             {
                 "cwe_id": "cwe-20",
@@ -187,7 +202,9 @@ def complete_advisory() -> dict[str, Any]:
             },
             {
                 "cwe_id": "CWE-502",
-                "name": "Deserialization of Untrusted Data",
+                "name": (
+                    "Deserialization of Untrusted Data"
+                ),
             },
         ],
         "references": [
@@ -214,8 +231,14 @@ def complete_advisory() -> dict[str, Any]:
             "GHSA-jfh8-c2jp-5v3q"
         ),
         "source_code_location": [
-            "https://github.com/apache/logging-log4j2",
-            "https://github.com/apache/logging-log4j2",
+            (
+                "https://github.com/apache/"
+                "logging-log4j2"
+            ),
+            (
+                "https://github.com/apache/"
+                "logging-log4j2"
+            ),
         ],
     }
 
@@ -234,7 +257,9 @@ def ghsa_only_advisory() -> dict[str, Any]:
         "type": "unreviewed",
         "severity": "medium",
         "summary": "Advisory without CVE",
-        "description": "GitHub advisory without a CVE identifier.",
+        "description": (
+            "GitHub advisory without a CVE identifier."
+        ),
         "vulnerabilities": [],
         "cwes": [],
         "references": [],
@@ -281,7 +306,10 @@ def test_unit_fetch_raw_calls_connector_with_configuration(
     assert call["advisory_type"] == "reviewed"
     assert call["ecosystem"] == "maven"
     assert call["severity"] == "critical"
-    assert call["modified"] == "2026-07-01..2026-07-10"
+    assert (
+        call["modified"]
+        == "2026-07-01..2026-07-10"
+    )
     assert call["per_page"] == 50
     assert call["max_pages"] == 2
 
@@ -298,7 +326,9 @@ def test_unit_maps_complete_advisory_to_threat(
         connector=FakeGitHubAdvisoryConnector()
     )
 
-    threats = source.parse([complete_advisory])
+    threats = source.parse(
+        [deepcopy(complete_advisory)]
+    )
 
     assert len(threats) == 1
 
@@ -308,6 +338,7 @@ def test_unit_maps_complete_advisory_to_threat(
 
     # Identity
     assert threat.id == "CVE-2021-44228"
+    assert threat.source == "github_advisory"
 
     assert threat.external_ids == {
         "GHSA": ["GHSA-jfh8-c2jp-5v3q"],
@@ -315,10 +346,15 @@ def test_unit_maps_complete_advisory_to_threat(
     }
 
     # Core information
-    assert threat.title == "Log4Shell vulnerability"
-    assert threat.description == (
-        "Remote code execution vulnerability in Apache Log4j."
+    assert threat.title == (
+        "Log4Shell vulnerability"
     )
+
+    assert threat.description == (
+        "Remote code execution vulnerability "
+        "in Apache Log4j."
+    )
+
     assert threat.advisory_type == "reviewed"
     assert threat.severity == "CRITICAL"
 
@@ -346,9 +382,11 @@ def test_unit_maps_complete_advisory_to_threat(
     assert threat.epss_score == pytest.approx(
         0.94321
     )
+
     assert threat.epss_percentile == pytest.approx(
         0.9999
     )
+
     assert threat.epss_date is None
 
     # Affected package
@@ -357,40 +395,108 @@ def test_unit_maps_complete_advisory_to_threat(
     affected = threat.affected_products[0]
 
     assert affected["ecosystem"] == "maven"
+
     assert affected["package_name"] == (
         "org.apache.logging.log4j:log4j-core"
     )
-    assert affected["vulnerable_version_range"] == (
+
+    assert affected[
+        "vulnerable_version_range"
+    ] == (
         ">= 2.0-beta9, < 2.15.0"
     )
-    assert affected["first_patched_version"] == "2.15.0"
-    assert affected["vulnerable_functions"] == [
+
+    assert affected[
+        "first_patched_version"
+    ] == "2.15.0"
+
+    assert affected[
+        "vulnerable_functions"
+    ] == [
         (
             "org.apache.logging.log4j.core."
             "lookup.JndiLookup.lookup"
         )
     ]
 
-    # CWE
-    assert threat.weaknesses == [
-        "CWE-502",
-        "CWE-20",
-    ]
+    # CWE WeaknessReference objects
+    assert isinstance(
+        threat.weakness_references,
+        list,
+    )
 
-    assert threat.weakness_details == [
-        {
-            "cwe_id": "CWE-502",
-            "name": "Deserialization of Untrusted Data",
-            "source": "github_advisory",
-            "is_official": False,
-        },
-        {
-            "cwe_id": "CWE-20",
-            "name": "Improper Input Validation",
-            "source": "github_advisory",
-            "is_official": False,
-        },
-    ]
+    assert len(
+        threat.weakness_references
+    ) == 2
+
+    first_cwe = threat.weakness_references[0]
+    second_cwe = threat.weakness_references[1]
+
+    assert isinstance(
+        first_cwe,
+        WeaknessReference,
+    )
+
+    assert isinstance(
+        second_cwe,
+        WeaknessReference,
+    )
+
+    assert first_cwe.source == (
+        "github_advisory"
+    )
+    assert first_cwe.cwe_id == "CWE-502"
+
+    assert first_cwe.source_description == (
+        "Deserialization of Untrusted Data"
+    )
+
+    assert first_cwe.source_type == "CWE"
+    assert first_cwe.language is None
+
+    assert first_cwe.origin == (
+        "github_advisory"
+    )
+
+    assert (
+        first_cwe.resolution_status
+        == "resolved"
+    )
+
+    assert (
+        first_cwe.resolution_method
+        == "explicit_id"
+    )
+
+    assert first_cwe.raw == {
+        "cwe_id": "CWE-502",
+        "name": (
+            "Deserialization of Untrusted Data"
+        ),
+    }
+
+    assert second_cwe.source == (
+        "github_advisory"
+    )
+    assert second_cwe.cwe_id == "CWE-20"
+
+    assert second_cwe.source_description == (
+        "Improper Input Validation"
+    )
+
+    assert second_cwe.origin == (
+        "github_advisory"
+    )
+
+    assert (
+        second_cwe.resolution_status
+        == "resolved"
+    )
+
+    assert (
+        second_cwe.resolution_method
+        == "explicit_id"
+    )
 
     # Labels
     assert threat.labels == [
@@ -424,9 +530,12 @@ def test_unit_maps_complete_advisory_to_threat(
         ),
     }
 
-    # Source code locations
+    # Source-code locations
     assert threat.source_code_locations == [
-        "https://github.com/apache/logging-log4j2",
+        (
+            "https://github.com/apache/"
+            "logging-log4j2"
+        ),
         (
             "log4j-core/src/main/java/"
             "JndiLookup.java"
@@ -437,12 +546,15 @@ def test_unit_maps_complete_advisory_to_threat(
     assert threat.published_date == (
         "2021-12-10T00:00:00Z"
     )
+
     assert threat.last_modified_date == (
         "2023-01-01T00:00:00Z"
     )
+
     assert threat.reviewed_date == (
         "2021-12-10T12:00:00Z"
     )
+
     assert threat.withdrawn_date is None
 
     assert threat.source_dates == {
@@ -479,7 +591,7 @@ def test_unit_prefers_cve_as_canonical_id(
     )
 
     threat = source.parse(
-        [complete_advisory]
+        [deepcopy(complete_advisory)]
     )[0]
 
     assert threat.id == "CVE-2021-44228"
@@ -493,18 +605,22 @@ def test_unit_uses_ghsa_when_cve_is_absent(
     )
 
     threats = source.parse(
-        [ghsa_only_advisory]
+        [deepcopy(ghsa_only_advisory)]
     )
 
     assert len(threats) == 1
-    assert threats[0].id == "GHSA-aaaa-bbbb-cccc"
+    assert (
+        threats[0].id
+        == "GHSA-aaaa-bbbb-cccc"
+    )
 
     assert threats[0].external_ids == {
         "GHSA": ["GHSA-aaaa-bbbb-cccc"]
     }
 
 
-def test_unit_uses_cve_from_identifiers_when_direct_cve_is_absent() -> None:
+def test_unit_uses_cve_from_identifiers_when_direct_cve_is_absent(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cve_id": None,
@@ -530,7 +646,8 @@ def test_unit_uses_cve_from_identifiers_when_direct_cve_is_absent() -> None:
     assert threats[0].id == "CVE-2026-12345"
 
 
-def test_unit_skips_advisory_without_usable_identifier() -> None:
+def test_unit_skips_advisory_without_usable_identifier(
+) -> None:
     advisory = {
         "ghsa_id": None,
         "cve_id": None,
@@ -550,7 +667,8 @@ def test_unit_skips_advisory_without_usable_identifier() -> None:
 # ============================================================
 
 
-def test_unit_external_ids_are_normalized_and_deduplicated() -> None:
+def test_unit_external_ids_are_normalized_and_deduplicated(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cve_id": "CVE-2026-12345",
@@ -592,17 +710,22 @@ def test_unit_external_ids_are_normalized_and_deduplicated() -> None:
 # ============================================================
 
 
-def test_unit_prefers_cvss_v4_score_over_v3() -> None:
+def test_unit_prefers_cvss_v4_score_over_v3(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cvss_severities": {
             "cvss_v3": {
                 "score": 9.8,
-                "vector_string": "CVSS:3.1/AV:N",
+                "vector_string": (
+                    "CVSS:3.1/AV:N"
+                ),
             },
             "cvss_v4": {
                 "score": 8.7,
-                "vector_string": "CVSS:4.0/AV:N",
+                "vector_string": (
+                    "CVSS:4.0/AV:N"
+                ),
             },
         },
     }
@@ -614,19 +737,25 @@ def test_unit_prefers_cvss_v4_score_over_v3() -> None:
     threat = source.parse([advisory])[0]
 
     assert threat.cvss_score == 8.7
-    assert set(threat.cvss_metrics) == {
+
+    assert set(
+        threat.cvss_metrics
+    ) == {
         "3.1",
         "4.0",
     }
 
 
-def test_unit_uses_cvss_v3_when_v4_is_missing() -> None:
+def test_unit_uses_cvss_v3_when_v4_is_missing(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cvss_severities": {
             "cvss_v3": {
                 "score": "9.8",
-                "vector_string": "CVSS:3.1/AV:N",
+                "vector_string": (
+                    "CVSS:3.1/AV:N"
+                ),
             },
             "cvss_v4": None,
         },
@@ -639,15 +768,22 @@ def test_unit_uses_cvss_v3_when_v4_is_missing() -> None:
     threat = source.parse([advisory])[0]
 
     assert threat.cvss_score == 9.8
-    assert threat.cvss_metrics["3.1"]["score"] == 9.8
+
+    assert (
+        threat.cvss_metrics["3.1"]["score"]
+        == 9.8
+    )
 
 
-def test_unit_supports_legacy_cvss_object() -> None:
+def test_unit_supports_legacy_cvss_object(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cvss": {
             "score": 7.5,
-            "vector_string": "CVSS:3.1/AV:N",
+            "vector_string": (
+                "CVSS:3.1/AV:N"
+            ),
         },
     }
 
@@ -667,7 +803,8 @@ def test_unit_supports_legacy_cvss_object() -> None:
     }
 
 
-def test_unit_invalid_cvss_score_becomes_none() -> None:
+def test_unit_invalid_cvss_score_becomes_none(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cvss_severities": {
@@ -688,12 +825,148 @@ def test_unit_invalid_cvss_score_becomes_none() -> None:
     assert threat.cvss_metrics == {}
 
 
+def test_unit_ignores_placeholder_cvss_v4_and_uses_v3(
+) -> None:
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    advisory = {
+        "ghsa_id": "GHSA-jfh8-c2jp-5v3q",
+        "cve_id": "CVE-2021-44228",
+        "summary": (
+            "Remote code injection in Log4j"
+        ),
+        "description": "Log4Shell vulnerability",
+        "severity": "critical",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v3": {
+                "score": 10.0,
+                "vector_string": (
+                    "CVSS:3.1/AV:N/AC:L/PR:N/"
+                    "UI:N/S:C/C:H/I:H/A:H"
+                ),
+            },
+            "cvss_v4": {
+                "score": 0.0,
+                "vector_string": None,
+            },
+        },
+    }
+
+    threats = source.parse([advisory])
+
+    assert len(threats) == 1
+
+    threat = threats[0]
+
+    assert threat.cvss_score == 10.0
+    assert "3.1" in threat.cvss_metrics
+    assert "4" not in threat.cvss_metrics
+
+
+def test_unit_preserves_real_zero_cvss_when_vector_exists(
+) -> None:
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "summary": "Zero impact advisory",
+        "description": "Example advisory",
+        "severity": "low",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v4": {
+                "score": 0.0,
+                "vector_string": (
+                    "CVSS:4.0/AV:N/AC:H/AT:P/"
+                    "PR:H/UI:P/VC:N/VI:N/VA:N/"
+                    "SC:N/SI:N/SA:N"
+                ),
+            },
+        },
+    }
+
+    threats = source.parse([advisory])
+
+    assert len(threats) == 1
+
+    threat = threats[0]
+
+    assert threat.cvss_score == 0.0
+    assert "4.0" in threat.cvss_metrics
+
+
+def test_unit_prefers_positive_cvss_v4_over_v3(
+) -> None:
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    advisory = {
+        "ghsa_id": "GHSA-1111-2222-3333",
+        "summary": "Example advisory",
+        "description": "Example vulnerability",
+        "severity": "high",
+        "type": "reviewed",
+        "cvss_severities": {
+            "cvss_v3": {
+                "score": 8.8,
+                "vector_string": (
+                    "CVSS:3.1/AV:N/AC:L/PR:L/"
+                    "UI:N/S:U/C:H/I:H/A:H"
+                ),
+            },
+            "cvss_v4": {
+                "score": 9.1,
+                "vector_string": (
+                    "CVSS:4.0/AV:N/AC:L/AT:N/"
+                    "PR:L/UI:N/VC:H/VI:H/VA:H/"
+                    "SC:N/SI:N/SA:N"
+                ),
+            },
+        },
+    }
+
+    threat = source.parse([advisory])[0]
+
+    assert threat.cvss_score == 9.1
+    assert "3.1" in threat.cvss_metrics
+    assert "4.0" in threat.cvss_metrics
+
+
+def test_unit_boolean_cvss_score_is_rejected(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cvss_severities": {
+            "cvss_v3": {
+                "score": True,
+                "vector_string": None,
+            }
+        },
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert threat.cvss_score is None
+    assert threat.cvss_metrics == {}
+
+
 # ============================================================
 # EPSS tests
 # ============================================================
 
 
-def test_unit_maps_epss_string_values_to_float() -> None:
+def test_unit_maps_epss_string_values_to_float(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "epss": {
@@ -712,7 +985,8 @@ def test_unit_maps_epss_string_values_to_float() -> None:
     assert threat.epss_percentile == 0.98
 
 
-def test_unit_missing_epss_returns_none_values() -> None:
+def test_unit_missing_epss_returns_none_values(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
     }
@@ -727,12 +1001,33 @@ def test_unit_missing_epss_returns_none_values() -> None:
     assert threat.epss_percentile is None
 
 
+def test_unit_boolean_epss_values_are_rejected(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "epss": {
+            "percentage": True,
+            "percentile": False,
+        },
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert threat.epss_score is None
+    assert threat.epss_percentile is None
+
+
 # ============================================================
-# Affected product tests
+# Affected-product tests
 # ============================================================
 
 
-def test_unit_maps_multiple_affected_packages() -> None:
+def test_unit_maps_multiple_affected_packages(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "vulnerabilities": [
@@ -787,7 +1082,8 @@ def test_unit_maps_multiple_affected_packages() -> None:
     }
 
 
-def test_unit_ignores_invalid_vulnerability_elements() -> None:
+def test_unit_ignores_invalid_vulnerability_elements(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "vulnerabilities": [
@@ -806,8 +1102,39 @@ def test_unit_ignores_invalid_vulnerability_elements() -> None:
     assert threat.affected_products == []
 
 
+def test_unit_affected_products_are_deduplicated(
+) -> None:
+    vulnerability = {
+        "package": {
+            "ecosystem": "npm",
+            "name": "example-package",
+        },
+        "vulnerable_version_range": "< 2.0.0",
+        "first_patched_version": {
+            "identifier": "2.0.0",
+        },
+        "vulnerable_functions": [],
+    }
+
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "vulnerabilities": [
+            deepcopy(vulnerability),
+            deepcopy(vulnerability),
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert len(threat.affected_products) == 1
+
+
 # ============================================================
-# CWE tests
+# CWE WeaknessReference tests
 # ============================================================
 
 
@@ -819,9 +1146,13 @@ def test_unit_ignores_invalid_vulnerability_elements() -> None:
         ("CWE-79", "CWE-79"),
         ("cwe-79", "CWE-79"),
         (" CWE-502 ", "CWE-502"),
+        ("CWE-00079", "CWE-79"),
         ("invalid", None),
         ("CWE-ABC", None),
+        ("0", None),
+        (0, None),
         (-1, None),
+        (True, None),
         (None, None),
     ],
 )
@@ -830,14 +1161,14 @@ def test_unit_normalize_cwe_id(
     expected: str | None,
 ) -> None:
     assert (
-        GitHubAdvisoryThreatSource._normalize_cwe_id(
-            raw_cwe
-        )
+        GitHubAdvisoryThreatSource
+        ._normalize_cwe_id(raw_cwe)
         == expected
     )
 
 
-def test_unit_preserves_github_cwe_details() -> None:
+def test_unit_preserves_github_cwe_assertion(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cwes": [
@@ -854,19 +1185,54 @@ def test_unit_preserves_github_cwe_details() -> None:
 
     threat = source.parse([advisory])[0]
 
-    assert threat.weaknesses == ["CWE-79"]
+    assert len(
+        threat.weakness_references
+    ) == 1
 
-    assert threat.weakness_details == [
-        {
-            "cwe_id": "CWE-79",
-            "name": "Cross-site Scripting",
-            "source": "github_advisory",
-            "is_official": False,
-        }
-    ]
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert isinstance(
+        reference,
+        WeaknessReference,
+    )
+
+    assert reference.source == (
+        "github_advisory"
+    )
+
+    assert reference.cwe_id == "CWE-79"
+
+    assert reference.source_description == (
+        "Cross-site Scripting"
+    )
+
+    assert reference.source_type == "CWE"
+    assert reference.language is None
+
+    assert reference.origin == (
+        "github_advisory"
+    )
+
+    assert (
+        reference.resolution_status
+        == "resolved"
+    )
+
+    assert (
+        reference.resolution_method
+        == "explicit_id"
+    )
+
+    assert reference.raw == {
+        "cwe_id": "79",
+        "name": "Cross-site Scripting",
+    }
 
 
-def test_unit_cwe_without_name_is_still_preserved() -> None:
+def test_unit_cwe_without_name_is_still_preserved(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "cwes": [
@@ -883,21 +1249,287 @@ def test_unit_cwe_without_name_is_still_preserved() -> None:
 
     threat = source.parse([advisory])[0]
 
-    assert threat.weakness_details == [
-        {
-            "cwe_id": "CWE-89",
-            "source": "github_advisory",
-            "is_official": False,
-        }
-    ]
+    assert len(
+        threat.weakness_references
+    ) == 1
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id == "CWE-89"
+    assert reference.source_description is None
+
+    assert (
+        reference.resolution_status
+        == "resolved"
+    )
+
+
+def test_unit_cwe_string_value_is_supported(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            "CWE-79",
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert len(
+        threat.weakness_references
+    ) == 1
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id == "CWE-79"
+
+    assert reference.raw == {
+        "value": "CWE-79",
+    }
+
+
+def test_unit_cwe_combined_text_is_extracted(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            (
+                "CWE-79: Improper Neutralization "
+                "of Input"
+            ),
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id == "CWE-79"
+
+    assert (
+        reference.resolution_status
+        == "resolved"
+    )
+
+    assert (
+        reference.resolution_method
+        == "extracted_id"
+    )
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "NVD-CWE-noinfo",
+        "NVD-CWE-Other",
+        "CWE-noinfo",
+        "CWE-Other",
+    ],
+)
+def test_unit_cwe_placeholder_is_preserved(
+    placeholder: str,
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            {
+                "cwe_id": placeholder,
+                "name": None,
+            }
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert len(
+        threat.weakness_references
+    ) == 1
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id is None
+
+    assert (
+        reference.resolution_status
+        == "placeholder"
+    )
+
+    assert (
+        reference.resolution_method
+        == "source_placeholder"
+    )
+
+
+def test_unit_invalid_cwe_identifier_is_preserved_as_invalid(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            {
+                "cwe_id": "CWE-ABC",
+                "name": "Invalid CWE",
+            }
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id is None
+
+    assert reference.source_description == (
+        "Invalid CWE"
+    )
+
+    assert (
+        reference.resolution_status
+        == "invalid"
+    )
+
+    assert reference.resolution_method is None
+
+
+def test_unit_unresolved_cwe_text_is_preserved(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            "Improper input validation",
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    reference = (
+        threat.weakness_references[0]
+    )
+
+    assert reference.cwe_id is None
+
+    assert reference.source_description == (
+        "Improper input validation"
+    )
+
+    assert (
+        reference.resolution_status
+        == "unresolved"
+    )
+
+
+def test_unit_cwe_references_are_deduplicated(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            {
+                "cwe_id": "CWE-79",
+                "name": "Cross-site Scripting",
+            },
+            {
+                "cwe_id": "cwe-79",
+                "name": "Cross-site Scripting",
+            },
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert len(
+        threat.weakness_references
+    ) == 1
+
+
+def test_unit_invalid_cwe_elements_are_ignored(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cwes": [
+            None,
+            {},
+            {
+                "cwe_id": None,
+                "name": None,
+            },
+            {
+                "cwe_id": "CWE-89",
+                "name": "SQL Injection",
+            },
+        ],
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert len(
+        threat.weakness_references
+    ) == 1
+
+    assert (
+        threat.weakness_references[0].cwe_id
+        == "CWE-89"
+    )
+
+
+def test_unit_missing_cwes_returns_empty_list(
+) -> None:
+    advisory = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+    }
+
+    source = GitHubAdvisoryThreatSource(
+        connector=FakeGitHubAdvisoryConnector()
+    )
+
+    threat = source.parse([advisory])[0]
+
+    assert threat.weakness_references == []
 
 
 # ============================================================
-# References, URLs and location tests
+# References, URLs and source locations
 # ============================================================
 
 
-def test_unit_references_are_deduplicated() -> None:
+def test_unit_references_are_deduplicated(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "references": [
@@ -923,10 +1555,14 @@ def test_unit_references_are_deduplicated() -> None:
     ]
 
 
-def test_unit_empty_source_urls_are_not_stored() -> None:
+def test_unit_empty_source_urls_are_not_stored(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
-        "url": "https://api.github.com/advisories/example",
+        "url": (
+            "https://api.github.com/"
+            "advisories/example"
+        ),
         "html_url": "   ",
         "repository_advisory_url": None,
     }
@@ -939,12 +1575,14 @@ def test_unit_empty_source_urls_are_not_stored() -> None:
 
     assert threat.source_urls == {
         "api": (
-            "https://api.github.com/advisories/example"
+            "https://api.github.com/"
+            "advisories/example"
         )
     }
 
 
-def test_unit_source_code_locations_are_deduplicated() -> None:
+def test_unit_source_code_locations_are_deduplicated(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "source_code_location": [
@@ -955,7 +1593,8 @@ def test_unit_source_code_locations_are_deduplicated() -> None:
             {
                 "source_code_location": {
                     "url": (
-                        "https://github.com/example/project"
+                        "https://github.com/"
+                        "example/project"
                     ),
                     "path": "src/vulnerable.py",
                     "location": "line 42",
@@ -998,14 +1637,14 @@ def test_unit_normalize_severity(
     expected: str | None,
 ) -> None:
     assert (
-        GitHubAdvisoryThreatSource._normalize_severity(
-            value
-        )
+        GitHubAdvisoryThreatSource
+        ._normalize_severity(value)
         == expected
     )
 
 
-def test_unit_source_dates_ignore_missing_values() -> None:
+def test_unit_source_dates_ignore_missing_values(
+) -> None:
     advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc",
         "published_at": "2026-07-01T00:00:00Z",
@@ -1027,28 +1666,36 @@ def test_unit_source_dates_ignore_missing_values() -> None:
     }
 
 
+def test_unit_clean_string_replaces_non_breaking_space(
+) -> None:
+    value = "Example\u00a0value"
+
+    assert (
+        GitHubAdvisoryThreatSource
+        ._clean_string(value)
+        == "Example value"
+    )
+
+
 # ============================================================
 # Parser robustness tests
 # ============================================================
 
 
-def test_unit_parse_rejects_non_list_raw_data() -> None:
+def test_unit_parse_invalid_top_level_values_return_empty_list(
+) -> None:
     source = GitHubAdvisoryThreatSource(
         connector=FakeGitHubAdvisoryConnector()
     )
 
-    with pytest.raises(
-        ValueError,
-        match="raw data must be a list",
-    ):
-        source.parse(
-            {
-                "ghsa_id": "GHSA-aaaa-bbbb-cccc"
-            }
-        )
+    assert source.parse(None) == []
+    assert source.parse({}) == []
+    assert source.parse("invalid") == []
+    assert source.parse(123) == []
 
 
-def test_unit_parse_ignores_non_dictionary_elements() -> None:
+def test_unit_parse_ignores_non_dictionary_elements(
+) -> None:
     valid_advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc"
     }
@@ -1067,10 +1714,15 @@ def test_unit_parse_ignores_non_dictionary_elements() -> None:
     )
 
     assert len(threats) == 1
-    assert threats[0].id == "GHSA-aaaa-bbbb-cccc"
+
+    assert (
+        threats[0].id
+        == "GHSA-aaaa-bbbb-cccc"
+    )
 
 
-def test_unit_parse_empty_list_returns_empty_list() -> None:
+def test_unit_parse_empty_list_returns_empty_list(
+) -> None:
     source = GitHubAdvisoryThreatSource(
         connector=FakeGitHubAdvisoryConnector()
     )
@@ -1106,37 +1758,72 @@ def test_unit_collect_returns_collection_result(
 
     result = source.collect()
 
-    assert isinstance(result, CollectionResult)
+    assert isinstance(
+        result,
+        CollectionResult,
+    )
+
     assert len(result.threats) == 2
 
     assert result.metadata["source"] == (
         "github_advisory"
     )
+
     assert result.metadata["api_version"] == (
         GitHubAdvisoryConnector.API_VERSION
     )
+
     assert result.metadata["advisory_type"] == (
         "reviewed"
     )
-    assert result.metadata["ecosystem"] == "maven"
-    assert result.metadata["severity"] == "critical"
+
+    assert (
+        result.metadata["ecosystem"]
+        == "maven"
+    )
+
+    assert (
+        result.metadata["severity"]
+        == "critical"
+    )
+
     assert result.metadata["modified"] == (
         "2026-07-01..2026-07-10"
     )
+
     assert result.metadata["per_page"] == 25
     assert result.metadata["max_pages"] == 3
-    assert result.metadata["collected_count"] == 2
-    assert result.metadata["parsed_count"] == 2
-    assert result.metadata["skipped_count"] == 0
+
+    assert (
+        result.metadata["collected_count"]
+        == 2
+    )
+
+    assert (
+        result.metadata["parsed_count"]
+        == 2
+    )
+
+    assert (
+        result.metadata["skipped_count"]
+        == 0
+    )
 
     assert isinstance(
         result.metadata["collected_at"],
         str,
     )
+
     assert result.metadata["collected_at"]
 
+    for threat in result.threats:
+        assert threat.source == (
+            "github_advisory"
+        )
 
-def test_unit_collect_reports_skipped_advisories() -> None:
+
+def test_unit_collect_reports_skipped_advisories(
+) -> None:
     valid_advisory = {
         "ghsa_id": "GHSA-aaaa-bbbb-cccc"
     }
@@ -1158,12 +1845,24 @@ def test_unit_collect_reports_skipped_advisories() -> None:
 
     result = source.collect()
 
-    assert result.metadata["collected_count"] == 2
-    assert result.metadata["parsed_count"] == 1
-    assert result.metadata["skipped_count"] == 1
+    assert (
+        result.metadata["collected_count"]
+        == 2
+    )
+
+    assert (
+        result.metadata["parsed_count"]
+        == 1
+    )
+
+    assert (
+        result.metadata["skipped_count"]
+        == 1
+    )
 
 
-def test_unit_collect_with_empty_connector_result() -> None:
+def test_unit_collect_with_empty_connector_result(
+) -> None:
     source = GitHubAdvisoryThreatSource(
         connector=FakeGitHubAdvisoryConnector(
             advisories=[]
@@ -1173,114 +1872,19 @@ def test_unit_collect_with_empty_connector_result() -> None:
     result = source.collect()
 
     assert result.threats == []
-    assert result.metadata["collected_count"] == 0
-    assert result.metadata["parsed_count"] == 0
-    assert result.metadata["skipped_count"] == 0
 
-def test_unit_ignores_placeholder_cvss_v4_and_uses_v3():
-    source = GitHubAdvisoryThreatSource()
-
-    advisory = {
-        "ghsa_id": "GHSA-jfh8-c2jp-5v3q",
-        "cve_id": "CVE-2021-44228",
-        "summary": "Remote code injection in Log4j",
-        "description": "Log4Shell vulnerability",
-        "severity": "critical",
-        "type": "reviewed",
-        "cvss_severities": {
-            "cvss_v3": {
-                "score": 10.0,
-                "vector_string": (
-                    "CVSS:3.1/AV:N/AC:L/PR:N/"
-                    "UI:N/S:C/C:H/I:H/A:H"
-                ),
-            },
-            "cvss_v4": {
-                "score": 0.0,
-                "vector_string": None,
-            },
-        },
-    }
-
-    threats = source.parse(
-        [advisory]
+    assert (
+        result.metadata["collected_count"]
+        == 0
     )
 
-    assert len(threats) == 1
-
-    threat = threats[0]
-
-    assert threat.cvss_score == 10.0
-
-    assert "3.1" in threat.cvss_metrics
-    assert "4" not in threat.cvss_metrics
-
-def test_unit_preserves_real_zero_cvss_when_vector_exists():
-    source = GitHubAdvisoryThreatSource()
-
-    advisory = {
-        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
-        "summary": "Zero impact advisory",
-        "description": "Example advisory",
-        "severity": "low",
-        "type": "reviewed",
-        "cvss_severities": {
-            "cvss_v4": {
-                "score": 0.0,
-                "vector_string": (
-                    "CVSS:4.0/AV:N/AC:H/AT:P/"
-                    "PR:H/UI:P/VC:N/VI:N/VA:N/"
-                    "SC:N/SI:N/SA:N"
-                ),
-            },
-        },
-    }
-
-    threats = source.parse(
-        [advisory]
+    assert (
+        result.metadata["parsed_count"]
+        == 0
     )
 
-    assert len(threats) == 1
-
-    threat = threats[0]
-
-    assert threat.cvss_score == 0.0
-    assert "4.0" in threat.cvss_metrics
-    
-def test_unit_prefers_positive_cvss_v4_over_v3():
-    source = GitHubAdvisoryThreatSource()
-
-    advisory = {
-        "ghsa_id": "GHSA-1111-2222-3333",
-        "summary": "Example advisory",
-        "description": "Example vulnerability",
-        "severity": "high",
-        "type": "reviewed",
-        "cvss_severities": {
-            "cvss_v3": {
-                "score": 8.8,
-                "vector_string": (
-                    "CVSS:3.1/AV:N/AC:L/PR:L/"
-                    "UI:N/S:U/C:H/I:H/A:H"
-                ),
-            },
-            "cvss_v4": {
-                "score": 9.1,
-                "vector_string": (
-                    "CVSS:4.0/AV:N/AC:L/AT:N/"
-                    "PR:L/UI:N/VC:H/VI:H/VA:H/"
-                    "SC:N/SI:N/SA:N"
-                ),
-            },
-        },
-    }
-
-    threats = source.parse(
-        [advisory]
+    assert (
+        result.metadata["skipped_count"]
+        == 0
     )
 
-    threat = threats[0]
-
-    assert threat.cvss_score == 9.1
-    assert "3.1" in threat.cvss_metrics
-    assert "4.0" in threat.cvss_metrics
