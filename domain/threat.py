@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from domain.indicator import Indicator
 from domain.weakness_reference import WeaknessReference
+from domain.cwe_weakness import CWEWeakness
 
 
 @dataclass
@@ -114,6 +115,11 @@ class Threat:
     weakness_references: list[WeaknessReference] = field(
         default_factory=list
     )
+    
+    official_weaknesses: list[CWEWeakness] = field(
+    default_factory=list
+    )
+    
     labels: List[str] = field(default_factory=list)
 
     # ============================================================
