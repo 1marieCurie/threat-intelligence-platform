@@ -1,5 +1,6 @@
 # after adding mitre, we test that all sources till now produce the same Threat Object
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.collection_result import CollectionResult
 
 from application.services.nvd_threat_source import NVDThreatSource
@@ -30,6 +31,7 @@ def _assert_valid_threat(threat: Threat):
 
     # Core information
     assert isinstance(threat.description, str)
+    assert threat.category is ThreatCategory.VULNERABILITY
 
     # Optional classification
     assert (
@@ -108,6 +110,9 @@ def test_nvd_threat_domain_stability():
 
     assert isinstance(result, CollectionResult)
     assert result.metadata["source"] == "NVD"
+    assert result.metadata["category"] == (
+        ThreatCategory.VULNERABILITY.value
+    )
 
     assert len(result.threats) > 0
 
@@ -137,6 +142,9 @@ def test_cisa_threat_domain_stability():
 
     assert isinstance(result, CollectionResult)
     assert result.metadata["source"] == "CISA"
+    assert result.metadata["category"] == (
+        ThreatCategory.VULNERABILITY.value
+    )
 
     assert len(result.threats) > 0
 

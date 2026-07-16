@@ -7,8 +7,11 @@ from urllib.parse import unquote
 from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
-from infrastructure.adapters.outbound.nvd_connector import NVDConnector
+from infrastructure.adapters.outbound.nvd_connector import (
+    NVDConnector,
+)
 
 
 class NVDThreatSource(ThreatSource):
@@ -21,8 +24,15 @@ class NVDThreatSource(ThreatSource):
     - normalize CVSS information;
     - normalize affected products;
     - preserve CWE assertions as WeaknessReference objects;
-    - return domain Threat objects.
+    - classify collected records as vulnerability Threat objects;
+    - return normalized domain Threat objects.
     """
+
+    SOURCE_NAME = "NVD"
+
+    THREAT_CATEGORY = (
+        ThreatCategory.VULNERABILITY
+    )
 
     CVSS_PRIORITY = (
         "cvssMetricV40",
@@ -42,7 +52,11 @@ class NVDThreatSource(ThreatSource):
         self.connector = NVDConnector()
 
     def name(self) -> str:
-        return "NVD"
+        """
+        Return the normalized source name.
+        """
+
+        return self.SOURCE_NAME
 
     def collect(self) -> CollectionResult:
         """
@@ -54,13 +68,24 @@ class NVDThreatSource(ThreatSource):
 
         metadata = {
             "source": self.name(),
-            "total_results": raw.get("totalResults"),
+            "category": (
+                self.THREAT_CATEGORY.value
+            ),
+            "total_results": raw.get(
+                "totalResults"
+            ),
             "results_per_page": raw.get(
                 "resultsPerPage"
             ),
-            "start_index": raw.get("startIndex"),
-            "version": raw.get("version"),
-            "timestamp": raw.get("timestamp"),
+            "start_index": raw.get(
+                "startIndex"
+            ),
+            "version": raw.get(
+                "version"
+            ),
+            "timestamp": raw.get(
+                "timestamp"
+            ),
         }
 
         return CollectionResult(
@@ -74,7 +99,9 @@ class NVDThreatSource(ThreatSource):
         """
 
         end_date = datetime.now(UTC)
-        start_date = end_date - timedelta(days=7)
+        start_date = end_date - timedelta(
+            days=7
+        )
 
         return self.connector.fetch(
             start_date=start_date.strftime(
@@ -88,14 +115,14 @@ class NVDThreatSource(ThreatSource):
         )
 
     def parse(
-    self,
-    raw_data: Any,
-) -> List[Threat]:
+        self,
+        raw_data: Any,
+    ) -> List[Threat]:
         """
         Parse the NVD API response into Threat objects.
 
-        Invalid top-level values and malformed vulnerability elements
-        are ignored safely.
+        Invalid top-level values and malformed vulnerability
+        elements are ignored safely.
         """
 
         if not isinstance(raw_data, dict):
@@ -106,7 +133,10 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(vulnerabilities, list):
+        if not isinstance(
+            vulnerabilities,
+            list,
+        ):
             return []
 
         threats: List[Threat] = []
@@ -131,7 +161,7 @@ class NVDThreatSource(ThreatSource):
         cve: dict[str, Any],
     ) -> Threat:
         """
-        Convert one NVD CVE record into a Threat object.
+        Convert one NVD CVE record into a vulnerability Threat.
         """
 
         cve_id = cve.get("id")
@@ -150,22 +180,33 @@ class NVDThreatSource(ThreatSource):
 
         return Threat(
             id=cve_id,
-            source=self.name(),
-            description=self._extract_description(
-                cve
+            category=self.THREAT_CATEGORY,
+            source=self.SOURCE_NAME,
+            description=(
+                self._extract_description(cve)
             ),
-            severity=self._extract_severity(cve),
-            cvss_score=self._extract_cvss(cve),
+            severity=(
+                self._extract_severity(cve)
+            ),
+            cvss_score=(
+                self._extract_cvss(cve)
+            ),
             affected_products=(
-                self._extract_affected_products(cve)
+                self._extract_affected_products(
+                    cve
+                )
             ),
             weakness_references=(
-                self._extract_weakness_references(cve)
+                self._extract_weakness_references(
+                    cve
+                )
             ),
-            references=self._extract_references(
-                cve
+            references=(
+                self._extract_references(cve)
             ),
-            published_date=cve.get("published"),
+            published_date=cve.get(
+                "published"
+            ),
             last_modified_date=cve.get(
                 "lastModified"
             ),
@@ -192,32 +233,47 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(descriptions, list):
+        if not isinstance(
+            descriptions,
+            list,
+        ):
             return ""
 
         fallback_description = ""
 
         for description in descriptions:
-            if not isinstance(description, dict):
+            if not isinstance(
+                description,
+                dict,
+            ):
                 continue
 
-            value = description.get("value")
+            value = description.get(
+                "value"
+            )
 
             if not isinstance(value, str):
                 continue
 
-            value = self._clean_text(value)
+            value = self._clean_text(
+                value
+            )
 
             if not fallback_description:
                 fallback_description = value
 
-            if description.get("lang") == "en":
+            if (
+                description.get("lang")
+                == "en"
+            ):
                 return value
 
         return fallback_description
 
     @staticmethod
-    def _clean_text(value: str) -> str:
+    def _clean_text(
+        value: str,
+    ) -> str:
         """
         Normalize special spaces and surrounding whitespace.
         """
@@ -243,7 +299,9 @@ class NVDThreatSource(ThreatSource):
         CVSS v2 usually stores baseSeverity at metric level.
         """
 
-        metric = self._extract_cvss_metric(cve)
+        metric = self._extract_cvss_metric(
+            cve
+        )
 
         if not metric:
             return None
@@ -265,7 +323,10 @@ class NVDThreatSource(ThreatSource):
             "baseSeverity"
         )
 
-        if isinstance(legacy_severity, str):
+        if isinstance(
+            legacy_severity,
+            str,
+        ):
             return legacy_severity
 
         return None
@@ -279,7 +340,9 @@ class NVDThreatSource(ThreatSource):
         available CVSS metric.
         """
 
-        metric = self._extract_cvss_metric(cve)
+        metric = self._extract_cvss_metric(
+            cve
+        )
 
         if not metric:
             return None
@@ -289,7 +352,10 @@ class NVDThreatSource(ThreatSource):
             {},
         )
 
-        if not isinstance(cvss_data, dict):
+        if not isinstance(
+            cvss_data,
+            dict,
+        ):
             return None
 
         base_score = cvss_data.get(
@@ -299,7 +365,10 @@ class NVDThreatSource(ThreatSource):
         if isinstance(base_score, bool):
             return None
 
-        if isinstance(base_score, (int, float)):
+        if isinstance(
+            base_score,
+            (int, float),
+        ):
             return float(base_score)
 
         return None
@@ -318,13 +387,18 @@ class NVDThreatSource(ThreatSource):
         4. CVSS v2.0
         """
 
-        metrics = cve.get("metrics", {})
+        metrics = cve.get(
+            "metrics",
+            {},
+        )
 
         if not isinstance(metrics, dict):
             return {}
 
         for version in self.CVSS_PRIORITY:
-            version_metrics = metrics.get(version)
+            version_metrics = metrics.get(
+                version
+            )
 
             if not isinstance(
                 version_metrics,
@@ -361,15 +435,19 @@ class NVDThreatSource(ThreatSource):
         older fixtures remain compatible.
         """
 
-        products = self._extract_products_from_configurations(
-            cve
+        products = (
+            self._extract_products_from_configurations(
+                cve
+            )
         )
 
         if products:
             return products
 
-        return self._extract_legacy_affected_products(
-            cve
+        return (
+            self._extract_legacy_affected_products(
+                cve
+            )
         )
 
     def _extract_products_from_configurations(
@@ -385,11 +463,19 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(configurations, list):
+        if not isinstance(
+            configurations,
+            list,
+        ):
             return []
 
-        products: List[dict[str, Any]] = []
-        seen: set[tuple[Any, ...]] = set()
+        products: List[
+            dict[str, Any]
+        ] = []
+
+        seen: set[
+            tuple[Any, ...]
+        ] = set()
 
         for configuration in configurations:
             if not isinstance(
@@ -435,15 +521,19 @@ class NVDThreatSource(ThreatSource):
 
         if isinstance(cpe_matches, list):
             for cpe_match in cpe_matches:
-                product = self._parse_cpe_match(
-                    cpe_match
+                product = (
+                    self._parse_cpe_match(
+                        cpe_match
+                    )
                 )
 
                 if product is None:
                     continue
 
-                key = self._affected_product_key(
-                    product
+                key = (
+                    self._affected_product_key(
+                        product
+                    )
                 )
 
                 if key in seen:
@@ -491,37 +581,56 @@ class NVDThreatSource(ThreatSource):
             cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*
         """
 
-        if not isinstance(cpe_match, dict):
+        if not isinstance(
+            cpe_match,
+            dict,
+        ):
             return None
 
-        criteria = cpe_match.get("criteria")
+        criteria = cpe_match.get(
+            "criteria"
+        )
 
         if not isinstance(criteria, str):
             return None
 
-        parsed_cpe = self._parse_cpe_23(criteria)
+        parsed_cpe = self._parse_cpe_23(
+            criteria
+        )
 
-        versions = self._extract_version_constraints(
-            cpe_match=cpe_match,
-            cpe_version=parsed_cpe.get(
-                "version"
-            ),
+        versions = (
+            self._extract_version_constraints(
+                cpe_match=cpe_match,
+                cpe_version=parsed_cpe.get(
+                    "version"
+                ),
+            )
         )
 
         return {
-            "vendor": parsed_cpe.get("vendor"),
-            "product": parsed_cpe.get("product"),
-            "part": parsed_cpe.get("part"),
-            "platforms": self._extract_cpe_platforms(
-                parsed_cpe
+            "vendor": parsed_cpe.get(
+                "vendor"
+            ),
+            "product": parsed_cpe.get(
+                "product"
+            ),
+            "part": parsed_cpe.get(
+                "part"
+            ),
+            "platforms": (
+                self._extract_cpe_platforms(
+                    parsed_cpe
+                )
             ),
             "versions": versions,
             "vulnerable": cpe_match.get(
                 "vulnerable"
             ),
             "criteria": criteria,
-            "match_criteria_id": cpe_match.get(
-                "matchCriteriaId"
+            "match_criteria_id": (
+                cpe_match.get(
+                    "matchCriteriaId"
+                )
             ),
         }
 
@@ -554,27 +663,41 @@ class NVDThreatSource(ThreatSource):
             }
 
         return {
-            "part": NVDThreatSource._normalize_cpe_value(
-                parts[2]
+            "part": (
+                NVDThreatSource
+                ._normalize_cpe_value(
+                    parts[2]
+                )
             ),
-            "vendor": NVDThreatSource._normalize_cpe_value(
-                parts[3]
+            "vendor": (
+                NVDThreatSource
+                ._normalize_cpe_value(
+                    parts[3]
+                )
             ),
-            "product": NVDThreatSource._normalize_cpe_value(
-                parts[4]
+            "product": (
+                NVDThreatSource
+                ._normalize_cpe_value(
+                    parts[4]
+                )
             ),
-            "version": NVDThreatSource._normalize_cpe_value(
-                parts[5]
+            "version": (
+                NVDThreatSource
+                ._normalize_cpe_value(
+                    parts[5]
+                )
             ),
             "target_sw": (
-                NVDThreatSource._normalize_cpe_value(
+                NVDThreatSource
+                ._normalize_cpe_value(
                     parts[10]
                 )
                 if len(parts) > 10
                 else None
             ),
             "target_hw": (
-                NVDThreatSource._normalize_cpe_value(
+                NVDThreatSource
+                ._normalize_cpe_value(
                     parts[11]
                 )
                 if len(parts) > 11
@@ -592,7 +715,12 @@ class NVDThreatSource(ThreatSource):
         CPE wildcards and unavailable values are converted to None.
         """
 
-        if value in {"", "*", "-", "n/a"}:
+        if value in {
+            "",
+            "*",
+            "-",
+            "n/a",
+        }:
             return None
 
         return unquote(
@@ -601,7 +729,10 @@ class NVDThreatSource(ThreatSource):
 
     @staticmethod
     def _extract_cpe_platforms(
-        parsed_cpe: dict[str, str | None],
+        parsed_cpe: dict[
+            str,
+            str | None,
+        ],
     ) -> List[str]:
         """
         Build a platform list from CPE target software and hardware.
@@ -609,10 +740,18 @@ class NVDThreatSource(ThreatSource):
 
         platforms: List[str] = []
 
-        for field in ("target_sw", "target_hw"):
-            value = parsed_cpe.get(field)
+        for field in (
+            "target_sw",
+            "target_hw",
+        ):
+            value = parsed_cpe.get(
+                field
+            )
 
-            if value and value not in platforms:
+            if (
+                value
+                and value not in platforms
+            ):
                 platforms.append(value)
 
         return platforms
@@ -626,10 +765,15 @@ class NVDThreatSource(ThreatSource):
         Normalize CPE version and version-range constraints.
         """
 
-        version_data: dict[str, Any] = {}
+        version_data: dict[
+            str,
+            Any,
+        ] = {}
 
         if cpe_version is not None:
-            version_data["version"] = cpe_version
+            version_data[
+                "version"
+            ] = cpe_version
 
         constraint_fields = (
             "versionStartIncluding",
@@ -639,7 +783,9 @@ class NVDThreatSource(ThreatSource):
         )
 
         for field in constraint_fields:
-            value = cpe_match.get(field)
+            value = cpe_match.get(
+                field
+            )
 
             if value is not None:
                 version_data[field] = value
@@ -657,7 +803,10 @@ class NVDThreatSource(ThreatSource):
         Build a stable deduplication key for an affected product.
         """
 
-        versions = product.get("versions", [])
+        versions = product.get(
+            "versions",
+            [],
+        )
 
         normalized_versions = tuple(
             tuple(
@@ -701,13 +850,21 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(affected_entries, list):
+        if not isinstance(
+            affected_entries,
+            list,
+        ):
             return []
 
-        products: List[dict[str, Any]] = []
+        products: List[
+            dict[str, Any]
+        ] = []
 
         for affected in affected_entries:
-            if not isinstance(affected, dict):
+            if not isinstance(
+                affected,
+                dict,
+            ):
                 continue
 
             affected_data = affected.get(
@@ -715,15 +872,25 @@ class NVDThreatSource(ThreatSource):
                 [],
             )
 
-            if not isinstance(affected_data, list):
+            if not isinstance(
+                affected_data,
+                list,
+            ):
                 continue
 
             for item in affected_data:
-                if not isinstance(item, dict):
+                if not isinstance(
+                    item,
+                    dict,
+                ):
                     continue
 
-                vendor = item.get("vendor")
-                product = item.get("product")
+                vendor = item.get(
+                    "vendor"
+                )
+                product = item.get(
+                    "product"
+                )
 
                 if vendor == "n/a":
                     vendor = None
@@ -736,7 +903,10 @@ class NVDThreatSource(ThreatSource):
                     [],
                 )
 
-                if not isinstance(platforms, list):
+                if not isinstance(
+                    platforms,
+                    list,
+                ):
                     platforms = []
 
                 versions = item.get(
@@ -744,7 +914,10 @@ class NVDThreatSource(ThreatSource):
                     [],
                 )
 
-                if not isinstance(versions, list):
+                if not isinstance(
+                    versions,
+                    list,
+                ):
                     versions = []
 
                 products.append(
@@ -784,10 +957,16 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(weaknesses, list):
+        if not isinstance(
+            weaknesses,
+            list,
+        ):
             return []
 
-        references: List[WeaknessReference] = []
+        references: List[
+            WeaknessReference
+        ] = []
+
         seen: set[
             tuple[
                 str | None,
@@ -797,7 +976,10 @@ class NVDThreatSource(ThreatSource):
         ] = set()
 
         for weakness in weaknesses:
-            if not isinstance(weakness, dict):
+            if not isinstance(
+                weakness,
+                dict,
+            ):
                 continue
 
             descriptions = weakness.get(
@@ -805,25 +987,41 @@ class NVDThreatSource(ThreatSource):
                 [],
             )
 
-            if not isinstance(descriptions, list):
+            if not isinstance(
+                descriptions,
+                list,
+            ):
                 continue
 
-            weakness_type = weakness.get("type")
+            weakness_type = weakness.get(
+                "type"
+            )
+
             origin = self._weakness_origin(
                 weakness_type
             )
 
             for description in descriptions:
-                if not isinstance(description, dict):
+                if not isinstance(
+                    description,
+                    dict,
+                ):
                     continue
 
-                raw_value = description.get("value")
+                raw_value = description.get(
+                    "value"
+                )
 
-                if not isinstance(raw_value, str):
+                if not isinstance(
+                    raw_value,
+                    str,
+                ):
                     continue
 
                 source_description = (
-                    self._clean_text(raw_value)
+                    self._clean_text(
+                        raw_value
+                    )
                 )
 
                 if not source_description:
@@ -846,9 +1044,13 @@ class NVDThreatSource(ThreatSource):
                 if key in seen:
                     continue
 
+                language = description.get(
+                    "lang"
+                )
+
                 references.append(
                     WeaknessReference(
-                        source=self.name(),
+                        source=self.SOURCE_NAME,
                         cwe_id=cwe_id,
                         source_description=(
                             source_description
@@ -861,8 +1063,13 @@ class NVDThreatSource(ThreatSource):
                             )
                             else None
                         ),
-                        language=description.get(
-                            "lang"
+                        language=(
+                            language
+                            if isinstance(
+                                language,
+                                str,
+                            )
+                            else None
                         ),
                         origin=origin,
                         resolution_status=(
@@ -873,12 +1080,16 @@ class NVDThreatSource(ThreatSource):
                         ),
                         raw={
                             "weakness_source": (
-                                weakness.get("source")
+                                weakness.get(
+                                    "source"
+                                )
                             ),
                             "weakness_type": (
                                 weakness_type
                             ),
-                            "description": description,
+                            "description": (
+                                description
+                            ),
                         },
                     )
                 )
@@ -906,7 +1117,11 @@ class NVDThreatSource(ThreatSource):
             )
         """
 
-        normalized = value.strip().upper()
+        normalized = (
+            value
+            .strip()
+            .upper()
+        )
 
         if normalized in self.CWE_PLACEHOLDERS:
             return (
@@ -915,8 +1130,10 @@ class NVDThreatSource(ThreatSource):
                 "source_placeholder",
             )
 
-        canonical_id = self._normalize_cwe_id(
-            normalized
+        canonical_id = (
+            self._normalize_cwe_id(
+                normalized
+            )
         )
 
         if canonical_id is not None:
@@ -926,8 +1143,10 @@ class NVDThreatSource(ThreatSource):
                 "explicit_id",
             )
 
-        extracted_id = self._extract_cwe_id_from_text(
-            normalized
+        extracted_id = (
+            self._extract_cwe_id_from_text(
+                normalized
+            )
         )
 
         if extracted_id is not None:
@@ -976,7 +1195,11 @@ class NVDThreatSource(ThreatSource):
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip().upper()
+        normalized = (
+            value
+            .strip()
+            .upper()
+        )
 
         if not normalized:
             return None
@@ -989,16 +1212,24 @@ class NVDThreatSource(ThreatSource):
 
             return f"CWE-{number}"
 
-        if normalized.startswith("CWE-"):
-            number = normalized.removeprefix(
-                "CWE-"
+        if normalized.startswith(
+            "CWE-"
+        ):
+            number = (
+                normalized.removeprefix(
+                    "CWE-"
+                )
             )
 
             if number.isdigit():
-                number_value = int(number)
+                number_value = int(
+                    number
+                )
 
                 if number_value > 0:
-                    return f"CWE-{number_value}"
+                    return (
+                        f"CWE-{number_value}"
+                    )
 
         return None
 
@@ -1013,21 +1244,18 @@ class NVDThreatSource(ThreatSource):
             "CWE-79: Improper Neutralization of Input"
         """
 
-        for token in value.replace(
-            ":",
-            " ",
-        ).replace(
-            ",",
-            " ",
-        ).replace(
-            "(",
-            " ",
-        ).replace(
-            ")",
-            " ",
-        ).split():
+        normalized_text = (
+            value
+            .replace(":", " ")
+            .replace(",", " ")
+            .replace("(", " ")
+            .replace(")", " ")
+        )
+
+        for token in normalized_text.split():
             normalized = (
-                NVDThreatSource._normalize_cwe_id(
+                NVDThreatSource
+                ._normalize_cwe_id(
                     token
                 )
             )
@@ -1045,10 +1273,17 @@ class NVDThreatSource(ThreatSource):
         Convert the NVD weakness classification into an origin.
         """
 
-        if not isinstance(weakness_type, str):
+        if not isinstance(
+            weakness_type,
+            str,
+        ):
             return "nvd"
 
-        normalized = weakness_type.strip().lower()
+        normalized = (
+            weakness_type
+            .strip()
+            .lower()
+        )
 
         if normalized == "primary":
             return "nvd_primary"
@@ -1076,24 +1311,35 @@ class NVDThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(raw_references, list):
+        if not isinstance(
+            raw_references,
+            list,
+        ):
             return []
 
         references: List[str] = []
         seen: set[str] = set()
 
         for reference in raw_references:
-            if not isinstance(reference, dict):
+            if not isinstance(
+                reference,
+                dict,
+            ):
                 continue
 
-            url = reference.get("url")
+            url = reference.get(
+                "url"
+            )
 
             if not isinstance(url, str):
                 continue
 
             url = url.strip()
 
-            if not url or url in seen:
+            if (
+                not url
+                or url in seen
+            ):
                 continue
 
             references.append(url)

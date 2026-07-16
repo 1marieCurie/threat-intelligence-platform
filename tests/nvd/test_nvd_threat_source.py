@@ -10,6 +10,7 @@ from application.services.nvd_threat_source import (
     NVDThreatSource,
 )
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.nvd_connector import (
     NVDConnector,
@@ -202,6 +203,7 @@ def test_parse_complete_cve(
     # Identity and source
     assert threat.id == "CVE-2026-12345"
     assert threat.source == "NVD"
+    assert threat.category is ThreatCategory.VULNERABILITY
 
     # Description
     assert threat.description == (

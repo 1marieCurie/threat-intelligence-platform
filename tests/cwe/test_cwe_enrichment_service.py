@@ -13,6 +13,7 @@ from application.services.cwe_enrichment_service import (
 )
 from domain.cwe_weakness import CWEWeakness
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.cwe_connector import (
     CWEConnector,
@@ -1330,3 +1331,29 @@ def test_integration_enrich_multiple_threats_with_live_cwe(
     assert result.metadata[
         "newly_enriched_threats"
     ] == 3
+
+
+def test_cwe_enrichment_preserves_category(
+    service: CWEEnrichmentService,
+) -> None:
+    threat = Threat(
+        id="CVE-2021-44228",
+        category=ThreatCategory.VULNERABILITY,
+        weakness_references=[
+            WeaknessReference(
+                source="NVD",
+                cwe_id="CWE-502",
+                resolution_status="resolved",
+                resolution_method="explicit_id",
+            )
+        ],
+    )
+
+    result = service.enrich_threat(
+        threat
+    )
+
+    assert (
+        result.threats[0].category
+        is ThreatCategory.VULNERABILITY
+    )

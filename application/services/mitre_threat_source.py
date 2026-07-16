@@ -1,5 +1,5 @@
-
 # application/services/mitre_threat_source.py
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,6 +7,7 @@ from typing import Any
 from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.mitre_connector import (
     MITREConnector,
@@ -22,11 +23,17 @@ class MITREThreatSource(ThreatSource):
 
     Responsibilities:
     - retrieve newly published or modified CVE records;
-    - transform MITRE CVE records into Threat entities;
+    - transform MITRE CVE records into vulnerability Threat entities;
     - normalize CWE assertions into WeaknessReference objects;
     - enrich CNA information with optional ADP containers;
     - persist the MITRE synchronization state.
     """
+
+    SOURCE_NAME = "MITRE"
+
+    THREAT_CATEGORY = (
+        ThreatCategory.VULNERABILITY
+    )
 
     CWE_PLACEHOLDERS = {
         "NVD-CWE-NOINFO",
@@ -44,7 +51,11 @@ class MITREThreatSource(ThreatSource):
         self.sync_state = sync_state or MITRESyncState()
 
     def name(self) -> str:
-        return "MITRE"
+        """
+        Return the normalized source name.
+        """
+
+        return self.SOURCE_NAME
 
     def collect(self) -> CollectionResult:
         """
@@ -54,12 +65,18 @@ class MITREThreatSource(ThreatSource):
 
         raw = self.fetch_raw()
 
-        records = raw.get("records", [])
+        records = raw.get(
+            "records",
+            [],
+        )
 
         threats = self.parse(records)
 
         metadata = {
             "source": self.name(),
+            "category": (
+                self.THREAT_CATEGORY.value
+            ),
             "previous_commit": raw.get(
                 "previous_commit"
             ),
@@ -131,7 +148,7 @@ class MITREThreatSource(ThreatSource):
         record: dict[str, Any],
     ) -> Threat:
         """
-        Convert one MITRE CVE record into a Threat entity.
+        Convert one MITRE CVE record into a vulnerability Threat.
 
         The CNA container supplies the primary vulnerability data.
         Optional ADP containers enrich the resulting Threat.
@@ -161,7 +178,9 @@ class MITREThreatSource(ThreatSource):
         if not isinstance(cna, dict):
             cna = {}
 
-        cve_id = metadata.get("cveId")
+        cve_id = metadata.get(
+            "cveId"
+        )
 
         if not isinstance(cve_id, str):
             raise ValueError(
@@ -177,15 +196,22 @@ class MITREThreatSource(ThreatSource):
 
         threat = Threat(
             id=cve_id,
-            source=self.name(),
+            category=self.THREAT_CATEGORY,
+            source=self.SOURCE_NAME,
             title=self._extract_title(cna),
-            description=self._extract_description(
-                cna
+            description=(
+                self._extract_description(cna)
             ),
-            severity=self._extract_severity(cna),
-            cvss_score=self._extract_cvss(cna),
+            severity=(
+                self._extract_severity(cna)
+            ),
+            cvss_score=(
+                self._extract_cvss(cna)
+            ),
             affected_products=(
-                self._extract_affected_products(cna)
+                self._extract_affected_products(
+                    cna
+                )
             ),
             weakness_references=(
                 self._extract_weakness_references(
@@ -193,18 +219,33 @@ class MITREThreatSource(ThreatSource):
                     origin="cna",
                 )
             ),
-            labels=self._extract_labels(cna),
-            references=self._extract_references(
-                cna
+            labels=(
+                self._extract_labels(cna)
             ),
-            remediation=self._extract_remediation(
-                cna
+            references=(
+                self._extract_references(cna)
             ),
-            published_date=metadata.get(
-                "datePublished"
+            remediation=(
+                self._extract_remediation(cna)
             ),
-            last_modified_date=metadata.get(
-                "dateUpdated"
+            published_date=(
+                self._clean_optional_string(
+                    metadata.get(
+                        "datePublished"
+                    )
+                )
+            ),
+            last_modified_date=(
+                self._clean_optional_string(
+                    metadata.get(
+                        "dateUpdated"
+                    )
+                )
+            ),
+            source_dates=(
+                self._extract_source_dates(
+                    metadata
+                )
             ),
             raw=record,
         )
@@ -265,12 +306,16 @@ class MITREThreatSource(ThreatSource):
             if not isinstance(description, dict):
                 continue
 
-            value = description.get("value")
+            value = description.get(
+                "value"
+            )
 
             if not isinstance(value, str):
                 continue
 
-            value = self._clean_text(value)
+            value = self._clean_text(
+                value
+            )
 
             if not value:
                 continue
@@ -284,7 +329,9 @@ class MITREThreatSource(ThreatSource):
         return fallback
 
     @staticmethod
-    def _clean_text(value: str) -> str:
+    def _clean_text(
+        value: str,
+    ) -> str:
         """
         Normalize non-breaking spaces and surrounding whitespace.
         """
@@ -294,6 +341,72 @@ class MITREThreatSource(ThreatSource):
             .replace("\u00a0", " ")
             .strip()
         )
+
+    @staticmethod
+    def _clean_optional_string(
+        value: Any,
+    ) -> str | None:
+        """
+        Normalize an optional source string.
+
+        Empty strings and non-string values become None.
+        """
+
+        if not isinstance(value, str):
+            return None
+
+        normalized = (
+            value
+            .replace("\u00a0", " ")
+            .strip()
+        )
+
+        return normalized or None
+
+    def _extract_source_dates(
+        self,
+        metadata: dict[str, Any],
+    ) -> dict[str, str]:
+        """
+        Preserve MITRE-specific CVE lifecycle dates.
+        """
+
+        source_dates: dict[str, str] = {}
+
+        date_reserved = self._clean_optional_string(
+            metadata.get(
+                "dateReserved"
+            )
+        )
+
+        date_published = self._clean_optional_string(
+            metadata.get(
+                "datePublished"
+            )
+        )
+
+        date_updated = self._clean_optional_string(
+            metadata.get(
+                "dateUpdated"
+            )
+        )
+
+        if date_reserved is not None:
+            source_dates[
+                "date_reserved"
+            ] = date_reserved
+
+        if date_published is not None:
+            source_dates[
+                "date_published"
+            ] = date_published
+
+        if date_updated is not None:
+            source_dates[
+                "date_updated"
+            ] = date_updated
+
+        return source_dates
 
     # =========================================================
     # CVSS
@@ -405,7 +518,10 @@ class MITREThreatSource(ThreatSource):
         if not isinstance(problem_types, list):
             return []
 
-        references: list[WeaknessReference] = []
+        references: list[
+            WeaknessReference
+        ] = []
+
         seen: set[
             tuple[
                 str | None,
@@ -424,11 +540,17 @@ class MITREThreatSource(ThreatSource):
                 [],
             )
 
-            if not isinstance(descriptions, list):
+            if not isinstance(
+                descriptions,
+                list,
+            ):
                 continue
 
             for description in descriptions:
-                if not isinstance(description, dict):
+                if not isinstance(
+                    description,
+                    dict,
+                ):
                     continue
 
                 reference = (
@@ -451,7 +573,10 @@ class MITREThreatSource(ThreatSource):
                 if key in seen:
                     continue
 
-                references.append(reference)
+                references.append(
+                    reference
+                )
+
                 seen.add(key)
 
         return references
@@ -476,30 +601,46 @@ class MITREThreatSource(ThreatSource):
         )
 
         source_description = (
-            self._clean_text(raw_description)
-            if isinstance(raw_description, str)
+            self._clean_text(
+                raw_description
+            )
+            if isinstance(
+                raw_description,
+                str,
+            )
             else None
         )
 
-        source_type = description.get("type")
+        source_type = description.get(
+            "type"
+        )
 
-        if not isinstance(source_type, str):
+        if not isinstance(
+            source_type,
+            str,
+        ):
             source_type = None
 
-        language = description.get("lang")
+        language = description.get(
+            "lang"
+        )
 
-        if not isinstance(language, str):
+        if not isinstance(
+            language,
+            str,
+        ):
             language = None
 
-        # MITRE explicitly supplies a dedicated cweId.
         if raw_cwe_id is not None:
-            normalized_id = self._normalize_cwe_id(
-                raw_cwe_id
+            normalized_id = (
+                self._normalize_cwe_id(
+                    raw_cwe_id
+                )
             )
 
             if normalized_id is not None:
                 return WeaknessReference(
-                    source=self.name(),
+                    source=self.SOURCE_NAME,
                     cwe_id=normalized_id,
                     source_description=(
                         source_description
@@ -516,7 +657,7 @@ class MITREThreatSource(ThreatSource):
                 raw_cwe_id
             ):
                 return WeaknessReference(
-                    source=self.name(),
+                    source=self.SOURCE_NAME,
                     cwe_id=None,
                     source_description=(
                         source_description
@@ -533,7 +674,7 @@ class MITREThreatSource(ThreatSource):
                 )
 
             return WeaknessReference(
-                source=self.name(),
+                source=self.SOURCE_NAME,
                 cwe_id=None,
                 source_description=(
                     source_description
@@ -554,7 +695,7 @@ class MITREThreatSource(ThreatSource):
             source_description
         ):
             return WeaknessReference(
-                source=self.name(),
+                source=self.SOURCE_NAME,
                 cwe_id=None,
                 source_description=(
                     source_description
@@ -575,7 +716,7 @@ class MITREThreatSource(ThreatSource):
 
         if direct_id is not None:
             return WeaknessReference(
-                source=self.name(),
+                source=self.SOURCE_NAME,
                 cwe_id=direct_id,
                 source_description=(
                     source_description
@@ -596,7 +737,7 @@ class MITREThreatSource(ThreatSource):
 
         if extracted_id is not None:
             return WeaknessReference(
-                source=self.name(),
+                source=self.SOURCE_NAME,
                 cwe_id=extracted_id,
                 source_description=(
                     source_description
@@ -613,7 +754,7 @@ class MITREThreatSource(ThreatSource):
             "CWE-"
         ):
             return WeaknessReference(
-                source=self.name(),
+                source=self.SOURCE_NAME,
                 cwe_id=None,
                 source_description=(
                     source_description
@@ -627,9 +768,11 @@ class MITREThreatSource(ThreatSource):
             )
 
         return WeaknessReference(
-            source=self.name(),
+            source=self.SOURCE_NAME,
             cwe_id=None,
-            source_description=source_description,
+            source_description=(
+                source_description
+            ),
             source_type=source_type,
             language=language,
             origin=origin,
@@ -664,7 +807,11 @@ class MITREThreatSource(ThreatSource):
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip().upper()
+        normalized = (
+            value
+            .strip()
+            .upper()
+        )
 
         if not normalized:
             return None
@@ -677,16 +824,22 @@ class MITREThreatSource(ThreatSource):
 
             return f"CWE-{number}"
 
-        if normalized.startswith("CWE-"):
+        if normalized.startswith(
+            "CWE-"
+        ):
             number = normalized.removeprefix(
                 "CWE-"
             )
 
             if number.isdigit():
-                number_value = int(number)
+                number_value = int(
+                    number
+                )
 
                 if number_value > 0:
-                    return f"CWE-{number_value}"
+                    return (
+                        f"CWE-{number_value}"
+                    )
 
         return None
 
@@ -730,7 +883,8 @@ class MITREThreatSource(ThreatSource):
 
         for token in normalized_text.split():
             normalized_id = (
-                MITREThreatSource._normalize_cwe_id(
+                MITREThreatSource
+                ._normalize_cwe_id(
                     token
                 )
             )
@@ -757,24 +911,35 @@ class MITREThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(raw_references, list):
+        if not isinstance(
+            raw_references,
+            list,
+        ):
             return []
 
         references: list[str] = []
         seen: set[str] = set()
 
         for reference in raw_references:
-            if not isinstance(reference, dict):
+            if not isinstance(
+                reference,
+                dict,
+            ):
                 continue
 
-            url = reference.get("url")
+            url = reference.get(
+                "url"
+            )
 
             if not isinstance(url, str):
                 continue
 
             url = url.strip()
 
-            if not url or url in seen:
+            if (
+                not url
+                or url in seen
+            ):
                 continue
 
             references.append(url)
@@ -795,7 +960,10 @@ class MITREThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(raw_tags, list):
+        if not isinstance(
+            raw_tags,
+            list,
+        ):
             return []
 
         labels: list[str] = []
@@ -807,7 +975,10 @@ class MITREThreatSource(ThreatSource):
 
             tag = tag.strip()
 
-            if not tag or tag in seen:
+            if (
+                not tag
+                or tag in seen
+            ):
                 continue
 
             labels.append(tag)
@@ -832,13 +1003,21 @@ class MITREThreatSource(ThreatSource):
             [],
         )
 
-        if not isinstance(raw_affected, list):
+        if not isinstance(
+            raw_affected,
+            list,
+        ):
             return []
 
-        products: list[dict[str, Any]] = []
+        products: list[
+            dict[str, Any]
+        ] = []
 
         for affected in raw_affected:
-            if not isinstance(affected, dict):
+            if not isinstance(
+                affected,
+                dict,
+            ):
                 continue
 
             versions = affected.get(
@@ -846,7 +1025,10 @@ class MITREThreatSource(ThreatSource):
                 [],
             )
 
-            if not isinstance(versions, list):
+            if not isinstance(
+                versions,
+                list,
+            ):
                 versions = []
 
             platforms = affected.get(
@@ -854,7 +1036,10 @@ class MITREThreatSource(ThreatSource):
                 [],
             )
 
-            if not isinstance(platforms, list):
+            if not isinstance(
+                platforms,
+                list,
+            ):
                 platforms = []
 
             cpes = affected.get(
@@ -865,14 +1050,22 @@ class MITREThreatSource(ThreatSource):
             if not isinstance(cpes, list):
                 cpes = []
 
+            vendor = self._clean_optional_string(
+                affected.get(
+                    "vendor"
+                )
+            )
+
+            product = self._clean_optional_string(
+                affected.get(
+                    "product"
+                )
+            )
+
             products.append(
                 {
-                    "vendor": affected.get(
-                        "vendor"
-                    ),
-                    "product": affected.get(
-                        "product"
-                    ),
+                    "vendor": vendor,
+                    "product": product,
                     "versions": versions,
                     "platforms": platforms,
                     "cpes": cpes,
@@ -894,18 +1087,26 @@ class MITREThreatSource(ThreatSource):
         """
 
         solutions = self._extract_text_values(
-            container.get("solutions")
+            container.get(
+                "solutions"
+            )
         )
 
         if solutions:
-            return "\n".join(solutions)
+            return "\n".join(
+                solutions
+            )
 
         workarounds = self._extract_text_values(
-            container.get("workarounds")
+            container.get(
+                "workarounds"
+            )
         )
 
         if workarounds:
-            return "\n".join(workarounds)
+            return "\n".join(
+                workarounds
+            )
 
         return None
 
@@ -917,21 +1118,31 @@ class MITREThreatSource(ThreatSource):
         Extract non-empty ``value`` fields from a MITRE list.
         """
 
-        if not isinstance(raw_entries, list):
+        if not isinstance(
+            raw_entries,
+            list,
+        ):
             return []
 
         values: list[str] = []
 
         for entry in raw_entries:
-            if not isinstance(entry, dict):
+            if not isinstance(
+                entry,
+                dict,
+            ):
                 continue
 
-            value = entry.get("value")
+            value = entry.get(
+                "value"
+            )
 
             if not isinstance(value, str):
                 continue
 
-            value = self._clean_text(value)
+            value = self._clean_text(
+                value
+            )
 
             if value:
                 values.append(value)
@@ -950,6 +1161,9 @@ class MITREThreatSource(ThreatSource):
     ) -> None:
         """
         Enrich a Threat with optional MITRE ADP containers.
+
+        ADP data does not modify the Threat category because the
+        record still represents the same CVE vulnerability.
         """
 
         containers = record.get(
@@ -957,7 +1171,10 @@ class MITREThreatSource(ThreatSource):
             {},
         )
 
-        if not isinstance(containers, dict):
+        if not isinstance(
+            containers,
+            dict,
+        ):
             return
 
         adps = containers.get(
@@ -1027,11 +1244,15 @@ class MITREThreatSource(ThreatSource):
         Merge unique ADP labels into the Threat.
         """
 
-        labels = self._extract_labels(adp)
+        labels = self._extract_labels(
+            adp
+        )
 
         for label in labels:
             if label not in threat.labels:
-                threat.labels.append(label)
+                threat.labels.append(
+                    label
+                )
 
     def _merge_weakness_references(
         self,
@@ -1111,6 +1332,7 @@ class MITREThreatSource(ThreatSource):
 
         if threat.remediation is None:
             threat.remediation = (
-                self._extract_remediation(adp)
+                self._extract_remediation(
+                    adp
+                )
             )
-

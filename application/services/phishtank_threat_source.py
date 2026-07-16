@@ -1,3 +1,5 @@
+# application/services/phishtank_threat_source.py
+
 from __future__ import annotations
 
 from ipaddress import ip_address
@@ -8,6 +10,7 @@ from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.indicator import Indicator
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from infrastructure.adapters.outbound.phishtank_connector import (
     PhishTankConnector,
 )
@@ -22,15 +25,20 @@ class PhishTankThreatSource(ThreatSource):
     downloadable JSON snapshot.
 
     This service converts those source-specific dictionaries
-    into the unified Threat domain model.
+    into normalized phishing Threat objects.
     """
 
     SOURCE_NAME = "PHISHTANK"
-    THREAT_TYPE = "phishing"
+
+    THREAT_CATEGORY = (
+        ThreatCategory.PHISHING
+    )
 
     def __init__(
         self,
-        connector: Optional[PhishTankConnector] = None,
+        connector: Optional[
+            PhishTankConnector
+        ] = None,
         *,
         limit: Optional[int] = None,
         force_download: bool = False,
@@ -50,12 +58,27 @@ class PhishTankThreatSource(ThreatSource):
                 even when the remote ETag has not changed.
         """
 
-        if limit is not None and limit < 0:
-            raise ValueError(
-                "limit must be greater than or equal to zero."
+        if isinstance(limit, bool):
+            raise TypeError(
+                "limit must be an integer or None."
             )
 
-        self.connector = connector or PhishTankConnector()
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise TypeError(
+                    "limit must be an integer or None."
+                )
+
+            if limit < 0:
+                raise ValueError(
+                    "limit must be greater than or equal to zero."
+                )
+
+        self.connector = (
+            connector
+            or PhishTankConnector()
+        )
+
         self.limit = limit
         self.force_download = force_download
 
@@ -70,7 +93,9 @@ class PhishTankThreatSource(ThreatSource):
 
         return self.SOURCE_NAME
 
-    def fetch_raw(self) -> List[Dict[str, Any]]:
+    def fetch_raw(
+        self,
+    ) -> List[Dict[str, Any]]:
         """
         Retrieve raw PhishTank records through the connector.
         """
@@ -85,7 +110,7 @@ class PhishTankThreatSource(ThreatSource):
         raw_data: Any,
     ) -> List[Threat]:
         """
-        Convert raw PhishTank records into Threat objects.
+        Convert raw PhishTank records into phishing Threat objects.
 
         Invalid top-level elements are skipped safely.
 
@@ -102,7 +127,10 @@ class PhishTankThreatSource(ThreatSource):
         threats: List[Threat] = []
 
         for raw_record in raw_data:
-            if not isinstance(raw_record, dict):
+            if not isinstance(
+                raw_record,
+                dict,
+            ):
                 continue
 
             threat = self._map_record_to_threat(
@@ -123,17 +151,29 @@ class PhishTankThreatSource(ThreatSource):
         raw_data = self.fetch_raw()
         threats = self.parse(raw_data)
 
-        sync_state = self.connector.get_local_state()
+        sync_state = (
+            self.connector.get_local_state()
+        )
 
         metadata: Dict[str, Any] = {
             "source": self.name(),
-            "raw_record_count": len(raw_data),
-            "threat_count": len(threats),
+            "category": (
+                self.THREAT_CATEGORY.value
+            ),
+            "raw_record_count": len(
+                raw_data
+            ),
+            "threat_count": len(
+                threats
+            ),
             "skipped_record_count": (
-                len(raw_data) - len(threats)
+                len(raw_data)
+                - len(threats)
             ),
             "limit": self.limit,
-            "force_download": self.force_download,
+            "force_download": (
+                self.force_download
+            ),
             "verified_only": True,
             "online_only": True,
         }
@@ -141,24 +181,38 @@ class PhishTankThreatSource(ThreatSource):
         if isinstance(sync_state, dict):
             metadata.update(
                 {
-                    "etag": sync_state.get("etag"),
-                    "last_modified": sync_state.get(
-                        "last_modified"
+                    "etag": sync_state.get(
+                        "etag"
                     ),
-                    "content_length": sync_state.get(
-                        "content_length"
+                    "last_modified": (
+                        sync_state.get(
+                            "last_modified"
+                        )
                     ),
-                    "downloaded_at": sync_state.get(
-                        "downloaded_at"
+                    "content_length": (
+                        sync_state.get(
+                            "content_length"
+                        )
                     ),
-                    "dump_path": sync_state.get(
-                        "dump_path"
+                    "downloaded_at": (
+                        sync_state.get(
+                            "downloaded_at"
+                        )
                     ),
-                    "downloaded": sync_state.get(
-                        "downloaded"
+                    "dump_path": (
+                        sync_state.get(
+                            "dump_path"
+                        )
                     ),
-                    "used_local_snapshot": sync_state.get(
-                        "used_local_snapshot"
+                    "downloaded": (
+                        sync_state.get(
+                            "downloaded"
+                        )
+                    ),
+                    "used_local_snapshot": (
+                        sync_state.get(
+                            "used_local_snapshot"
+                        )
                     ),
                 }
             )
@@ -177,51 +231,78 @@ class PhishTankThreatSource(ThreatSource):
         raw_record: Dict[str, Any],
     ) -> Optional[Threat]:
         """
-        Map one raw PhishTank record to the unified Threat
-        domain model.
+        Map one raw PhishTank record to a normalized phishing
+        Threat.
 
         Returns None when the record has no usable identifier
         or phishing URL.
         """
 
         phish_id = self._normalize_phish_id(
-            raw_record.get("phish_id")
+            raw_record.get(
+                "phish_id"
+            )
         )
 
-        phishing_url = self._normalize_string(
-            raw_record.get("url")
+        phishing_url = (
+            self._normalize_string(
+                raw_record.get("url")
+            )
         )
 
-        if phish_id is None or phishing_url is None:
+        if (
+            phish_id is None
+            or phishing_url is None
+        ):
             return None
 
-        phish_detail_url = self._normalize_string(
-            raw_record.get("phish_detail_url")
+        phish_detail_url = (
+            self._normalize_string(
+                raw_record.get(
+                    "phish_detail_url"
+                )
+            )
         )
 
-        submission_time = self._normalize_string(
-            raw_record.get("submission_time")
+        submission_time = (
+            self._normalize_string(
+                raw_record.get(
+                    "submission_time"
+                )
+            )
         )
 
-        verification_time = self._normalize_string(
-            raw_record.get("verification_time")
+        verification_time = (
+            self._normalize_string(
+                raw_record.get(
+                    "verification_time"
+                )
+            )
         )
 
         verified = self._normalize_boolean(
-            raw_record.get("verified")
+            raw_record.get(
+                "verified"
+            )
         )
 
         online = self._normalize_boolean(
-            raw_record.get("online")
+            raw_record.get(
+                "online"
+            )
         )
 
         target = self._normalize_string(
-            raw_record.get("target")
+            raw_record.get(
+                "target"
+            )
         )
 
         indicators = self._extract_indicators(
             phishing_url=phishing_url,
-            raw_details=raw_record.get("details"),
+            raw_details=raw_record.get(
+                "details"
+            ),
             verified=verified,
             online=online,
         )
@@ -235,7 +316,9 @@ class PhishTankThreatSource(ThreatSource):
         references: List[str] = []
 
         if phish_detail_url:
-            references.append(phish_detail_url)
+            references.append(
+                phish_detail_url
+            )
 
         title = self._build_title(
             target=target,
@@ -243,46 +326,60 @@ class PhishTankThreatSource(ThreatSource):
             online=online,
         )
 
-        description = self._build_description(
-            target=target,
-            verified=verified,
-            online=online,
+        description = (
+            self._build_description(
+                target=target,
+                verified=verified,
+                online=online,
+            )
         )
 
-        source_urls: Dict[str, str] = {}
+        source_urls: Dict[
+            str,
+            str,
+        ] = {}
 
         if phish_detail_url:
-            source_urls[self.SOURCE_NAME] = (
-                phish_detail_url
-            )
+            source_urls[
+                self.SOURCE_NAME
+            ] = phish_detail_url
 
-        source_dates: Dict[str, str] = {}
+        source_dates: Dict[
+            str,
+            str,
+        ] = {}
 
         if submission_time:
-            source_dates["submission_time"] = (
-                submission_time
-            )
+            source_dates[
+                "submission_time"
+            ] = submission_time
 
         if verification_time:
-            source_dates["verification_time"] = (
-                verification_time
-            )
+            source_dates[
+                "verification_time"
+            ] = verification_time
 
         return Threat(
             id=f"PHISHTANK-{phish_id}",
+            category=self.THREAT_CATEGORY,
+            source=self.SOURCE_NAME,
             external_ids={
-                "PHISHTANK": [str(phish_id)],
+                "PHISHTANK": [
+                    str(phish_id)
+                ],
             },
             title=title,
             description=description,
-            threat_type=self.THREAT_TYPE,
-            source=self.SOURCE_NAME,
             indicators=indicators,
             labels=labels,
             references=references,
             source_urls=source_urls,
-            published_date=submission_time,
-            reviewed_date=verification_time,
+            published_date=(
+                submission_time
+            ),
+            reviewed_date=(
+                verification_time
+            ),
             source_dates=source_dates,
             raw=dict(raw_record),
         )
@@ -304,7 +401,9 @@ class PhishTankThreatSource(ThreatSource):
         PhishTank record.
         """
 
-        indicators: List[Indicator] = []
+        indicators: List[
+            Indicator
+        ] = []
 
         observation_metadata = (
             self._build_observation_metadata(
@@ -334,13 +433,16 @@ class PhishTankThreatSource(ThreatSource):
         )
 
         if hostname:
-            hostname_type = self._detect_ip_type(
-                hostname
+            hostname_type = (
+                self._detect_ip_type(
+                    hostname
+                )
             )
 
             indicator_type = (
                 hostname_type
-                if hostname_type is not None
+                if hostname_type
+                is not None
                 else "domain"
             )
 
@@ -359,23 +461,39 @@ class PhishTankThreatSource(ThreatSource):
                         if verified is True
                         else None
                     ),
-                    metadata=hostname_metadata,
+                    metadata=(
+                        hostname_metadata
+                    ),
                 ),
             )
 
-        if not isinstance(raw_details, list):
+        if not isinstance(
+            raw_details,
+            list,
+        ):
             return indicators
 
         for detail in raw_details:
-            if not isinstance(detail, dict):
+            if not isinstance(
+                detail,
+                dict,
+            ):
                 continue
 
-            ip_address_value = self._normalize_string(
-                detail.get("ip_address")
+            ip_address_value = (
+                self._normalize_string(
+                    detail.get(
+                        "ip_address"
+                    )
+                )
             )
 
-            cidr_block = self._normalize_string(
-                detail.get("cidr_block")
+            cidr_block = (
+                self._normalize_string(
+                    detail.get(
+                        "cidr_block"
+                    )
+                )
             )
 
             network_metadata = (
@@ -393,15 +511,21 @@ class PhishTankThreatSource(ThreatSource):
                     )
                 )
 
-                if indicator_type is not None:
+                if (
+                    indicator_type
+                    is not None
+                ):
                     self._append_indicator_if_unique(
                         indicators,
                         Indicator(
                             type=indicator_type,
-                            value=ip_address_value,
+                            value=(
+                                ip_address_value
+                            ),
                             confidence=(
                                 1.0
-                                if verified is True
+                                if verified
+                                is True
                                 else None
                             ),
                             metadata=dict(
@@ -452,8 +576,13 @@ class PhishTankThreatSource(ThreatSource):
             for indicator in indicators
         }
 
-        if candidate_key not in existing_keys:
-            indicators.append(candidate)
+        if (
+            candidate_key
+            not in existing_keys
+        ):
+            indicators.append(
+                candidate
+            )
 
     def _build_observation_metadata(
         self,
@@ -465,15 +594,22 @@ class PhishTankThreatSource(ThreatSource):
         Build common metadata describing the observable status.
         """
 
-        metadata: Dict[str, Any] = {
+        metadata: Dict[
+            str,
+            Any,
+        ] = {
             "source": self.SOURCE_NAME,
         }
 
         if verified is not None:
-            metadata["verified"] = verified
+            metadata[
+                "verified"
+            ] = verified
 
         if online is not None:
-            metadata["online"] = online
+            metadata[
+                "online"
+            ] = online
 
         return metadata
 
@@ -488,28 +624,41 @@ class PhishTankThreatSource(ThreatSource):
         Preserve useful PhishTank network context.
         """
 
-        metadata = self._build_observation_metadata(
-            verified=verified,
-            online=online,
+        metadata = (
+            self._build_observation_metadata(
+                verified=verified,
+                online=online,
+            )
         )
 
         optional_fields = {
-            "cidr_block": "cidr_block",
-            "announcing_network": "announcing_network",
+            "cidr_block": (
+                "cidr_block"
+            ),
+            "announcing_network": (
+                "announcing_network"
+            ),
             "rir": "rir",
             "country": "country",
-            "detail_time": "detail_time",
+            "detail_time": (
+                "detail_time"
+            ),
         }
 
-        for source_key, metadata_key in (
-            optional_fields.items()
-        ):
+        for (
+            source_key,
+            metadata_key,
+        ) in optional_fields.items():
             value = self._normalize_string(
-                raw_detail.get(source_key)
+                raw_detail.get(
+                    source_key
+                )
             )
 
             if value is not None:
-                metadata[metadata_key] = value
+                metadata[
+                    metadata_key
+                ] = value
 
         return metadata
 
@@ -524,26 +673,38 @@ class PhishTankThreatSource(ThreatSource):
         verified: Optional[bool],
         online: Optional[bool],
     ) -> str:
+        """
+        Build a readable phishing title.
+        """
+
         target_label = (
             target
-            if target and target.lower() != "other"
+            if (
+                target
+                and target.lower()
+                != "other"
+            )
             else "unknown target"
         )
 
-        if verified is True and online is True:
+        if (
+            verified is True
+            and online is True
+        ):
             return (
-                "Verified online phishing URL targeting "
-                f"{target_label}"
+                "Verified online phishing URL "
+                f"targeting {target_label}"
             )
 
         if verified is True:
             return (
-                "Verified phishing URL targeting "
-                f"{target_label}"
+                "Verified phishing URL "
+                f"targeting {target_label}"
             )
 
         return (
-            f"Phishing URL targeting {target_label}"
+            "Phishing URL targeting "
+            f"{target_label}"
         )
 
     @staticmethod
@@ -553,6 +714,10 @@ class PhishTankThreatSource(ThreatSource):
         verified: Optional[bool],
         online: Optional[bool],
     ) -> str:
+        """
+        Build a readable phishing description.
+        """
+
         target_description = (
             target
             if target
@@ -568,13 +733,18 @@ class PhishTankThreatSource(ThreatSource):
         online_description = (
             "currently online"
             if online is True
-            else "not confirmed as currently online"
+            else (
+                "not confirmed as "
+                "currently online"
+            )
         )
 
         return (
-            f"A {verification_description} phishing URL "
-            f"targeting {target_description} was reported "
-            f"by PhishTank and is {online_description}."
+            f"A {verification_description} "
+            "phishing URL targeting "
+            f"{target_description} was "
+            "reported by PhishTank and is "
+            f"{online_description}."
         )
 
     def _build_labels(
@@ -584,24 +754,39 @@ class PhishTankThreatSource(ThreatSource):
         online: Optional[bool],
         target: Optional[str],
     ) -> List[str]:
+        """
+        Build descriptive phishing labels.
+        """
+
         labels = [
             "phishing",
             "malicious-url",
         ]
 
         if verified is True:
-            labels.append("verified")
+            labels.append(
+                "verified"
+            )
+
         elif verified is False:
-            labels.append("unverified")
+            labels.append(
+                "unverified"
+            )
 
         if online is True:
-            labels.append("online")
+            labels.append(
+                "online"
+            )
+
         elif online is False:
-            labels.append("offline")
+            labels.append(
+                "offline"
+            )
 
         if target:
             normalized_target = (
-                target.strip()
+                target
+                .strip()
                 .lower()
                 .replace(" ", "-")
             )
@@ -622,12 +807,20 @@ class PhishTankThreatSource(ThreatSource):
     def _normalize_phish_id(
         value: Any,
     ) -> Optional[int]:
+        """
+        Normalize a PhishTank identifier.
+        """
+
         if isinstance(value, bool):
             return None
 
         try:
             phish_id = int(value)
-        except (TypeError, ValueError):
+
+        except (
+            TypeError,
+            ValueError,
+        ):
             return None
 
         if phish_id <= 0:
@@ -639,13 +832,24 @@ class PhishTankThreatSource(ThreatSource):
     def _normalize_string(
         value: Any,
     ) -> Optional[str]:
+        """
+        Normalize an optional source value to a non-empty string.
+        """
+
         if value is None:
             return None
 
-        if not isinstance(value, str):
+        if not isinstance(
+            value,
+            str,
+        ):
             value = str(value)
 
-        normalized = value.strip()
+        normalized = (
+            value
+            .replace("\u00a0", " ")
+            .strip()
+        )
 
         return normalized or None
 
@@ -653,13 +857,21 @@ class PhishTankThreatSource(ThreatSource):
     def _normalize_boolean(
         value: Any,
     ) -> Optional[bool]:
+        """
+        Normalize PhishTank boolean representations.
+        """
+
         if isinstance(value, bool):
             return value
 
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip().lower()
+        normalized = (
+            value
+            .strip()
+            .lower()
+        )
 
         if normalized in {
             "yes",
@@ -683,15 +895,27 @@ class PhishTankThreatSource(ThreatSource):
     def _extract_hostname(
         url: str,
     ) -> Optional[str]:
+        """
+        Extract a normalized hostname from a URL.
+        """
+
         try:
-            hostname = urlparse(url).hostname
+            hostname = (
+                urlparse(url).hostname
+            )
+
         except ValueError:
             return None
 
         if not hostname:
             return None
 
-        return hostname.strip().lower() or None
+        return (
+            hostname
+            .strip()
+            .lower()
+            or None
+        )
 
     @staticmethod
     def _detect_ip_type(
@@ -702,7 +926,10 @@ class PhishTankThreatSource(ThreatSource):
         """
 
         try:
-            parsed_ip = ip_address(value)
+            parsed_ip = ip_address(
+                value
+            )
+
         except ValueError:
             return None
 
@@ -715,12 +942,18 @@ class PhishTankThreatSource(ThreatSource):
     def _deduplicate_strings(
         values: List[str],
     ) -> List[str]:
+        """
+        Remove duplicate strings while preserving their order.
+        """
+
         result: List[str] = []
-        seen = set()
+        seen: set[str] = set()
 
         for value in values:
-            if value not in seen:
-                result.append(value)
-                seen.add(value)
+            if value in seen:
+                continue
+
+            result.append(value)
+            seen.add(value)
 
         return result

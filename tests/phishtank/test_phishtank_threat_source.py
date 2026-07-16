@@ -10,6 +10,7 @@ from application.services.phishtank_threat_source import (
 from domain.collection_result import CollectionResult
 from domain.indicator import Indicator
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 
 
 # ============================================================
@@ -177,7 +178,10 @@ def test_source_name() -> None:
 
 def test_source_constants() -> None:
     assert PhishTankThreatSource.SOURCE_NAME == "PHISHTANK"
-    assert PhishTankThreatSource.THREAT_TYPE == "phishing"
+    assert (
+        PhishTankThreatSource.THREAT_CATEGORY
+        is ThreatCategory.PHISHING
+    )
 
 
 @pytest.mark.parametrize(
@@ -256,8 +260,8 @@ def test_maps_complete_record_to_threat(
         "PHISHTANK": ["9477391"],
     }
 
-    assert threat.threat_type == "phishing"
     assert threat.source == "PHISHTANK"
+    assert threat.category is ThreatCategory.PHISHING
 
     assert threat.title == (
         "Verified online phishing URL targeting "
@@ -1082,6 +1086,7 @@ def test_collect_returns_expected_metadata(
 
     assert result.metadata == {
         "source": "PHISHTANK",
+        "category": ThreatCategory.PHISHING.value,
         "raw_record_count": 1,
         "threat_count": 1,
         "skipped_record_count": 0,

@@ -1,6 +1,8 @@
+# application/services/urlhaus_threat_source.py
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from ipaddress import ip_address
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -9,6 +11,7 @@ from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.indicator import Indicator
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from infrastructure.adapters.outbound.urlhaus_connector import (
     URLhausConnector,
 )
@@ -22,7 +25,7 @@ class URLhausThreatSource(ThreatSource):
     URLhaus reports URLs that directly distribute malware payloads.
     Each valid URLhaus record is normalized into:
 
-    - one Threat of type ``malware_distribution``;
+    - one Threat categorized as malware distribution;
     - one URL Indicator;
     - one host Indicator when the host is valid;
     - optional file-hash Indicators when detailed payload data
@@ -33,7 +36,11 @@ class URLhausThreatSource(ThreatSource):
     """
 
     SOURCE_NAME = "URLHAUS"
-    NORMALIZED_THREAT_TYPE = "malware_distribution"
+
+    THREAT_CATEGORY = (
+        ThreatCategory.MALWARE_DISTRIBUTION
+    )
+
     DEFAULT_TITLE = "Malware distribution URL"
 
     def __init__(
@@ -69,11 +76,18 @@ class URLhausThreatSource(ThreatSource):
             ValueError:
                 If max_detail_requests is invalid.
         """
+
         if (
             max_detail_requests is not None
             and (
-                isinstance(max_detail_requests, bool)
-                or not isinstance(max_detail_requests, int)
+                isinstance(
+                    max_detail_requests,
+                    bool,
+                )
+                or not isinstance(
+                    max_detail_requests,
+                    int,
+                )
                 or max_detail_requests <= 0
             )
         ):
@@ -82,22 +96,33 @@ class URLhausThreatSource(ThreatSource):
                 "or None."
             )
 
-        self._connector = connector or URLhausConnector()
+        self._connector = (
+            connector
+            or URLhausConnector()
+        )
+
         self._limit = limit
-        self._enrich_with_details = enrich_with_details
-        self._max_detail_requests = max_detail_requests
+        self._enrich_with_details = (
+            enrich_with_details
+        )
+        self._max_detail_requests = (
+            max_detail_requests
+        )
 
     def name(self) -> str:
         """
         Return the normalized source name.
         """
+
         return self.SOURCE_NAME
 
     # ============================================================
     # ThreatSource contract
     # ============================================================
 
-    def fetch_raw(self) -> Dict[str, Any]:
+    def fetch_raw(
+        self,
+    ) -> Dict[str, Any]:
         """
         Retrieve recent URLhaus records.
 
@@ -105,16 +130,21 @@ class URLhausThreatSource(ThreatSource):
             Raw URLhaus response containing ``query_status`` and
             optionally an ``urls`` list.
         """
-        return self._connector.fetch_recent_urls(
-            limit=self._limit
+
+        return (
+            self._connector
+            .fetch_recent_urls(
+                limit=self._limit
+            )
         )
 
     def parse(
         self,
-        raw_data: Dict[str, Any],
+        raw_data: Any,
     ) -> List[Threat]:
         """
-        Normalize a raw URLhaus response into domain Threat objects.
+        Normalize a raw URLhaus response into malware-distribution
+        Threat objects.
 
         Malformed records are skipped individually so one invalid
         element does not invalidate the entire collection.
@@ -126,13 +156,19 @@ class URLhausThreatSource(ThreatSource):
         Returns:
             List of normalized Threat objects.
         """
+
         if not isinstance(raw_data, dict):
             return []
 
-        if raw_data.get("query_status") != "ok":
+        if (
+            raw_data.get("query_status")
+            != "ok"
+        ):
             return []
 
-        raw_urls = raw_data.get("urls")
+        raw_urls = raw_data.get(
+            "urls"
+        )
 
         if not isinstance(raw_urls, list):
             return []
@@ -141,14 +177,21 @@ class URLhausThreatSource(ThreatSource):
         detail_requests = 0
 
         for raw_entry in raw_urls:
-            if not isinstance(raw_entry, dict):
+            if not isinstance(
+                raw_entry,
+                dict,
+            ):
                 continue
 
             entry = raw_entry
 
-            if self._should_fetch_details(detail_requests):
-                detailed_entry = self._fetch_details_safely(
-                    raw_entry
+            if self._should_fetch_details(
+                detail_requests
+            ):
+                detailed_entry = (
+                    self._fetch_details_safely(
+                        raw_entry
+                    )
                 )
 
                 if detailed_entry is not None:
@@ -156,9 +199,12 @@ class URLhausThreatSource(ThreatSource):
                         summary=raw_entry,
                         details=detailed_entry,
                     )
+
                     detail_requests += 1
 
-            threat = self._parse_entry(entry)
+            threat = self._parse_entry(
+                entry
+            )
 
             if threat is not None:
                 threats.append(threat)
@@ -173,14 +219,18 @@ class URLhausThreatSource(ThreatSource):
             CollectionResult containing normalized threats and
             collection-level metadata.
         """
+
         collected_at = datetime.now(
-            timezone.utc
+            UTC
         ).isoformat()
 
         raw_data = self.fetch_raw()
         threats = self.parse(raw_data)
 
-        raw_urls = raw_data.get("urls", [])
+        raw_urls = raw_data.get(
+            "urls",
+            [],
+        )
 
         received_records = (
             len(raw_urls)
@@ -190,18 +240,30 @@ class URLhausThreatSource(ThreatSource):
 
         metadata: Dict[str, Any] = {
             "source": self.name(),
-            "query_status": raw_data.get("query_status"),
+            "category": (
+                self.THREAT_CATEGORY.value
+            ),
+            "query_status": raw_data.get(
+                "query_status"
+            ),
             "requested_limit": self._limit,
-            "received_records": received_records,
-            "parsed_threats": len(threats),
+            "received_records": (
+                received_records
+            ),
+            "parsed_threats": len(
+                threats
+            ),
             "skipped_records": max(
-                received_records - len(threats),
+                received_records
+                - len(threats),
                 0,
             ),
             "details_enrichment_enabled": (
                 self._enrich_with_details
             ),
-            "max_detail_requests": self._max_detail_requests,
+            "max_detail_requests": (
+                self._max_detail_requests
+            ),
             "collected_at": collected_at,
         }
 
@@ -219,64 +281,104 @@ class URLhausThreatSource(ThreatSource):
         entry: Dict[str, Any],
     ) -> Optional[Threat]:
         """
-        Convert one URLhaus entry into a Threat.
+        Convert one URLhaus entry into a malware-distribution
+        Threat.
 
         The URLhaus identifier and malicious URL are required.
         Other fields are treated as optional.
         """
-        urlhaus_id = self._normalize_identifier(
-            entry.get("id")
-        )
-        malicious_url = self._clean_string(
-            entry.get("url")
+
+        urlhaus_id = (
+            self._normalize_identifier(
+                entry.get("id")
+            )
         )
 
-        if urlhaus_id is None or malicious_url is None:
+        malicious_url = (
+            self._clean_string(
+                entry.get("url")
+            )
+        )
+
+        if (
+            urlhaus_id is None
+            or malicious_url is None
+        ):
             return None
 
-        canonical_id = f"URLHAUS-{urlhaus_id}"
-
-        source_reference = self._clean_string(
-            entry.get("urlhaus_reference")
+        canonical_id = (
+            f"URLHAUS-{urlhaus_id}"
         )
 
-        source_threat_type = self._clean_string(
-            entry.get("threat")
+        source_reference = (
+            self._clean_string(
+                entry.get(
+                    "urlhaus_reference"
+                )
+            )
         )
 
-        url_status = self._clean_string(
-            entry.get("url_status")
+        source_threat_type = (
+            self._clean_string(
+                entry.get("threat")
+            )
         )
 
-        date_added = self._clean_string(
-            entry.get("date_added")
+        url_status = (
+            self._clean_string(
+                entry.get(
+                    "url_status"
+                )
+            )
         )
 
-        last_online = self._clean_string(
-            entry.get("last_online")
+        date_added = (
+            self._clean_string(
+                entry.get(
+                    "date_added"
+                )
+            )
         )
 
-        reporter = self._clean_string(
-            entry.get("reporter")
+        last_online = (
+            self._clean_string(
+                entry.get(
+                    "last_online"
+                )
+            )
+        )
+
+        reporter = (
+            self._clean_string(
+                entry.get("reporter")
+            )
         )
 
         host = self._clean_string(
             entry.get("host")
         )
 
-        tags = self._normalize_string_list(
-            entry.get("tags")
+        tags = (
+            self._normalize_string_list(
+                entry.get("tags")
+            )
         )
 
-        blacklists = self._normalize_dictionary(
-            entry.get("blacklists")
+        blacklists = (
+            self._normalize_dictionary(
+                entry.get(
+                    "blacklists"
+                )
+            )
         )
 
         larted = self._parse_bool(
             entry.get("larted")
         )
 
-        payloads = entry.get("payloads")
+        payloads = entry.get(
+            "payloads"
+        )
 
         normalized_payloads = (
             payloads
@@ -308,43 +410,68 @@ class URLhausThreatSource(ThreatSource):
             labels=labels,
         )
 
-        description = self._build_description(
-            malicious_url=malicious_url,
-            host=host,
-            url_status=url_status,
-            source_threat_type=source_threat_type,
-            labels=labels,
+        description = (
+            self._build_description(
+                malicious_url=malicious_url,
+                host=host,
+                url_status=url_status,
+                source_threat_type=(
+                    source_threat_type
+                ),
+                labels=labels,
+            )
         )
 
         references: List[str] = []
 
         if source_reference is not None:
-            references.append(source_reference)
+            references.append(
+                source_reference
+            )
 
-        source_urls: Dict[str, str] = {}
+        source_urls: Dict[
+            str,
+            str,
+        ] = {}
 
         if source_reference is not None:
-            source_urls[self.SOURCE_NAME] = source_reference
+            source_urls[
+                self.SOURCE_NAME
+            ] = source_reference
 
-        source_dates: Dict[str, str] = {}
+        source_dates: Dict[
+            str,
+            str,
+        ] = {}
 
         if date_added is not None:
-            source_dates["date_added"] = date_added
-            source_dates["first_seen"] = date_added
+            source_dates[
+                "date_added"
+            ] = date_added
+
+            source_dates[
+                "first_seen"
+            ] = date_added
 
         if last_online is not None:
-            source_dates["last_online"] = last_online
+            source_dates[
+                "last_online"
+            ] = last_online
 
         return Threat(
             id=canonical_id,
+            category=self.THREAT_CATEGORY,
+            source=self.SOURCE_NAME,
             external_ids={
-                "URLHAUS": [urlhaus_id],
+                "URLHAUS": [
+                    urlhaus_id
+                ],
             },
             title=title,
             description=description,
-            advisory_type=source_threat_type,
-            threat_type=self.NORMALIZED_THREAT_TYPE,
-            source=self.SOURCE_NAME,
+            advisory_type=(
+                source_threat_type
+            ),
             indicators=indicators,
             labels=labels,
             references=references,
@@ -372,9 +499,18 @@ class URLhausThreatSource(ThreatSource):
         payloads: List[Any],
         urlhaus_id: str,
     ) -> List[Indicator]:
-        indicators: List[Indicator] = []
+        """
+        Build URL, host and payload indicators.
+        """
 
-        url_metadata: Dict[str, Any] = {
+        indicators: List[
+            Indicator
+        ] = []
+
+        url_metadata: Dict[
+            str,
+            Any,
+        ] = {
             "source": self.SOURCE_NAME,
             "urlhaus_id": urlhaus_id,
         }
@@ -384,21 +520,25 @@ class URLhausThreatSource(ThreatSource):
             "status",
             url_status,
         )
+
         self._set_if_not_none(
             url_metadata,
             "first_seen",
             date_added,
         )
+
         self._set_if_not_none(
             url_metadata,
             "last_online",
             last_online,
         )
+
         self._set_if_not_none(
             url_metadata,
             "reporter",
             reporter,
         )
+
         self._set_if_not_none(
             url_metadata,
             "provider_notified",
@@ -406,10 +546,14 @@ class URLhausThreatSource(ThreatSource):
         )
 
         if blacklists:
-            url_metadata["blacklists"] = blacklists
+            url_metadata[
+                "blacklists"
+            ] = blacklists
 
         if tags:
-            url_metadata["tags"] = list(tags)
+            url_metadata[
+                "tags"
+            ] = list(tags)
 
         indicators.append(
             Indicator(
@@ -419,23 +563,34 @@ class URLhausThreatSource(ThreatSource):
             )
         )
 
-        normalized_host = host or self._extract_host(
-            malicious_url
+        normalized_host = (
+            host
+            or self._extract_host(
+                malicious_url
+            )
         )
 
         if normalized_host is not None:
-            host_type = self._detect_host_type(
-                normalized_host
+            host_type = (
+                self._detect_host_type(
+                    normalized_host
+                )
             )
 
             if host_type is not None:
                 indicators.append(
                     Indicator(
                         type=host_type,
-                        value=normalized_host,
+                        value=(
+                            normalized_host
+                        ),
                         metadata={
-                            "source": self.SOURCE_NAME,
-                            "urlhaus_id": urlhaus_id,
+                            "source": (
+                                self.SOURCE_NAME
+                            ),
+                            "urlhaus_id": (
+                                urlhaus_id
+                            ),
                         },
                     )
                 )
@@ -447,8 +602,10 @@ class URLhausThreatSource(ThreatSource):
             )
         )
 
-        return self._deduplicate_indicators(
-            indicators
+        return (
+            self._deduplicate_indicators(
+                indicators
+            )
         )
 
     def _build_payload_indicators(
@@ -457,25 +614,42 @@ class URLhausThreatSource(ThreatSource):
         payloads: List[Any],
         urlhaus_id: str,
     ) -> List[Indicator]:
-        indicators: List[Indicator] = []
+        """
+        Build MD5 and SHA-256 indicators from payload records.
+        """
+
+        indicators: List[
+            Indicator
+        ] = []
 
         for payload in payloads:
-            if not isinstance(payload, dict):
+            if not isinstance(
+                payload,
+                dict,
+            ):
                 continue
 
-            common_metadata = self._build_payload_metadata(
-                payload=payload,
-                urlhaus_id=urlhaus_id,
+            common_metadata = (
+                self._build_payload_metadata(
+                    payload=payload,
+                    urlhaus_id=urlhaus_id,
+                )
             )
 
             md5_hash = self._normalize_hash(
-                payload.get("response_md5"),
+                payload.get(
+                    "response_md5"
+                ),
                 expected_length=32,
             )
 
-            sha256_hash = self._normalize_hash(
-                payload.get("response_sha256"),
-                expected_length=64,
+            sha256_hash = (
+                self._normalize_hash(
+                    payload.get(
+                        "response_sha256"
+                    ),
+                    expected_length=64,
+                )
             )
 
             if md5_hash is not None:
@@ -483,7 +657,9 @@ class URLhausThreatSource(ThreatSource):
                     Indicator(
                         type="md5",
                         value=md5_hash,
-                        metadata=dict(common_metadata),
+                        metadata=dict(
+                            common_metadata
+                        ),
                     )
                 )
 
@@ -492,7 +668,9 @@ class URLhausThreatSource(ThreatSource):
                     Indicator(
                         type="sha256",
                         value=sha256_hash,
-                        metadata=dict(common_metadata),
+                        metadata=dict(
+                            common_metadata
+                        ),
                     )
                 )
 
@@ -504,34 +682,63 @@ class URLhausThreatSource(ThreatSource):
         payload: Dict[str, Any],
         urlhaus_id: str,
     ) -> Dict[str, Any]:
-        metadata: Dict[str, Any] = {
+        """
+        Preserve useful URLhaus payload metadata.
+        """
+
+        metadata: Dict[
+            str,
+            Any,
+        ] = {
             "source": self.SOURCE_NAME,
             "urlhaus_id": urlhaus_id,
         }
 
         field_mapping = {
-            "firstseen": "first_seen",
+            "firstseen": (
+                "first_seen"
+            ),
             "filename": "filename",
             "file_type": "file_type",
-            "response_size": "response_size",
-            "signature": "malware_signature",
+            "response_size": (
+                "response_size"
+            ),
+            "signature": (
+                "malware_signature"
+            ),
             "imphash": "imphash",
             "ssdeep": "ssdeep",
             "tlsh": "tlsh",
             "magika": "magika",
-            "urlhaus_download": "urlhaus_download",
+            "urlhaus_download": (
+                "urlhaus_download"
+            ),
         }
 
-        for source_field, target_field in field_mapping.items():
-            value = payload.get(source_field)
+        for (
+            source_field,
+            target_field,
+        ) in field_mapping.items():
+            value = payload.get(
+                source_field
+            )
 
             if value is not None:
-                metadata[target_field] = value
+                metadata[
+                    target_field
+                ] = value
 
-        virustotal = payload.get("virustotal")
+        virustotal = payload.get(
+            "virustotal"
+        )
 
-        if isinstance(virustotal, dict):
-            metadata["virustotal"] = dict(virustotal)
+        if isinstance(
+            virustotal,
+            dict,
+        ):
+            metadata[
+                "virustotal"
+            ] = dict(virustotal)
 
         return metadata
 
@@ -543,13 +750,23 @@ class URLhausThreatSource(ThreatSource):
         self,
         detail_requests: int,
     ) -> bool:
+        """
+        Determine whether another detail request may be performed.
+        """
+
         if not self._enrich_with_details:
             return False
 
-        if self._max_detail_requests is None:
+        if (
+            self._max_detail_requests
+            is None
+        ):
             return True
 
-        return detail_requests < self._max_detail_requests
+        return (
+            detail_requests
+            < self._max_detail_requests
+        )
 
     def _fetch_details_safely(
         self,
@@ -559,8 +776,11 @@ class URLhausThreatSource(ThreatSource):
         Retrieve detailed URL information without failing the entire
         collection if one enrichment request fails.
         """
-        urlhaus_id = self._normalize_identifier(
-            summary.get("id")
+
+        urlhaus_id = (
+            self._normalize_identifier(
+                summary.get("id")
+            )
         )
 
         if urlhaus_id is None:
@@ -568,19 +788,24 @@ class URLhausThreatSource(ThreatSource):
 
         try:
             details = (
-                self._connector.fetch_url_information_by_id(
+                self._connector
+                .fetch_url_information_by_id(
                     urlhaus_id
                 )
             )
+
         except Exception:
-            # The summary record remains usable even if detailed
+            # The summary record remains usable even when detailed
             # enrichment temporarily fails.
             return None
 
         if not isinstance(details, dict):
             return None
 
-        if details.get("query_status") != "ok":
+        if (
+            details.get("query_status")
+            != "ok"
+        ):
             return None
 
         return details
@@ -597,6 +822,7 @@ class URLhausThreatSource(ThreatSource):
         Detailed fields take precedence, while fields available only
         in the summary response are retained.
         """
+
         merged = dict(summary)
         merged.update(details)
 
@@ -612,23 +838,37 @@ class URLhausThreatSource(ThreatSource):
         host: Optional[str],
         labels: List[str],
     ) -> str:
-        malware_signature = self._find_malware_label(
-            labels
+        """
+        Build a readable malware-distribution title.
+        """
+
+        malware_signature = (
+            self._find_malware_label(
+                labels
+            )
         )
 
-        if malware_signature and host:
+        if (
+            malware_signature
+            and host
+        ):
             return (
-                f"{malware_signature} malware distribution "
+                f"{malware_signature} "
+                "malware distribution "
                 f"from {host}"
             )
 
         if malware_signature:
             return (
-                f"{malware_signature} malware distribution URL"
+                f"{malware_signature} "
+                "malware distribution URL"
             )
 
         if host:
-            return f"Malware distribution URL on {host}"
+            return (
+                "Malware distribution URL "
+                f"on {host}"
+            )
 
         return self.DEFAULT_TITLE
 
@@ -641,8 +881,15 @@ class URLhausThreatSource(ThreatSource):
         source_threat_type: Optional[str],
         labels: List[str],
     ) -> str:
+        """
+        Build a readable URLhaus threat description.
+        """
+
         parts = [
-            "URLhaus reported a URL used to distribute malware."
+            (
+                "URLhaus reported a URL used "
+                "to distribute malware."
+            )
         ]
 
         if host is not None:
@@ -652,12 +899,14 @@ class URLhausThreatSource(ThreatSource):
 
         if url_status is not None:
             parts.append(
-                f"The URL status is {url_status}."
+                "The URL status is "
+                f"{url_status}."
             )
 
         if source_threat_type is not None:
             parts.append(
-                "The URLhaus threat classification is "
+                "The URLhaus threat "
+                "classification is "
                 f"{source_threat_type}."
             )
 
@@ -668,8 +917,9 @@ class URLhausThreatSource(ThreatSource):
             )
 
         parts.append(
-            "The original malicious URL is preserved as an "
-            "indicator and must not be opened directly."
+            "The original malicious URL is "
+            "preserved as an indicator and "
+            "must not be opened directly."
         )
 
         return " ".join(parts)
@@ -684,6 +934,7 @@ class URLhausThreatSource(ThreatSource):
         URLhaus tags are heterogeneous. Technical tags are excluded
         from title generation, but all tags remain stored in labels.
         """
+
         technical_tags = {
             "32-bit",
             "64-bit",
@@ -701,7 +952,10 @@ class URLhausThreatSource(ThreatSource):
         }
 
         for label in labels:
-            if label.lower() not in technical_tags:
+            if (
+                label.lower()
+                not in technical_tags
+            ):
                 return label
 
         return None
@@ -714,14 +968,24 @@ class URLhausThreatSource(ThreatSource):
     def _normalize_identifier(
         value: Any,
     ) -> Optional[str]:
+        """
+        Normalize a URLhaus numeric identifier.
+        """
+
         if isinstance(value, bool):
             return None
 
         if isinstance(value, int):
-            return str(value) if value >= 0 else None
+            return (
+                str(value)
+                if value >= 0
+                else None
+            )
 
         if isinstance(value, str):
-            normalized = value.strip()
+            normalized = (
+                value.strip()
+            )
 
             if normalized.isdigit():
                 return normalized
@@ -732,10 +996,18 @@ class URLhausThreatSource(ThreatSource):
     def _clean_string(
         value: Any,
     ) -> Optional[str]:
+        """
+        Normalize a source value to a non-empty string.
+        """
+
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip()
+        normalized = (
+            value
+            .replace("\u00a0", " ")
+            .strip()
+        )
 
         return normalized or None
 
@@ -744,25 +1016,39 @@ class URLhausThreatSource(ThreatSource):
         cls,
         value: Any,
     ) -> List[str]:
+        """
+        Normalize and deduplicate a source string list.
+        """
+
         if not isinstance(value, list):
             return []
 
         normalized: List[str] = []
 
         for element in value:
-            cleaned = cls._clean_string(element)
+            cleaned = cls._clean_string(
+                element
+            )
 
             if cleaned is not None:
-                normalized.append(cleaned)
+                normalized.append(
+                    cleaned
+                )
 
-        return cls._deduplicate_strings(
-            normalized
+        return (
+            cls._deduplicate_strings(
+                normalized
+            )
         )
 
     @staticmethod
     def _normalize_dictionary(
         value: Any,
     ) -> Dict[str, Any]:
+        """
+        Return a copy of a dictionary source value.
+        """
+
         if not isinstance(value, dict):
             return {}
 
@@ -772,19 +1058,39 @@ class URLhausThreatSource(ThreatSource):
     def _parse_bool(
         value: Any,
     ) -> Optional[bool]:
+        """
+        Normalize URLhaus boolean representations.
+        """
+
         if isinstance(value, bool):
             return value
 
         if isinstance(value, str):
-            normalized = value.strip().lower()
+            normalized = (
+                value
+                .strip()
+                .lower()
+            )
 
-            if normalized in {"true", "1", "yes"}:
+            if normalized in {
+                "true",
+                "1",
+                "yes",
+            }:
                 return True
 
-            if normalized in {"false", "0", "no"}:
+            if normalized in {
+                "false",
+                "0",
+                "no",
+            }:
                 return False
 
-        if isinstance(value, int) and value in {0, 1}:
+        if (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and value in {0, 1}
+        ):
             return bool(value)
 
         return None
@@ -793,17 +1099,29 @@ class URLhausThreatSource(ThreatSource):
     def _extract_host(
         url: str,
     ) -> Optional[str]:
+        """
+        Extract the normalized host from a URL.
+        """
+
         try:
             parsed = urlparse(url)
+
         except ValueError:
             return None
 
         hostname = parsed.hostname
 
-        if not isinstance(hostname, str):
+        if not isinstance(
+            hostname,
+            str,
+        ):
             return None
 
-        hostname = hostname.strip()
+        hostname = (
+            hostname
+            .strip()
+            .lower()
+        )
 
         return hostname or None
 
@@ -811,10 +1129,21 @@ class URLhausThreatSource(ThreatSource):
     def _detect_host_type(
         host: str,
     ) -> Optional[str]:
+        """
+        Classify a URLhaus host as domain, IPv4 or IPv6.
+        """
+
         try:
-            parsed_ip = ip_address(host)
+            parsed_ip = ip_address(
+                host
+            )
+
         except ValueError:
-            normalized_host = host.strip().lower()
+            normalized_host = (
+                host
+                .strip()
+                .lower()
+            )
 
             if not normalized_host:
                 return None
@@ -832,16 +1161,28 @@ class URLhausThreatSource(ThreatSource):
         *,
         expected_length: int,
     ) -> Optional[str]:
+        """
+        Normalize and validate a hexadecimal file hash.
+        """
+
         if not isinstance(value, str):
             return None
 
-        normalized = value.strip().lower()
+        normalized = (
+            value
+            .strip()
+            .lower()
+        )
 
-        if len(normalized) != expected_length:
+        if (
+            len(normalized)
+            != expected_length
+        ):
             return None
 
         try:
             int(normalized, 16)
+
         except ValueError:
             return None
 
@@ -853,6 +1194,10 @@ class URLhausThreatSource(ThreatSource):
         key: str,
         value: Any,
     ) -> None:
+        """
+        Add a metadata value only when it is available.
+        """
+
         if value is not None:
             target[key] = value
 
@@ -860,16 +1205,26 @@ class URLhausThreatSource(ThreatSource):
     def _deduplicate_strings(
         values: List[str],
     ) -> List[str]:
+        """
+        Deduplicate strings case-insensitively while preserving
+        their original order and representation.
+        """
+
         seen: set[str] = set()
         result: List[str] = []
 
         for value in values:
-            deduplication_key = value.lower()
+            deduplication_key = (
+                value.lower()
+            )
 
             if deduplication_key in seen:
                 continue
 
-            seen.add(deduplication_key)
+            seen.add(
+                deduplication_key
+            )
+
             result.append(value)
 
         return result
@@ -885,8 +1240,14 @@ class URLhausThreatSource(ThreatSource):
         the domain object, but using an explicit key makes the rule
         clear here.
         """
-        seen: set[tuple[str, str]] = set()
-        result: List[Indicator] = []
+
+        seen: set[
+            tuple[str, str]
+        ] = set()
+
+        result: List[
+            Indicator
+        ] = []
 
         for indicator in indicators:
             key = (
@@ -908,10 +1269,17 @@ class URLhausThreatSource(ThreatSource):
         tags: List[str],
         payloads: List[Any],
     ) -> List[str]:
+        """
+        Build labels from URLhaus tags and payload attributes.
+        """
+
         labels = list(tags)
 
         for payload in payloads:
-            if not isinstance(payload, dict):
+            if not isinstance(
+                payload,
+                dict,
+            ):
                 continue
 
             for field_name in (
@@ -920,10 +1288,16 @@ class URLhausThreatSource(ThreatSource):
                 "magika",
             ):
                 value = self._clean_string(
-                    payload.get(field_name)
+                    payload.get(
+                        field_name
+                    )
                 )
 
                 if value is not None:
                     labels.append(value)
 
-        return self._deduplicate_strings(labels)
+        return (
+            self._deduplicate_strings(
+                labels
+            )
+        )

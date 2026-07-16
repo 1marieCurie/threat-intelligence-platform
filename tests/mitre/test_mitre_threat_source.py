@@ -11,6 +11,7 @@ from application.services.mitre_threat_source import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.mitre_connector import (
     MITREConnector,
@@ -370,6 +371,7 @@ def test_parse_single_record(
     # Identity
     assert threat.id == "CVE-2026-0964"
     assert threat.source == "MITRE"
+    assert threat.category is ThreatCategory.VULNERABILITY
 
     # Main fields
     assert threat.title == (
@@ -1577,6 +1579,11 @@ def test_collect_metadata(
     assert (
         result.metadata["source"]
         == "MITRE"
+    )
+
+    assert (
+        result.metadata["category"]
+        == ThreatCategory.VULNERABILITY.value
     )
 
     assert (

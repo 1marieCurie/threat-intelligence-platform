@@ -10,6 +10,7 @@ from application.services.github_advisory_threat_source import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.github_advisory_connector import (
     GitHubAdvisoryConnector,
@@ -339,6 +340,7 @@ def test_unit_maps_complete_advisory_to_threat(
     # Identity
     assert threat.id == "CVE-2021-44228"
     assert threat.source == "github_advisory"
+    assert threat.category is ThreatCategory.VULNERABILITY
 
     assert threat.external_ids == {
         "GHSA": ["GHSA-jfh8-c2jp-5v3q"],
@@ -1769,6 +1771,10 @@ def test_unit_collect_returns_collection_result(
         "github_advisory"
     )
 
+    assert result.metadata["category"] == (
+        ThreatCategory.VULNERABILITY.value
+    )
+
     assert result.metadata["api_version"] == (
         GitHubAdvisoryConnector.API_VERSION
     )
@@ -1819,6 +1825,10 @@ def test_unit_collect_returns_collection_result(
     for threat in result.threats:
         assert threat.source == (
             "github_advisory"
+        )
+        assert (
+            threat.category
+            is ThreatCategory.VULNERABILITY
         )
 
 

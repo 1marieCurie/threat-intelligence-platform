@@ -10,6 +10,7 @@ from application.services.urlhaus_threat_source import (
 from domain.collection_result import CollectionResult
 from domain.indicator import Indicator
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from infrastructure.adapters.outbound.urlhaus_connector import (
     URLhausConnector,
 )
@@ -295,11 +296,11 @@ def test_parse_complete_urlhaus_entry(
         "malware_download"
     )
 
-    assert threat.threat_type == (
-        "malware_distribution"
-    )
-
     assert threat.source == "URLHAUS"
+    assert (
+        threat.category
+        is ThreatCategory.MALWARE_DISTRIBUTION
+    )
 
     assert threat.labels == [
         "32-bit",
@@ -1122,6 +1123,9 @@ def test_collect_returns_collection_result(
     )
 
     assert result.metadata["source"] == "URLHAUS"
+    assert result.metadata["category"] == (
+        ThreatCategory.MALWARE_DISTRIBUTION.value
+    )
     assert result.metadata["query_status"] == "ok"
     assert result.metadata["requested_limit"] == 5
     assert result.metadata["received_records"] == 1

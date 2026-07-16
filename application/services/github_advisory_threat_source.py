@@ -8,6 +8,7 @@ from typing import Any
 from application.ports.inbound.threat_source import ThreatSource
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.outbound.github_advisory_connector import (
     GitHubAdvisoryConnector,
@@ -17,13 +18,18 @@ from infrastructure.adapters.outbound.github_advisory_connector import (
 class GitHubAdvisoryThreatSource(ThreatSource):
     """
     Application service responsible for collecting GitHub Security
-    Advisories and mapping them to normalized Threat entities.
+    Advisories and mapping them to normalized vulnerability Threat
+    entities.
 
     The outbound connector retrieves raw GitHub dictionaries.
     This service contains the GitHub-specific normalization rules.
     """
 
     SOURCE_NAME = "github_advisory"
+
+    THREAT_CATEGORY = (
+        ThreatCategory.VULNERABILITY
+    )
 
     CWE_PLACEHOLDERS = {
         "NVD-CWE-NOINFO",
@@ -65,7 +71,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
     def collect(self) -> CollectionResult:
         """
-        Collect raw GitHub advisories and map them to Threat entities.
+        Collect raw GitHub advisories and map them to vulnerability
+        Threat entities.
         """
 
         raw_advisories = self.fetch_raw()
@@ -73,6 +80,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         metadata: dict[str, Any] = {
             "source": self.name(),
+            "category": (
+                self.THREAT_CATEGORY.value
+            ),
             "api_version": self.connector.API_VERSION,
             "advisory_type": self.advisory_type,
             "ecosystem": self.ecosystem,
@@ -117,7 +127,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         raw_data: Any,
     ) -> list[Threat]:
         """
-        Convert raw GitHub advisory dictionaries into Threat entities.
+        Convert raw GitHub advisory dictionaries into vulnerability
+        Threat entities.
 
         Invalid top-level values and non-dictionary advisory elements
         are ignored safely. Advisories without any usable CVE or GHSA
@@ -147,7 +158,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         advisory: dict[str, Any],
     ) -> Threat | None:
         """
-        Map one GitHub advisory to one normalized Threat.
+        Map one GitHub advisory to one normalized vulnerability
+        Threat.
         """
 
         ghsa_id = self._clean_string(
@@ -228,7 +240,8 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         return Threat(
             id=canonical_id,
-            source=self.name(),
+            category=self.THREAT_CATEGORY,
+            source=self.SOURCE_NAME,
             external_ids=external_ids,
             title=self._clean_string(
                 advisory.get("summary")
@@ -468,7 +481,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
                 ),
             )
 
-        legacy_cvss = advisory.get("cvss")
+        legacy_cvss = advisory.get(
+            "cvss"
+        )
 
         has_cvss_v3 = any(
             version.startswith("3")
@@ -637,7 +652,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         Extract EPSS percentage and percentile supplied by GitHub.
         """
 
-        epss = advisory.get("epss")
+        epss = advisory.get(
+            "epss"
+        )
 
         if not isinstance(epss, dict):
             return None, None
@@ -694,7 +711,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
             if isinstance(package, dict):
                 ecosystem = cls._clean_string(
-                    package.get("ecosystem")
+                    package.get(
+                        "ecosystem"
+                    )
                 )
 
                 package_name = (
@@ -786,18 +805,11 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     ) -> list[WeaknessReference]:
         """
         Convert GitHub CWE assertions into WeaknessReference objects.
-
-        GitHub usually returns values such as:
-
-        {
-            "cwe_id": "CWE-79",
-            "name": "Improper Neutralization of Input"
-        }
-
-        The GitHub-provided name is preserved as source_description.
         """
 
-        cwes = advisory.get("cwes")
+        cwes = advisory.get(
+            "cwes"
+        )
 
         if not isinstance(cwes, list):
             return []
@@ -816,7 +828,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         for cwe in cwes:
             reference = (
-                cls._parse_cwe_assertion(cwe)
+                cls._parse_cwe_assertion(
+                    cwe
+                )
             )
 
             if reference is None:
@@ -1003,12 +1017,6 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     ) -> str | None:
         """
         Normalize a CWE identifier to CWE-N.
-
-        Examples:
-            79       -> CWE-79
-            "79"     -> CWE-79
-            "cwe-79" -> CWE-79
-            "CWE-79" -> CWE-79
         """
 
         if isinstance(value, bool):
@@ -1029,7 +1037,9 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
         normalized = normalized.upper()
 
-        if normalized.startswith("CWE-"):
+        if normalized.startswith(
+            "CWE-"
+        ):
             numeric_part = (
                 normalized[4:].strip()
             )
@@ -1053,9 +1063,6 @@ class GitHubAdvisoryThreatSource(ThreatSource):
     ) -> str | None:
         """
         Extract a canonical CWE identifier from combined text.
-
-        Example:
-            CWE-79: Improper Neutralization of Input
         """
 
         normalized_text = (
@@ -1101,9 +1108,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
         result: list[str] = []
 
         for reference in references:
-            reference_url: (
-                str | None
-            ) = None
+            reference_url: str | None = None
 
             if isinstance(reference, str):
                 reference_url = (
@@ -1156,9 +1161,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             )
 
             if normalized_value:
-                result[key] = (
-                    normalized_value
-                )
+                result[key] = normalized_value
 
         return result
 
@@ -1207,9 +1210,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             )
 
             if normalized_value:
-                result[key] = (
-                    normalized_value
-                )
+                result[key] = normalized_value
 
         return result
 
@@ -1302,8 +1303,7 @@ class GitHubAdvisoryThreatSource(ThreatSource):
 
                 if (
                     normalized
-                    and normalized
-                    not in locations
+                    and normalized not in locations
                 ):
                     locations.append(
                         normalized
@@ -1460,4 +1460,3 @@ class GitHubAdvisoryThreatSource(ThreatSource):
             for key, value in data.items()
             if value is not None
         }
-

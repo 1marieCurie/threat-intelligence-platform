@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.collection_result import CollectionResult
 
 from infrastructure.adapters.outbound.epss_connector import EPSSConnector
@@ -503,3 +504,22 @@ def test_integration_enrich_single_threat_with_real_epss_api():
 
     assert 0 <= threat.epss_score <= 1
     assert 0 <= threat.epss_percentile <= 1
+
+
+def test_epss_preserves_threat_category() -> None:
+    service, _ = _build_unit_service()
+
+    threat = Threat(
+        id="CVE-2021-44228",
+        category=ThreatCategory.VULNERABILITY,
+    )
+
+    result = service.enrich_threats(
+        [threat],
+        date="2026-07-16",
+    )
+
+    assert (
+        result.threats[0].category
+        is ThreatCategory.VULNERABILITY
+    )

@@ -10,6 +10,7 @@ from application.services.nvd_threat_source import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 
 
@@ -169,6 +170,7 @@ def build_fake_nvd_result() -> CollectionResult:
     threats = [
         Threat(
             id="CVE-2026-0001",
+            category=ThreatCategory.VULNERABILITY,
             description=(
                 "A fake vulnerability collected from NVD."
             ),
@@ -222,6 +224,7 @@ def build_fake_nvd_result() -> CollectionResult:
         ),
         Threat(
             id="CVE-2026-0002",
+            category=ThreatCategory.VULNERABILITY,
             description="Second fake NVD vulnerability.",
             severity="MEDIUM",
             cvss_score=6.5,
@@ -242,6 +245,7 @@ def build_fake_nvd_result() -> CollectionResult:
         ),
         Threat(
             id="CVE-2026-0003",
+            category=ThreatCategory.VULNERABILITY,
             description="Third fake NVD vulnerability.",
             severity="LOW",
             cvss_score=3.1,
@@ -264,6 +268,7 @@ def build_fake_nvd_result() -> CollectionResult:
         threats=threats,
         metadata={
             "source": "NVD",
+            "category": ThreatCategory.VULNERABILITY.value,
             "total_results": 3,
         },
     )
@@ -277,6 +282,7 @@ def build_fake_cisa_result() -> CollectionResult:
     threats = [
         Threat(
             id="CVE-2026-0001",
+            category=ThreatCategory.VULNERABILITY,
             title=(
                 "Example Product Known Exploited "
                 "Vulnerability"
@@ -317,6 +323,7 @@ def build_fake_cisa_result() -> CollectionResult:
         ),
         Threat(
             id="CVE-2026-0004",
+            category=ThreatCategory.VULNERABILITY,
             title="Second fake CISA vulnerability",
             description=(
                 "Second fake known exploited vulnerability."
@@ -328,6 +335,7 @@ def build_fake_cisa_result() -> CollectionResult:
         ),
         Threat(
             id="CVE-2026-0005",
+            category=ThreatCategory.VULNERABILITY,
             title="Third fake CISA vulnerability",
             description=(
                 "Third fake known exploited vulnerability."
@@ -343,6 +351,7 @@ def build_fake_cisa_result() -> CollectionResult:
         threats=threats,
         metadata={
             "source": "CISA",
+            "category": ThreatCategory.VULNERABILITY.value,
             "count": 3,
         },
     )
@@ -382,6 +391,22 @@ def validate_domain_independence(
 
     assert isinstance(nvd_threat, Threat)
     assert isinstance(cisa_threat, Threat)
+
+    assert (
+        nvd_threat.category
+        is ThreatCategory.VULNERABILITY
+    )
+    assert (
+        cisa_threat.category
+        is ThreatCategory.VULNERABILITY
+    )
+
+    assert nvd_result.metadata["category"] == (
+        ThreatCategory.VULNERABILITY.value
+    )
+    assert cisa_result.metadata["category"] == (
+        ThreatCategory.VULNERABILITY.value
+    )
 
     display_threat(
         nvd_threat,

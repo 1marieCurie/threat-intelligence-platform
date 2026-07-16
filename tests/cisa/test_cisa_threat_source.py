@@ -5,6 +5,7 @@ import pytest
 from application.services.cisa_threat_source import CISAThreatSource
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
 from infrastructure.adapters.inbound.cisa_ingestion_job import (
     CISAIngestionJob,
@@ -48,6 +49,9 @@ def test_cisa_collection() -> None:
     # =========================================================
 
     assert result.metadata.get("source") == "CISA"
+    assert result.metadata.get("category") == (
+        ThreatCategory.VULNERABILITY.value
+    )
 
     assert "title" in result.metadata
     assert "catalog_version" in result.metadata
@@ -87,6 +91,7 @@ def test_cisa_collection() -> None:
     assert first.id.startswith("CVE-")
 
     assert first.source == "CISA"
+    assert first.category is ThreatCategory.VULNERABILITY
 
     assert first.title is None or isinstance(
         first.title,
