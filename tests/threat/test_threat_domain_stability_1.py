@@ -403,6 +403,7 @@ def validate_domain_independence(
         "title",
         "description",
         "advisory_type",
+        "category",
         "severity",
         "cvss_score",
         "cvss_metrics",

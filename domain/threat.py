@@ -5,6 +5,8 @@ from domain.indicator import Indicator
 from domain.weakness_reference import WeaknessReference
 from domain.cwe_weakness import CWEWeakness
 
+from domain.threat_category import ThreatCategory
+
 
 @dataclass
 class Threat:
@@ -44,6 +46,12 @@ class Threat:
 
     # reviewed, unreviewed, malware, etc.
     advisory_type: Optional[str] = None
+    
+    # High-level normalized business category.
+    #
+    # Examples:
+    # vulnerability, phishing, malware_distribution
+    category: ThreatCategory = ThreatCategory.UNKNOWN
     
     # Normalized category of the threat.
     #
