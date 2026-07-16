@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, cast
+from typing import Any, Iterable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -460,10 +460,7 @@ class CWEConnector:
         )
 
         adapter = HTTPAdapter(
-            max_retries=cast(
-                Any,
-                retry_policy,
-            ),
+            max_retries=retry_policy,  # type: ignore[arg-type]
         )
 
         session.mount(
