@@ -1,66 +1,65 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Protocol, runtime_checkable
 
-from application.services.urlhaus_threat_source import (
-    URLhausThreatSource,
-)
 from domain.collection_result import CollectionResult
+
+
+@runtime_checkable
+class URLhausCollectingSource(Protocol):
+    """
+    Minimal contract required by URLhausIngestionJob.
+
+    The ingestion job depends on a capability, not on the
+    concrete URLhausThreatSource implementation.
+    """
+
+    def collect(self) -> CollectionResult:
+        ...
+
 
 class URLhausIngestionJob:
     """
     Inbound adapter responsible for triggering URLhaus ingestion.
 
-    The job delegates collection and normalization to
-    URLhausThreatSource and returns the resulting CollectionResult.
-
-    It does not contain HTTP logic or URLhaus parsing logic.
+    The job delegates collection and normalization to a compatible
+    source and validates the returned application result.
     """
 
     def __init__(
         self,
-        source: URLhausThreatSource,
+        source: URLhausCollectingSource,
     ) -> None:
-        """
-        Initialize the ingestion job.
+        if source is None:
+            raise ValueError(
+                "source is required."
+            )
 
-        Args:
-            source:
-                URLhaus application service used to collect and
-                normalize URLhaus intelligence.
-
-        Raises:
-            TypeError:
-                If source is not a URLhausThreatSource instance.
-        """
-        if not isinstance(source, URLhausThreatSource):
+        if not isinstance(
+            source,
+            URLhausCollectingSource,
+        ):
             raise TypeError(
-                "source must be an instance of "
-                "URLhausThreatSource."
+                "source must provide a collect() method."
             )
 
         self._source = source
 
     @property
-    def source(self) -> URLhausThreatSource:
-        """
-        Return the configured URLhaus source service.
-        """
+    def source(
+        self,
+    ) -> URLhausCollectingSource:
         return self._source
 
     def run(self) -> CollectionResult:
-        """
-        Execute the URLhaus ingestion workflow.
-
-        Returns:
-            CollectionResult containing normalized Threat objects
-            and collection metadata.
-        """
         result = self._source.collect()
 
-        if not isinstance(result, CollectionResult):
+        if not isinstance(
+            result,
+            CollectionResult,
+        ):
             raise TypeError(
-                "URLhausThreatSource.collect() must return "
+                "URLhaus source collect() must return "
                 "a CollectionResult."
             )
 

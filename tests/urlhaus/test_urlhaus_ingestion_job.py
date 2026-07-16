@@ -164,3 +164,26 @@ def test_run_rejects_invalid_collect_result() -> None:
         match="must return a CollectionResult",
     ):
         job.run()
+
+
+def test_constructor_rejects_missing_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="source is required",
+    ):
+        URLhausIngestionJob(
+            None  # type: ignore[arg-type]
+        )
+
+
+def test_constructor_rejects_source_without_collect() -> None:
+    class InvalidSource:
+        pass
+
+    with pytest.raises(
+        TypeError,
+        match="must provide a collect",
+    ):
+        URLhausIngestionJob(
+            InvalidSource()  # type: ignore[arg-type]
+        )

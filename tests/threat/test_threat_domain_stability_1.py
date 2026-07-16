@@ -10,6 +10,7 @@ from application.services.nvd_threat_source import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.weakness_reference import WeaknessReference
 
 
 # ============================================================
@@ -55,10 +56,10 @@ def display_threat(
     )
 
     print(
-        "Weaknesses        :",
+        "Weakness IDs      :",
         (
-            ", ".join(threat.weaknesses)
-            if threat.weaknesses
+            ", ".join(threat.weakness_ids)
+            if threat.weakness_ids
             else "N/A"
         ),
     )
@@ -189,8 +190,13 @@ def build_fake_nvd_result() -> CollectionResult:
                     ],
                 }
             ],
-            weaknesses=[
-                "CWE-79",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-79",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 "https://example.org/nvd/advisory",
@@ -219,8 +225,13 @@ def build_fake_nvd_result() -> CollectionResult:
             description="Second fake NVD vulnerability.",
             severity="MEDIUM",
             cvss_score=6.5,
-            weaknesses=[
-                "CWE-89",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-89",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 "https://example.org/nvd/second",
@@ -234,8 +245,13 @@ def build_fake_nvd_result() -> CollectionResult:
             description="Third fake NVD vulnerability.",
             severity="LOW",
             cvss_score=3.1,
-            weaknesses=[
-                "CWE-200",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-200",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[],
             raw={
@@ -275,8 +291,13 @@ def build_fake_cisa_result() -> CollectionResult:
                     "product": "Example Product",
                 }
             ],
-            weaknesses=[
-                "CWE-79",
+            weakness_references=[
+                WeaknessReference(
+                    source="GITHUB_ADVISORY",
+                    cwe_id="CWE-79",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 "https://example.org/cisa/advisory",
@@ -389,8 +410,9 @@ def validate_domain_independence(
         "epss_percentile",
         "epss_date",
         "affected_products",
-        "weaknesses",
-        "weakness_details",
+        "weakness_references",
+        "weakness_ids",
+        "official_weaknesses",
         "labels",
         "references",
         "source_urls",

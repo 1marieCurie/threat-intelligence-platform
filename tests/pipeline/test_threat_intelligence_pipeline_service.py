@@ -24,6 +24,7 @@ from application.services.threat_intelligence_pipeline_service import (
 )
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
+from domain.weakness_reference import WeaknessReference
 
 
 COMMON_CVE = "CVE-2021-44228"
@@ -282,8 +283,13 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     ],
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-502",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 "https://nvd.example/CVE-2021-44228",
@@ -327,8 +333,13 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     "product": "Log4j2",
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="GITHUB_ADVISORY",
+                    cwe_id="CWE-502",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 "https://cisa.example/CVE-2021-44228",
@@ -371,11 +382,6 @@ def build_fake_sources() -> List[FakeThreatSource]:
                         }
                     ],
                 }
-            ],
-            weaknesses=[
-                (
-                    "Deserialization of Untrusted Data"
-                )
             ],
             references=[
                 "https://mitre.example/CVE-2021-44228",
@@ -429,8 +435,13 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     ),
                 }
             ],
-            weaknesses=[
-                "CWE-502",
+            weakness_references=[
+                WeaknessReference(
+                    source="GITHUB_ADVISORY",
+                    cwe_id="CWE-502",
+                    resolution_status="resolved",
+                    resolution_method="explicit_id",
+                ),
             ],
             references=[
                 (
@@ -686,8 +697,8 @@ def display_pipeline_result(
                     f"{len(threat.affected_products)}"
                 )
                 print(
-                    f"    Weaknesses  : "
-                    f"{threat.weaknesses}"
+                    f"    Weakness IDs: "
+                    f"{threat.weakness_ids}"
                 )
                 print(
                     f"    References  : "
@@ -944,7 +955,7 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
         result.epss_enrichment_result.metadata[
             "non_cve_threats"
         ]
-        == 1
+        == 2
     )
 
     assert result.metadata["epss_status"] == "SUCCESS"
@@ -953,8 +964,8 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # Pipeline result helper methods
     # --------------------------------------------------------
 
-    assert len(result.all_threats()) == 8
-    assert len(result.unique_ids()) == 5
+    assert len(result.all_threats()) == 9
+    assert len(result.unique_ids()) == 6
     assert len(result.multi_source_groups()) == 1
     assert result.errors == []
 
@@ -1075,8 +1086,8 @@ def test_pipeline_continues_when_one_source_fails() -> None:
         "PARTIAL_SUCCESS"
     )
 
-    assert result.metadata["configured_sources"] == 5
-    assert result.metadata["successful_sources"] == 4
+    assert result.metadata["configured_sources"] == 6
+    assert result.metadata["successful_sources"] == 5
     assert result.metadata["failed_sources"] == 1
 
     assert result.failed_sources() == [

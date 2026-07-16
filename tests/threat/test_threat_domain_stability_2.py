@@ -7,6 +7,7 @@ from application.services.cisa_threat_source import CISAThreatSource
 from application.services.mitre_threat_source import MITREThreatSource
 
 from infrastructure.persistence.mitre_sync_state import MITRESyncState
+import pytest
 
 
 MITRE_TEST_FILEPATH = (
@@ -59,7 +60,7 @@ def _assert_valid_threat(threat: Threat):
 
     # Collections
     assert isinstance(threat.affected_products, list)
-    assert isinstance(threat.weaknesses, list)
+    assert isinstance(threat.weakness_ids, list)
     assert isinstance(threat.labels, list)
     assert isinstance(threat.references, list)
 
@@ -95,6 +96,7 @@ def _assert_valid_threat(threat: Threat):
 
 
 
+@pytest.mark.integration
 def test_nvd_threat_domain_stability():
 
     source = NVDThreatSource()
@@ -116,13 +118,14 @@ def test_nvd_threat_domain_stability():
     print(f"Severity    : {threat.severity}")
     print(f"CVSS Score  : {threat.cvss_score}")
     print(f"References  : {len(threat.references)}")
-    print(f"Weaknesses  : {len(threat.weaknesses)}")
+    print(f"Weaknesses  : {len(threat.weakness_ids)}")
     print(f"Products    : {len(threat.affected_products)}")
 
     _assert_valid_threat(threat)
 
 
 
+@pytest.mark.integration
 def test_cisa_threat_domain_stability():
 
     source = CISAThreatSource()
@@ -145,13 +148,14 @@ def test_cisa_threat_domain_stability():
     print(f"Known exploited date     : {threat.known_exploited_date}")
     print(f"Ransomware campaign use  : {threat.ransomware_campaign_use}")
     print(f"References               : {len(threat.references)}")
-    print(f"Weaknesses               : {len(threat.weaknesses)}")
+    print(f"Weaknesses               : {len(threat.weakness_ids)}")
     print(f"Products                 : {len(threat.affected_products)}")
 
     _assert_valid_threat(threat)
 
 
 
+@pytest.mark.integration
 def test_mitre_threat_domain_stability(tmp_path):
 
     sync_file = (
@@ -188,7 +192,7 @@ def test_mitre_threat_domain_stability(tmp_path):
     print(f"Severity    : {threat.severity}")
     print(f"CVSS Score  : {threat.cvss_score}")
     print(f"References  : {len(threat.references)}")
-    print(f"Weaknesses  : {len(threat.weaknesses)}")
+    print(f"Weaknesses  : {len(threat.weakness_ids)}")
     print(f"Products    : {len(threat.affected_products)}")
     print(f"Labels      : {len(threat.labels)}")
 
@@ -196,6 +200,7 @@ def test_mitre_threat_domain_stability(tmp_path):
 
 
 
+@pytest.mark.integration
 def test_domain_model_stable_across_nvd_cisa_mitre(tmp_path):
 
     """
@@ -251,7 +256,7 @@ def test_domain_model_stable_across_nvd_cisa_mitre(tmp_path):
         print(f"Severity    : {threat.severity}")
         print(f"CVSS Score  : {threat.cvss_score}")
         print(f"References  : {len(threat.references)}")
-        print(f"Weaknesses  : {len(threat.weaknesses)}")
+        print(f"Weaknesses  : {len(threat.weakness_ids)}")
         print(f"Products    : {len(threat.affected_products)}")
 
         _assert_valid_threat(threat)
