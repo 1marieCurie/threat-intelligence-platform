@@ -1,0 +1,39 @@
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Secrets et variables d'environnement
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Prévisualisations locales Alembic
+migration_previews/
+*.migration.sql
+
+# Fichiers temporaires
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
