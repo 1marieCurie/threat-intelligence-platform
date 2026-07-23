@@ -4,10 +4,21 @@ import os
 from collections.abc import MutableMapping
 from logging.config import fileConfig
 from typing import Literal, TypeAlias
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
 
+#charger le fichiers des variables d'environnement
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
 
 # ============================================================
 # Types du callback include_name
