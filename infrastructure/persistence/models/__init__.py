@@ -5,9 +5,12 @@ from infrastructure.persistence.models.ops import (
     SyncStateModel,
 )
 
+from infrastructure.persistence.models.raw import SourcePayloadModel
+
 __all__ = [
     "Base",
     "SourceModel",
-     "IngestionRunModel",
-     "SyncStateModel",
+    "IngestionRunModel",
+    "SourcePayloadModel",
+    "SyncStateModel",
 ]
