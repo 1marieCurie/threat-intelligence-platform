@@ -18,6 +18,12 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
 from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import (
     SqlAlchemyIngestionRunRepository,
 )
+from application.ports.outbound.sync_state_repository import (
+    SyncStateRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
+    SqlAlchemySyncStateRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -29,6 +35,7 @@ class SqlAlchemyUnitOfWork:
         self._session: Session | None = None
         self.ingestion_runs: IngestionRunRepository
         self.raw_payloads: RawPayloadRepository
+        self.sync_states: SyncStateRepository
 
     def __enter__(self) -> Self:
         if self._session is not None:
@@ -41,6 +48,9 @@ class SqlAlchemyUnitOfWork:
             session=self._session,
         )
         self.raw_payloads = SqlAlchemyRawPayloadRepository(
+            session=self._session,
+        )
+        self.sync_states = SqlAlchemySyncStateRepository(
             session=self._session,
         )
 

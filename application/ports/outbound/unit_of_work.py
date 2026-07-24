@@ -9,10 +9,14 @@ from application.ports.outbound.raw_payload_repository import (
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunRepository,
 )
+from application.ports.outbound.sync_state_repository import (
+    SyncStateRepository,
+)
 
 class UnitOfWork(Protocol):
     ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
+    sync_states: SyncStateRepository
 
     def __enter__(self) -> Self:
         ...
