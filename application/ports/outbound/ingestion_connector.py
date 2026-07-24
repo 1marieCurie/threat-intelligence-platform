@@ -29,6 +29,7 @@ class IngestionConnector(Protocol):
         self,
         *,
         cursor: str | None,
+        state_metadata: dict[str, Any] | None = None,
     ) -> FetchResult:
-        """Récupère une page ou un lot de données depuis une source."""
+        """Récupère une page ou un lot depuis une source."""
         ...

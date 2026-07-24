@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 from uuid import uuid4
+
 import pytest
 
 from application.ports.outbound.ingestion_connector import (
@@ -20,10 +21,10 @@ def test_ingest_persists_new_records_and_commits() -> None:
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = (
@@ -33,12 +34,12 @@ def test_ingest_persists_new_records_and_commits() -> None:
         )
     )
 
-    unit_of_work.ingestion_runs.create.return_value = (
-        run_id
-    )
+    unit_of_work.ingestion_runs.create.return_value = run_id
+
     unit_of_work.raw_payloads.exists_by_identity.return_value = (
         False
     )
+
     unit_of_work.ingestion_runs.mark_completed.return_value = (
         True
     )
@@ -76,40 +77,52 @@ def test_ingest_persists_new_records_and_commits() -> None:
 
     connector.fetch.assert_called_once_with(
         cursor="cursor-001",
+        state_metadata=None,
     )
 
     unit_of_work.raw_payloads.save.assert_called_once()
     unit_of_work.sync_states.upsert.assert_called_once()
     unit_of_work.ingestion_runs.mark_completed.assert_called_once()
+
     assert unit_of_work.commit.call_count == 2
-    
+
     assert result.run_id == run_id
     assert result.records_received == 1
     assert result.records_persisted == 1
     assert result.records_skipped == 0
     assert result.status == "completed"
-    
+
+
 def test_ingest_skips_existing_payload() -> None:
     source_id = uuid4()
     run_id = uuid4()
 
+    high_water_mark = "2026-07-24T10:00:00Z"
+
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = (
-        None
+        SyncStateData(
+            source_id=source_id,
+            cursor="cursor-001",
+            metadata={
+                "high_water_mark": high_water_mark,
+            },
+        )
     )
-    unit_of_work.ingestion_runs.create.return_value = (
-        run_id
-    )
+
+    unit_of_work.ingestion_runs.create.return_value = run_id
+
     unit_of_work.raw_payloads.exists_by_identity.return_value = (
         True
     )
+
     unit_of_work.ingestion_runs.mark_completed.return_value = (
         True
     )
@@ -124,7 +137,7 @@ def test_ingest_skips_existing_payload() -> None:
                 },
             )
         ],
-        next_cursor="cursor-001",
+        next_cursor="cursor-002",
     )
 
     payload_hasher = Mock()
@@ -141,15 +154,23 @@ def test_ingest_skips_existing_payload() -> None:
     )
 
     connector.fetch.assert_called_once_with(
-        cursor=None,
+        cursor="cursor-001",
+        state_metadata={
+            "high_water_mark": high_water_mark,
+        },
     )
 
     unit_of_work.raw_payloads.save.assert_not_called()
+    unit_of_work.sync_states.upsert.assert_called_once()
+    unit_of_work.ingestion_runs.mark_completed.assert_called_once()
+
     assert unit_of_work.commit.call_count == 2
 
     assert result.records_received == 1
     assert result.records_persisted == 0
     assert result.records_skipped == 1
+    assert result.status == "completed"
+
 
 def test_ingest_marks_run_failed_when_connector_fails() -> None:
     source_id = uuid4()
@@ -157,19 +178,20 @@ def test_ingest_marks_run_failed_when_connector_fails() -> None:
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = (
-        None
+        SyncStateData(
+            source_id=source_id,
+            cursor="cursor-001",
+        )
     )
 
-    unit_of_work.ingestion_runs.create.return_value = (
-        run_id
-    )
+    unit_of_work.ingestion_runs.create.return_value = run_id
 
     unit_of_work.ingestion_runs.mark_failed.return_value = (
         True
@@ -177,7 +199,7 @@ def test_ingest_marks_run_failed_when_connector_fails() -> None:
 
     connector = Mock()
     connector.fetch.side_effect = RuntimeError(
-        "Connector unavailable"
+        "Connector unavailable",
     )
 
     payload_hasher = Mock()
@@ -196,6 +218,11 @@ def test_ingest_marks_run_failed_when_connector_fails() -> None:
             source_id=source_id,
         )
 
+    connector.fetch.assert_called_once_with(
+        cursor="cursor-001",
+        state_metadata=None,
+    )
+
     unit_of_work.ingestion_runs.mark_failed.assert_called_once()
 
     failed_call = (
@@ -212,7 +239,9 @@ def test_ingest_marks_run_failed_when_connector_fails() -> None:
     unit_of_work.sync_states.upsert.assert_not_called()
     unit_of_work.raw_payloads.save.assert_not_called()
 
+    # Commit du run "running", puis commit du statut "failed".
     assert unit_of_work.commit.call_count == 2
+
 
 def test_ingest_marks_run_failed_when_persistence_fails() -> None:
     source_id = uuid4()
@@ -220,26 +249,24 @@ def test_ingest_marks_run_failed_when_persistence_fails() -> None:
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = (
         None
     )
 
-    unit_of_work.ingestion_runs.create.return_value = (
-        run_id
-    )
+    unit_of_work.ingestion_runs.create.return_value = run_id
 
     unit_of_work.raw_payloads.exists_by_identity.return_value = (
         False
     )
 
-    unit_of_work.raw_payloads.save.side_effect = (
-        RuntimeError("Database write failed")
+    unit_of_work.raw_payloads.save.side_effect = RuntimeError(
+        "Database write failed",
     )
 
     unit_of_work.ingestion_runs.mark_failed.return_value = (
@@ -275,8 +302,12 @@ def test_ingest_marks_run_failed_when_persistence_fails() -> None:
             source_id=source_id,
         )
 
-    unit_of_work.sync_states.upsert.assert_not_called()
+    connector.fetch.assert_called_once_with(
+        cursor=None,
+        state_metadata=None,
+    )
 
+    unit_of_work.sync_states.upsert.assert_not_called()
     unit_of_work.ingestion_runs.mark_failed.assert_called_once()
 
     failed_call = (
@@ -289,24 +320,36 @@ def test_ingest_marks_run_failed_when_persistence_fails() -> None:
         failed_call["error_summary"]
         == "RuntimeError: Database write failed"
     )
-    
+
+    assert unit_of_work.commit.call_count == 2
+
+
 def test_ingest_marks_run_failed_when_completion_update_fails() -> None:
     source_id = uuid4()
     run_id = uuid4()
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = None
     unit_of_work.ingestion_runs.create.return_value = run_id
-    unit_of_work.raw_payloads.exists_by_identity.return_value = False
-    unit_of_work.ingestion_runs.mark_completed.return_value = False
-    unit_of_work.ingestion_runs.mark_failed.return_value = True
+
+    unit_of_work.raw_payloads.exists_by_identity.return_value = (
+        False
+    )
+
+    unit_of_work.ingestion_runs.mark_completed.return_value = (
+        False
+    )
+
+    unit_of_work.ingestion_runs.mark_failed.return_value = (
+        True
+    )
 
     connector = Mock()
     connector.fetch.return_value = FetchResult(
@@ -338,6 +381,11 @@ def test_ingest_marks_run_failed_when_completion_update_fails() -> None:
             source_id=source_id,
         )
 
+    connector.fetch.assert_called_once_with(
+        cursor=None,
+        state_metadata=None,
+    )
+
     unit_of_work.ingestion_runs.mark_failed.assert_called_once()
 
     failed_call = (
@@ -351,27 +399,33 @@ def test_ingest_marks_run_failed_when_completion_update_fails() -> None:
         == "RuntimeError: Unable to complete ingestion run"
     )
 
+    # Le commit de persistance n'a pas lieu.
+    # Le second commit correspond au statut "failed".
     assert unit_of_work.commit.call_count == 2
-    
+
+
 def test_ingest_raises_critical_error_when_mark_failed_fails() -> None:
     source_id = uuid4()
     run_id = uuid4()
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
-        return_value=unit_of_work
+        return_value=unit_of_work,
     )
     unit_of_work.__exit__ = Mock(
-        return_value=None
+        return_value=None,
     )
 
     unit_of_work.sync_states.get_by_source_id.return_value = None
     unit_of_work.ingestion_runs.create.return_value = run_id
-    unit_of_work.ingestion_runs.mark_failed.return_value = False
+
+    unit_of_work.ingestion_runs.mark_failed.return_value = (
+        False
+    )
 
     connector = Mock()
     connector.fetch.side_effect = RuntimeError(
-        "Connector unavailable"
+        "Connector unavailable",
     )
 
     payload_hasher = Mock()
@@ -390,17 +444,23 @@ def test_ingest_raises_critical_error_when_mark_failed_fails() -> None:
             source_id=source_id,
         )
 
+    connector.fetch.assert_called_once_with(
+        cursor=None,
+        state_metadata=None,
+    )
+
     assert isinstance(
         exc_info.value.__cause__,
         RuntimeError,
     )
 
-    assert str(
-        exc_info.value.__cause__
-    ) == "Connector unavailable"
+    assert (
+        str(exc_info.value.__cause__)
+        == "Connector unavailable"
+    )
 
     unit_of_work.ingestion_runs.mark_failed.assert_called_once()
 
     # Seul le commit initial du run "running" a réussi.
     assert unit_of_work.commit.call_count == 1
-    
+

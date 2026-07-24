@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -40,8 +41,10 @@ class SuccessfulConnector:
         self,
         *,
         cursor: str | None,
+        state_metadata: dict[str, Any] | None = None,
     ) -> FetchResult:
         assert cursor is None
+        assert state_metadata is None
 
         return FetchResult(
             records=[
@@ -67,10 +70,16 @@ class FailingConnector:
         self,
         *,
         cursor: str | None,
+        state_metadata: dict[str, Any] | None = None,
     ) -> FetchResult:
+        del cursor
+        del state_metadata
+
         raise RuntimeError(
             "Simulated connector failure"
         )
+   
+    
 def _create_owner_session_factory() -> sessionmaker[Session]:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
@@ -160,6 +169,7 @@ def _delete_test_data(
 
         session.commit()
 
+
 def test_ingestion_service_persists_complete_flow() -> None:
     source_id = uuid4()
     source_code = f"SERVICE_OK_{uuid4().hex[:20]}"
@@ -241,6 +251,8 @@ def test_ingestion_service_persists_complete_flow() -> None:
             owner_session_factory=owner_session_factory,
             source_id=source_id,
         )
+        
+        
 def test_ingestion_service_marks_run_failed_on_connector_error() -> None:
     source_id = uuid4()
     source_code = f"SERVICE_FAIL_{uuid4().hex[:18]}"
@@ -316,3 +328,5 @@ def test_ingestion_service_marks_run_failed_on_connector_error() -> None:
             owner_session_factory=owner_session_factory,
             source_id=source_id,
         )
+        session.commit()
+

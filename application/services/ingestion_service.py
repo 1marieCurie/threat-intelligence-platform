@@ -26,6 +26,9 @@ from application.ports.outbound.ingestion_connector import (
     FetchResult,
     IngestionConnector,
 )
+from application.ports.outbound.sync_state_repository import (
+    SyncStateData,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,8 +202,20 @@ class IngestionService:
         *,
         source_id: UUID,
     ) -> IngestionResult:
-        cursor = self._read_cursor(
-            source_id=source_id,
+        sync_state = self._read_sync_state(
+        source_id=source_id,
+    )
+
+        cursor = (
+            sync_state.cursor
+            if sync_state is not None
+            else None
+        )
+
+        state_metadata = (
+            sync_state.metadata
+            if sync_state is not None
+            else None
         )
 
         run_id = self._start_run(
@@ -210,6 +225,7 @@ class IngestionService:
         try:
             fetch_result = self._connector.fetch(
                 cursor=cursor,
+                state_metadata=state_metadata,
             )
 
             return self._persist_fetch_result(
@@ -225,18 +241,13 @@ class IngestionService:
             )
             raise
 
-    def _read_cursor(
+    def _read_sync_state(
         self,
         *,
         source_id: UUID,
-    ) -> str | None:
+    ) -> SyncStateData | None:
         with self._unit_of_work as unit_of_work:
-            state = (
+            return (
                 unit_of_work.sync_states
                 .get_by_source_id(source_id)
             )
-
-        if state is None:
-            return None
-
-        return state.cursor
