@@ -377,3 +377,211 @@ def test_github_ingestion_pipeline_persists_and_deduplicates() -> None:
             owner_session_factory=owner_session_factory,
             source_id=source_id,
         )
+        
+def test_github_ingestion_pipeline_promotes_high_water_mark() -> None:
+    source_id = uuid4()
+    source_code = f"GH_HWM_{uuid4().hex[:20]}"
+
+    first_advisory = {
+        "ghsa_id": "GHSA-1111-2222-3333",
+        "updated_at": "2026-07-24T10:10:00Z",
+        "summary": "First page advisory",
+    }
+
+    second_advisory = {
+        "ghsa_id": "GHSA-4444-5555-6666",
+        "updated_at": "2026-07-24T10:30:00Z",
+        "summary": "Second page advisory",
+    }
+
+    third_advisory = {
+        "ghsa_id": "GHSA-7777-8888-9999",
+        "updated_at": "2026-07-24T10:35:00Z",
+        "summary": "Next cycle advisory",
+    }
+
+    first_response = FakeResponse(
+        payload=[first_advisory],
+        links={
+            "next": {
+                "url": (
+                    "https://api.github.com/advisories"
+                    "?after=cursor-page-2"
+                ),
+            },
+        },
+    )
+
+    second_response = FakeResponse(
+        payload=[second_advisory],
+        links={},
+    )
+
+    third_response = FakeResponse(
+        payload=[third_advisory],
+        links={},
+    )
+
+    fake_http_session = FakeSession(
+        responses=[
+            first_response,
+            second_response,
+            third_response,
+        ]
+    )
+
+    github_connector = GitHubAdvisoryConnector(
+        session=fake_http_session,
+    )
+
+    ingestion_connector = (
+        GitHubAdvisoryIngestionConnector(
+            connector=github_connector,
+            per_page=100,
+        )
+    )
+
+    owner_session_factory = (
+        _create_owner_session_factory()
+    )
+
+    ingestion_engine = create_ingestion_engine()
+    ingestion_session_factory = create_session_factory(
+        ingestion_engine
+    )
+
+    _create_source(
+        owner_session_factory=owner_session_factory,
+        source_id=source_id,
+        source_code=source_code,
+    )
+
+    try:
+        service = IngestionService(
+            unit_of_work=SqlAlchemyUnitOfWork(
+                session_factory=ingestion_session_factory,
+            ),
+            connector=ingestion_connector,
+            payload_hasher=Sha256PayloadHasher(),
+        )
+
+        first_result = service.ingest(
+            source_id=source_id,
+        )
+
+        assert first_result.records_persisted == 1
+
+        with ingestion_session_factory() as session:
+            state_after_first_page = session.get(
+                SyncStateModel,
+                source_id,
+            )
+
+            assert state_after_first_page is not None
+            assert (
+                state_after_first_page.cursor
+                == "cursor-page-2"
+            )
+            assert (
+                state_after_first_page.metadata_[
+                    "pagination_complete"
+                ]
+                is False
+            )
+            assert (
+                state_after_first_page.metadata_[
+                    "candidate_high_water_mark"
+                ]
+                == "2026-07-24T10:10:00Z"
+            )
+            assert (
+                "high_water_mark"
+                not in state_after_first_page.metadata_
+            )
+
+        second_result = service.ingest(
+            source_id=source_id,
+        )
+
+        assert second_result.records_persisted == 1
+
+        with ingestion_session_factory() as session:
+            state_after_last_page = session.get(
+                SyncStateModel,
+                source_id,
+            )
+
+            assert state_after_last_page is not None
+            assert state_after_last_page.cursor is None
+            assert (
+                state_after_last_page.metadata_[
+                    "pagination_complete"
+                ]
+                is True
+            )
+            assert (
+                state_after_last_page.metadata_[
+                    "high_water_mark"
+                ]
+                == "2026-07-24T10:30:00Z"
+            )
+            assert (
+                "candidate_high_water_mark"
+                not in state_after_last_page.metadata_
+            )
+
+        third_result = service.ingest(
+            source_id=source_id,
+        )
+
+        assert third_result.records_persisted == 1
+
+        assert len(fake_http_session.calls) == 3
+
+        first_request = fake_http_session.calls[0]
+        second_request = fake_http_session.calls[1]
+        third_request = fake_http_session.calls[2]
+
+        assert first_request["params"].get("after") is None
+        assert first_request["params"].get("modified") is None
+
+        assert (
+            second_request["params"]["after"]
+            == "cursor-page-2"
+        )
+        assert second_request["params"].get("modified") is None
+
+        assert third_request["params"].get("after") is None
+        assert (
+            third_request["params"]["modified"]
+            == ">=2026-07-24T10:25:00Z"
+        )
+
+        with ingestion_session_factory() as session:
+            final_state = session.get(
+                SyncStateModel,
+                source_id,
+            )
+
+            payload_count = session.scalar(
+                select(
+                    func.count(SourcePayloadModel.id)
+                ).where(
+                    SourcePayloadModel.source_id
+                    == source_id
+                )
+            )
+
+            assert final_state is not None
+            assert final_state.cursor is None
+            assert (
+                final_state.metadata_["high_water_mark"]
+                == "2026-07-24T10:35:00Z"
+            )
+            assert payload_count == 3
+
+    finally:
+        _delete_test_data(
+            owner_session_factory=owner_session_factory,
+            source_id=source_id,
+        )
