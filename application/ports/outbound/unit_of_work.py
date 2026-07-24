@@ -6,9 +6,12 @@ from typing import Protocol, Self
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadRepository,
 )
-
+from application.ports.outbound.ingestion_run_repository import (
+    IngestionRunRepository,
+)
 
 class UnitOfWork(Protocol):
+    ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
 
     def __enter__(self) -> Self:

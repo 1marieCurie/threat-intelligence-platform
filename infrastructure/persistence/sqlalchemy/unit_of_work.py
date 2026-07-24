@@ -5,11 +5,18 @@ from typing import Self
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from application.ports.outbound.ingestion_run_repository import (
+    IngestionRunRepository,
+)
+
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadRepository,
 )
 from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository import (
     SqlAlchemyRawPayloadRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import (
+    SqlAlchemyIngestionRunRepository,
 )
 
 
@@ -20,7 +27,7 @@ class SqlAlchemyUnitOfWork:
     ) -> None:
         self._session_factory = session_factory
         self._session: Session | None = None
-
+        self.ingestion_runs: IngestionRunRepository
         self.raw_payloads: RawPayloadRepository
 
     def __enter__(self) -> Self:
@@ -30,7 +37,9 @@ class SqlAlchemyUnitOfWork:
             )
 
         self._session = self._session_factory()
-
+        self.ingestion_runs = SqlAlchemyIngestionRunRepository(
+            session=self._session,
+        )
         self.raw_payloads = SqlAlchemyRawPayloadRepository(
             session=self._session,
         )
