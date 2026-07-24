@@ -9,7 +9,7 @@ CREATE ROLE threat_intel_owner
 -- Compte utilisé exclusivement par Alembic.
 CREATE ROLE threat_intel_migrator
     LOGIN
-    PASSWORD '2222'
+    PASSWORD 'change_me'
     NOSUPERUSER
     NOCREATEDB
     NOCREATEROLE
