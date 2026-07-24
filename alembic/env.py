@@ -5,6 +5,7 @@ from collections.abc import MutableMapping
 from logging.config import fileConfig
 from typing import Literal, TypeAlias
 from pathlib import Path
+from infrastructure.persistence.models.base import Base
 
 from dotenv import load_dotenv
 
@@ -76,8 +77,7 @@ config.set_main_option(
 # Plus tard :
 # from infrastructure.persistence.models.base import Base
 # target_metadata = Base.metadata
-target_metadata = None
-
+target_metadata = Base.metadata
 
 # ============================================================
 # Schémas gérés par le projet
@@ -85,6 +85,8 @@ target_metadata = None
 
 MANAGED_SCHEMAS: set[str] = {
     "threat_intel",
+    "ops",
+    "raw",
 }
 
 

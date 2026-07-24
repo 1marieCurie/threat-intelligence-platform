@@ -1,0 +1,359 @@
+[1mdiff --git a/application/ports/outbound/unit_of_work.py b/application/ports/outbound/unit_of_work.py[m
+[1mindex 133fcec..8c28993 100644[m
+[1m--- a/application/ports/outbound/unit_of_work.py[m
+[1m+++ b/application/ports/outbound/unit_of_work.py[m
+[36m@@ -9,10 +9,14 @@[m [mfrom application.ports.outbound.raw_payload_repository import ([m
+ from application.ports.outbound.ingestion_run_repository import ([m
+     IngestionRunRepository,[m
+ )[m
+[32m+[m[32mfrom application.ports.outbound.sync_state_repository import ([m
+[32m+[m[32m    SyncStateRepository,[m
+[32m+[m[32m)[m
+ [m
+ class UnitOfWork(Protocol):[m
+     ingestion_runs: IngestionRunRepository[m
+     raw_payloads: RawPayloadRepository[m
+[32m+[m[32m    sync_states: SyncStateRepository[m
+ [m
+     def __enter__(self) -> Self:[m
+         ...[m
+[1mdiff --git a/infrastructure/persistence/sqlalchemy/repositories/__init__.py b/infrastructure/persistence/sqlalchemy/repositories/__init__.py[m
+[1mindex c966820..95dc805 100644[m
+[1m--- a/infrastructure/persistence/sqlalchemy/repositories/__init__.py[m
+[1m+++ b/infrastructure/persistence/sqlalchemy/repositories/__init__.py[m
+[36m@@ -4,8 +4,12 @@[m [mfrom infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i[m
+ from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import ([m
+     SqlAlchemyIngestionRunRepository,[m
+ )[m
+[32m+[m[32mfrom infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import ([m
+[32m+[m[32m    SqlAlchemySyncStateRepository,[m
+[32m+[m[32m)[m
+ [m
+ __all__ = [[m
+[32m+[m[32m    "SqlAlchemySyncStateRepository",[m
+     "SqlAlchemyIngestionRunRepository",[m
+     "SqlAlchemyRawPayloadRepository",[m
+ ][m
+\ No newline at end of file[m
+[1mdiff --git a/infrastructure/persistence/sqlalchemy/unit_of_work.py b/infrastructure/persistence/sqlalchemy/unit_of_work.py[m
+[1mindex 97eb018..b2c3c56 100644[m
+[1m--- a/infrastructure/persistence/sqlalchemy/unit_of_work.py[m
+[1m+++ b/infrastructure/persistence/sqlalchemy/unit_of_work.py[m
+[36m@@ -18,6 +18,12 @@[m [mfrom infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i[m
+ from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import ([m
+     SqlAlchemyIngestionRunRepository,[m
+ )[m
+[32m+[m[32mfrom application.ports.outbound.sync_state_repository import ([m
+[32m+[m[32m    SyncStateRepository,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import ([m
+[32m+[m[32m    SqlAlchemySyncStateRepository,[m
+[32m+[m[32m)[m
+ [m
+ [m
+ class SqlAlchemyUnitOfWork:[m
+[36m@@ -29,6 +35,7 @@[m [mclass SqlAlchemyUnitOfWork:[m
+         self._session: Session | None = None[m
+         self.ingestion_runs: IngestionRunRepository[m
+         self.raw_payloads: RawPayloadRepository[m
+[32m+[m[32m        self.sync_states: SyncStateRepository[m
+ [m
+     def __enter__(self) -> Self:[m
+         if self._session is not None:[m
+[36m@@ -43,6 +50,9 @@[m [mclass SqlAlchemyUnitOfWork:[m
+         self.raw_payloads = SqlAlchemyRawPayloadRepository([m
+             session=self._session,[m
+         )[m
+[32m+[m[32m        self.sync_states = SqlAlchemySyncStateRepository([m
+[32m+[m[32m            session=self._session,[m
+[32m+[m[32m        )[m
+ [m
+         return self[m
+ [m
+[1mdiff --git a/tests/persistence/test_ingestion_unit_of_work_integration.py b/tests/persistence/test_ingestion_unit_of_work_integration.py[m
+[1mindex 3d0e114..b08e7ea 100644[m
+[1m--- a/tests/persistence/test_ingestion_unit_of_work_integration.py[m
+[1m+++ b/tests/persistence/test_ingestion_unit_of_work_integration.py[m
+[36m@@ -17,6 +17,7 @@[m [mfrom application.ports.outbound.raw_payload_repository import ([m
+ from infrastructure.persistence.models.ops import ([m
+     IngestionRunModel,[m
+     SourceModel,[m
+[32m+[m[32m    SyncStateModel,[m
+ )[m
+ from infrastructure.persistence.models.raw import ([m
+     SourcePayloadModel,[m
+[36m@@ -26,6 +27,9 @@[m [mfrom infrastructure.persistence.sqlalchemy import ([m
+     create_ingestion_engine,[m
+     create_session_factory,[m
+ )[m
+[32m+[m[32mfrom application.ports.outbound.sync_state_repository import ([m
+[32m+[m[32m    SyncStateData,[m
+[32m+[m[32m)[m
+ [m
+ [m
+ pytestmark = pytest.mark.integration[m
+[36m@@ -106,6 +110,12 @@[m [mdef _delete_test_data([m
+             )[m
+         )[m
+ [m
+[32m+[m[32m        session.execute([m
+[32m+[m[32m            delete(SyncStateModel).where([m
+[32m+[m[32m                SyncStateModel.source_id == source_id[m
+[32m+[m[32m            )[m
+[32m+[m[32m        )[m
+[32m+[m
+         session.execute([m
+             delete(SourceModel).where([m
+                 SourceModel.id == source_id[m
+[36m@@ -114,7 +124,6 @@[m [mdef _delete_test_data([m
+ [m
+         session.commit()[m
+ [m
+[31m-[m
+ def test_uow_creates_run_payload_and_marks_completed() -> None:[m
+     source_id = uuid4()[m
+     source_code = ([m
+[36m@@ -317,4 +326,241 @@[m [mdef test_uow_rolls_back_run_and_payload_on_exception() -> None:[m
+                 owner_session_factory[m
+             ),[m
+             source_id=source_id,[m
+[31m-        )[m
+\ No newline at end of file[m
+[32m+[m[32m        )[m
+[32m+[m[32mdef test_uow_persists_complete_ingestion_flow() -> None:[m
+[32m+[m[32m    source_id = uuid4()[m
+[32m+[m[32m    source_code = f"UOW_SYNC_{uuid4().hex[:20]}"[m
+[32m+[m[32m    external_record_id = f"RECORD-{uuid4()}"[m
+[32m+[m
+[32m+[m[32m    owner_session_factory = ([m
+[32m+[m[32m        _create_owner_session_factory()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    ingestion_engine = create_ingestion_engine()[m
+[32m+[m[32m    ingestion_session_factory = ([m
+[32m+[m[32m        create_session_factory([m
+[32m+[m[32m            ingestion_engine[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    _create_source([m
+[32m+[m[32m        owner_session_factory=owner_session_factory,[m
+[32m+[m[32m        source_id=source_id,[m
+[32m+[m[32m        source_code=source_code,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    run_id: UUID | None = None[m
+[32m+[m[32m    payload_id: UUID | None = None[m
+[32m+[m
+[32m+[m[32m    completed_at = datetime.now(UTC)[m
+[32m+[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        unit_of_work = SqlAlchemyUnitOfWork([m
+[32m+[m[32m            session_factory=ingestion_session_factory,[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        with unit_of_work:[m
+[32m+[m[32m            unit_of_work.sync_states.mark_attempt([m
+[32m+[m[32m                source_id=source_id,[m
+[32m+[m[32m                attempted_at=completed_at,[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            run_id = unit_of_work.ingestion_runs.create([m
+[32m+[m[32m                IngestionRunData([m
+[32m+[m[32m                    source_id=source_id,[m
+[32m+[m[32m                    status="running",[m
+[32m+[m[32m                    connector_version="1.0.0",[m
+[32m+[m[32m                )[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            payload_id = unit_of_work.raw_payloads.save([m
+[32m+[m[32m                RawPayloadData([m
+[32m+[m[32m                    source_id=source_id,[m
+[32m+[m[32m                    ingestion_run_id=run_id,[m
+[32m+[m[32m                    external_record_id=external_record_id,[m
+[32m+[m[32m                    payload={[m
+[32m+[m[32m                        "id": external_record_id,[m
+[32m+[m[32m                    },[m
+[32m+[m[32m                    payload_hash="f" * 64,[m
+[32m+[m[32m                    http_status=200,[m
+[32m+[m[32m                )[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            unit_of_work.sync_states.upsert([m
+[32m+[m[32m                SyncStateData([m
+[32m+[m[32m                    source_id=source_id,[m
+[32m+[m[32m                    cursor="cursor-002",[m
+[32m+[m[32m                    last_attempt_at=completed_at,[m
+[32m+[m[32m                    last_success_at=completed_at,[m
+[32m+[m[32m                    metadata={[m
+[32m+[m[32m                        "page": 2,[m
+[32m+[m[32m                    },[m
+[32m+[m[32m                )[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            updated = ([m
+[32m+[m[32m                unit_of_work.ingestion_runs.mark_completed([m
+[32m+[m[32m                    run_id=run_id,[m
+[32m+[m[32m                    finished_at=completed_at,[m
+[32m+[m[32m                    records_received=1,[m
+[32m+[m[32m                    records_succeeded=1,[m
+[32m+[m[32m                    records_failed=0,[m
+[32m+[m[32m                )[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            assert updated is True[m
+[32m+[m
+[32m+[m[32m            unit_of_work.commit()[m
+[32m+[m
+[32m+[m[32m        with ingestion_session_factory() as session:[m
+[32m+[m[32m            persisted_run = session.get([m
+[32m+[m[32m                IngestionRunModel,[m
+[32m+[m[32m                run_id,[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            persisted_payload = session.get([m
+[32m+[m[32m                SourcePayloadModel,[m
+[32m+[m[32m                payload_id,[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            persisted_state = session.get([m
+[32m+[m[32m                SyncStateModel,[m
+[32m+[m[32m                source_id,[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            assert persisted_run is not None[m
+[32m+[m[32m            assert persisted_run.status == "completed"[m
+[32m+[m[32m            assert persisted_run.records_received == 1[m
+[32m+[m[32m            assert persisted_run.records_succeeded == 1[m
+[32m+[m[32m            assert persisted_run.records_failed == 0[m
+[32m+[m
+[32m+[m[32m            assert persisted_payload is not None[m
+[32m+[m[32m            assert ([m
+[32m+[m[32m                persisted_payload.ingestion_run_id[m
+[32m+[m[32m                == run_id[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            assert persisted_state is not None[m
+[32m+[m[32m            assert persisted_state.cursor == "cursor-002"[m
+[32m+[m[32m            assert ([m
+[32m+[m[32m                persisted_state.last_success_at[m
+[32m+[m[32m                is not None[m
+[32m+[m[32m            )[m
+[32m+[m[32m            assert ([m
+[32m+[m[32m                persisted_state.last_attempt_at[m
+[32m+[m[32m                is not None[m
+[32m+[m[32m            )[m
+[32m+[m[32m            assert persisted_state.metadata_ == {[m
+[32m+[m[32m                "page": 2,[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m    finally:[m
+[32m+[m[32m        _delete_test_data([m
+[32m+[m[32m            owner_session_factory=owner_session_factory,[m
+[32m+[m[32m            source_id=source_id,[m
+[32m+[m[32m        )[m
+[32m+[m[32mdef test_uow_rolls_back_complete_ingestion_flow() -> None:[m
+[32m+[m[32m    source_id = uuid4()[m
+[32m+[m[32m    source_code = f"UOW_SYNC_FAIL_{uuid4().hex[:18]}"[m
+[32m+[m[32m    external_record_id = f"RECORD-{uuid4()}"[m
+[32m+[m
+[32m+[m[32m    owner_session_factory = ([m
+[32m+[m[32m        _create_owner_session_factory()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    ingestion_engine = create_ingestion_engine()[m
+[32m+[m[32m    ingestion_session_factory = ([m
+[32m+[m[32m        create_session_factory([m
+[32m+[m[32m            ingestion_engine[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    _create_source([m
+[32m+[m[32m        owner_session_factory=owner_session_factory,[m
+[32m+[m[32m        source_id=source_id,[m
+[32m+[m[32m        source_code=source_code,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    run_id: UUID | None = None[m
+[32m+[m[32m    payload_id: UUID | None = None[m
+[32m+[m
+[32m+[m[32m    attempted_at = datetime.now(UTC)[m
+[32m+[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        unit_of_work = SqlAlchemyUnitOfWork([m
+[32m+[m[32m            session_factory=ingestion_session_factory,[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        with pytest.raises([m
+[32m+[m[32m            RuntimeError,[m
+[32m+[m[32m            match="forced complete flow failure",[m
+[32m+[m[32m        ):[m
+[32m+[m[32m            with unit_of_work:[m
+[32m+[m[32m                unit_of_work.sync_states.mark_attempt([m
+[32m+[m[32m                    source_id=source_id,[m
+[32m+[m[32m                    attempted_at=attempted_at,[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m                run_id = ([m
+[32m+[m[32m                    unit_of_work.ingestion_runs.create([m
+[32m+[m[32m                        IngestionRunData([m
+[32m+[m[32m                            source_id=source_id,[m
+[32m+[m[32m                            status="running",[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m                payload_id = ([m
+[32m+[m[32m                    unit_of_work.raw_payloads.save([m
+[32m+[m[32m                        RawPayloadData([m
+[32m+[m[32m                            source_id=source_id,[m
+[32m+[m[32m                            ingestion_run_id=run_id,[m
+[32m+[m[32m                            external_record_id=([m
+[32m+[m[32m                                external_record_id[m
+[32m+[m[32m                            ),[m
+[32m+[m[32m                            payload={[m
+[32m+[m[32m                                "id": external_record_id,[m
+[32m+[m[32m                            },[m
+[32m+[m[32m                            payload_hash="a" * 64,[m
+[32m+[m[32m                            http_status=200,[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m                unit_of_work.sync_states.upsert([m
+[32m+[m[32m                    SyncStateData([m
+[32m+[m[32m                        source_id=source_id,[m
+[32m+[m[32m                        cursor="cursor-rollback",[m
+[32m+[m[32m                        last_attempt_at=attempted_at,[m
+[32m+[m[32m                        last_success_at=attempted_at,[m
+[32m+[m[32m                        metadata={[m
+[32m+[m[32m                            "page": 99,[m
+[32m+[m[32m                        },[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m                raise RuntimeError([m
+[32m+[m[32m                    "forced complete flow failure"[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m        with ingestion_session_factory() as session:[m
+[32m+[m[32m            assert session.get([m
+[32m+[m[32m                IngestionRunModel,[m
+[32m+[m[32m                run_id,[m
+[32m+[m[32m            ) is None[m
+[32m+[m
+[32m+[m[32m            assert session.get([m
+[32m+[m[32m                SourcePayloadModel,[m
+[32m+[m[32m                payload_id,[m
+[32m+[m[32m            ) is None[m
+[32m+[m
+[32m+[m[32m            assert session.get([m
+[32m+[m[32m                SyncStateModel,[m
+[32m+[m[32m                source_id,[m
+[32m+[m[32m            ) is None[m
+[32m+[m
+[32m+[m[32m    finally:[m
+[32m+[m[32m        _delete_test_data([m
+[32m+[m[32m            owner_session_factory=owner_session_factory,[m
+[32m+[m[32m            source_id=source_id,[m
+[32m+[m[32m        )[m
