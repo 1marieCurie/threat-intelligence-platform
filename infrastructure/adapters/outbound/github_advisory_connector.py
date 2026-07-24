@@ -3,11 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 import requests
+from dataclasses import dataclass
+from urllib.parse import parse_qs, urlparse
 
 
 class GitHubAdvisoryConnectorError(Exception):
     """Raised when the GitHub Advisory API cannot be queried correctly."""
 
+
+@dataclass(frozen=True, slots=True)
+class GitHubAdvisoryPage:
+    advisories: list[dict[str, Any]]
+    next_cursor: str | None
 
 class GitHubAdvisoryConnector:
     """
@@ -100,6 +107,97 @@ class GitHubAdvisoryConnector:
 
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
+
+    def fetch_advisory_page(
+        self,
+        *,
+        after: str | None = None,
+        advisory_type: str = "reviewed",
+        ecosystem: str | None = None,
+        severity: str | None = None,
+        modified: str | None = None,
+        per_page: int = 100,
+    ) -> GitHubAdvisoryPage:
+        """
+        Retrieve exactly one GitHub advisory page.
+
+        The returned cursor can be persisted and reused during
+        the next ingestion cycle.
+        """
+        self._validate_parameters(
+            advisory_type=advisory_type,
+            ecosystem=ecosystem,
+            severity=severity,
+            direction="asc",
+            sort="updated",
+            per_page=per_page,
+            max_pages=1,
+            affects=None,
+        )
+
+        params = self._build_params(
+            ghsa_id=None,
+            advisory_type=advisory_type,
+            cve_id=None,
+            ecosystem=ecosystem,
+            severity=severity,
+            cwes=None,
+            is_withdrawn=None,
+            affects=None,
+            published=None,
+            updated=None,
+            modified=modified,
+            epss_percentage=None,
+            epss_percentile=None,
+            direction="asc",
+            sort="updated",
+            per_page=per_page,
+            before=None,
+            after=after,
+        )
+
+        response = self._send_request(
+            url=self.BASE_URL,
+            params=params,
+        )
+
+        advisories = self._read_payload(response)
+
+        next_url = response.links.get(
+            "next",
+            {},
+        ).get("url")
+
+        next_cursor = self._extract_cursor(
+            url=next_url,
+            parameter="after",
+        )
+
+        return GitHubAdvisoryPage(
+            advisories=advisories,
+            next_cursor=next_cursor,
+        )
+    @staticmethod
+    def _extract_cursor(
+        *,
+        url: str | None,
+        parameter: str,
+    ) -> str | None:
+        if not url:
+            return None
+
+        query = parse_qs(
+            urlparse(url).query
+        )
+
+        values = query.get(parameter)
+
+        if not values:
+            return None
+
+        cursor = values[0].strip()
+
+        return cursor or None
 
     def fetch_advisories(
         self,

@@ -1086,3 +1086,82 @@ def test_integration_fetch_critical_maven_advisories() -> None:
             f"{advisory.get('cve_id')} | "
             f"{advisory.get('summary')}"
         )
+
+def test_fetch_advisory_page_returns_records_and_next_cursor(
+    sample_advisory: dict[str, Any],
+) -> None:
+    response = FakeResponse(
+        payload=[sample_advisory],
+        links={
+            "next": {
+                "url": (
+                    "https://api.github.com/advisories"
+                    "?type=reviewed"
+                    "&per_page=100"
+                    "&after=cursor-page-2"
+                ),
+            },
+        },
+    )
+
+    session = FakeSession(
+        responses=[response],
+    )
+
+    connector = GitHubAdvisoryConnector(
+        session=session,
+    )
+
+    page = connector.fetch_advisory_page(
+        after="cursor-page-1",
+        per_page=100,
+    )
+
+    assert page.advisories == [
+        sample_advisory,
+    ]
+    assert page.next_cursor == "cursor-page-2"
+
+    assert len(session.calls) == 1
+
+    request_params = session.calls[0]["params"]
+
+    assert request_params["after"] == "cursor-page-1"
+    assert request_params["sort"] == "updated"
+    assert request_params["direction"] == "asc"
+    assert request_params["per_page"] == 100
+
+def test_fetch_advisory_page_returns_none_without_next_page(
+    sample_advisory: dict[str, Any],
+) -> None:
+    response = FakeResponse(
+        payload=[sample_advisory],
+        links={},
+    )
+
+    session = FakeSession(
+        responses=[response],
+    )
+
+    connector = GitHubAdvisoryConnector(
+        session=session,
+    )
+
+    page = connector.fetch_advisory_page()
+
+    assert page.advisories == [
+        sample_advisory,
+    ]
+    assert page.next_cursor is None
+
+def test_extract_cursor_returns_none_for_invalid_link() -> None:
+    assert (
+        GitHubAdvisoryConnector._extract_cursor(
+            url=(
+                "https://api.github.com/advisories"
+                "?per_page=100"
+            ),
+            parameter="after",
+        )
+        is None
+    )
