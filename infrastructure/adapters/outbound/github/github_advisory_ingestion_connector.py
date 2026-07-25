@@ -17,6 +17,7 @@ class GitHubAdvisoryIngestionConnector:
     HIGH_WATER_MARK_OVERLAP = timedelta(
         minutes=5,
     )
+    CYCLE_MODIFIED_FILTER_KEY = "cycle_modified_filter"
 
     def __init__(
         self,
@@ -54,6 +55,7 @@ class GitHubAdvisoryIngestionConnector:
 
         modified_filter = self._resolve_modified_filter(
             cursor=cursor,
+            state_metadata=state_metadata,
             high_water_mark=previous_high_water_mark,
         )
 
@@ -102,6 +104,7 @@ class GitHubAdvisoryIngestionConnector:
             candidate_high_water_mark=(
                 candidate_high_water_mark
             ),
+            modified_filter=modified_filter,
         )
 
         return FetchResult(
@@ -149,6 +152,24 @@ class GitHubAdvisoryIngestionConnector:
 
         return normalized or None
     
+    @classmethod
+    def _extract_cycle_modified_filter(
+        cls,
+        state_metadata: dict[str, Any] | None,
+    ) -> str | None:
+        if not state_metadata:
+            return None
+
+        value = state_metadata.get(
+            cls.CYCLE_MODIFIED_FILTER_KEY
+        )
+
+        if not isinstance(value, str):
+            return None
+
+        normalized = value.strip()
+
+        return normalized or None
     
     @staticmethod
     def _extract_external_record_id(
@@ -183,29 +204,39 @@ class GitHubAdvisoryIngestionConnector:
 
         return normalized_url or None
     
-    @classmethod
     def _resolve_modified_filter(
-        cls,
+        self,
         *,
         cursor: str | None,
+        state_metadata: dict[str, Any] | None,
         high_water_mark: str | None,
     ) -> str | None:
         if cursor is not None:
-            return None
+            return self._extract_cycle_modified_filter(
+                state_metadata
+            )
+
+        if self._modified is not None:
+            normalized = self._modified.strip()
+
+            if normalized:
+                return normalized
 
         if high_water_mark is None:
             return None
 
-        parsed = cls._parse_github_datetime(
+        parsed = self._parse_github_datetime(
             high_water_mark
         )
 
         overlapped = (
             parsed
-            - cls.HIGH_WATER_MARK_OVERLAP
+            - self.HIGH_WATER_MARK_OVERLAP
         )
 
-        return f">={cls._format_github_datetime(overlapped)}"
+        return (
+            f">={self._format_github_datetime(overlapped)}"
+        )
     
     
     @classmethod
@@ -299,13 +330,14 @@ class GitHubAdvisoryIngestionConnector:
         next_cursor: str | None,
         previous_high_water_mark: str | None,
         candidate_high_water_mark: str | None,
+        modified_filter: str | None,
     ) -> dict[str, Any]:
         metadata: dict[str, Any] = {
             "source": "github_advisory",
             "advisory_type": self._advisory_type,
             "ecosystem": self._ecosystem,
             "severity": self._severity,
-            "modified": self._modified,
+            "modified": modified_filter,
             "per_page": self._per_page,
             "records_count": records_count,
             "pagination_complete": (
@@ -328,5 +360,10 @@ class GitHubAdvisoryIngestionConnector:
                 metadata[
                     "candidate_high_water_mark"
                 ] = candidate_high_water_mark
+
+            if modified_filter is not None:
+                metadata[
+                    self.CYCLE_MODIFIED_FILTER_KEY
+                ] = modified_filter
 
         return metadata

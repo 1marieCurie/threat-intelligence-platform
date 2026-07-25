@@ -155,7 +155,7 @@ def test_constructor_rejects_missing_connector() -> None:
         )
 
 
-def test_fetch_continues_existing_pagination_without_modified_filter() -> None:
+def test_fetch_reuses_modified_filter_during_pagination() -> None:
     connector = Mock()
 
     connector.fetch_advisory_page.return_value = (
@@ -183,6 +183,9 @@ def test_fetch_continues_existing_pagination_without_modified_filter() -> None:
             "candidate_high_water_mark": (
                 "2026-07-24T10:15:00Z"
             ),
+            "cycle_modified_filter": (
+                ">=2026-07-24T09:55:00Z"
+            ),
         },
     )
 
@@ -191,7 +194,7 @@ def test_fetch_continues_existing_pagination_without_modified_filter() -> None:
         advisory_type="reviewed",
         ecosystem=None,
         severity=None,
-        modified=None,
+        modified=">=2026-07-24T09:55:00Z",
         per_page=100,
     )
 
@@ -204,6 +207,10 @@ def test_fetch_continues_existing_pagination_without_modified_filter() -> None:
     assert (
         result.metadata["candidate_high_water_mark"]
         == "2026-07-24T10:20:00Z"
+    )
+    assert (
+        result.metadata["cycle_modified_filter"]
+        == ">=2026-07-24T09:55:00Z"
     )
 
 
@@ -254,6 +261,10 @@ def test_fetch_starts_incremental_cycle_from_high_water_mark() -> None:
         result.metadata["candidate_high_water_mark"]
         == "2026-07-24T10:10:00Z"
     )
+    assert (
+        result.metadata["cycle_modified_filter"]
+        == ">=2026-07-24T09:55:00Z"
+    )
 
 
 def test_fetch_promotes_candidate_on_last_page() -> None:
@@ -284,19 +295,39 @@ def test_fetch_promotes_candidate_on_last_page() -> None:
             "candidate_high_water_mark": (
                 "2026-07-24T10:20:00Z"
             ),
+            "cycle_modified_filter": (
+                ">=2026-07-24T09:55:00Z"
+            ),
         },
+    )
+
+    connector.fetch_advisory_page.assert_called_once_with(
+        after="cursor-last-page",
+        advisory_type="reviewed",
+        ecosystem=None,
+        severity=None,
+        modified=">=2026-07-24T09:55:00Z",
+        per_page=100,
     )
 
     assert result.next_cursor is None
     assert result.metadata["pagination_complete"] is True
+
     assert (
         result.metadata["high_water_mark"]
         == "2026-07-24T10:35:00Z"
     )
+
     assert (
         "candidate_high_water_mark"
         not in result.metadata
     )
+
+    assert (
+        "cycle_modified_filter"
+        not in result.metadata
+    )
+
 
 
 def test_fetch_keeps_previous_candidate_when_it_is_newer() -> None:
@@ -373,3 +404,49 @@ def test_fetch_ignores_invalid_updated_at() -> None:
         == "2026-07-24T10:15:00Z"
     )
 
+def test_fetch_uses_configured_modified_filter() -> None:
+    connector = Mock()
+
+    connector.fetch_advisory_page.return_value = (
+        GitHubAdvisoryPage(
+            advisories=[
+                {
+                    "ghsa_id": "GHSA-6666-7777-8888",
+                    "updated_at": "2026-07-24T11:00:00Z",
+                }
+            ],
+            next_cursor="cursor-next",
+        )
+    )
+
+    adapter = GitHubAdvisoryIngestionConnector(
+        connector=connector,
+        modified=">=2026-07-01T00:00:00Z",
+    )
+
+    result = adapter.fetch(
+        cursor=None,
+        state_metadata={
+            "high_water_mark": (
+                "2026-07-24T10:00:00Z"
+            ),
+        },
+    )
+
+    connector.fetch_advisory_page.assert_called_once_with(
+        after=None,
+        advisory_type="reviewed",
+        ecosystem=None,
+        severity=None,
+        modified=">=2026-07-01T00:00:00Z",
+        per_page=100,
+    )
+
+    assert (
+        result.metadata["modified"]
+        == ">=2026-07-01T00:00:00Z"
+    )
+    assert (
+        result.metadata["cycle_modified_filter"]
+        == ">=2026-07-01T00:00:00Z"
+    )
