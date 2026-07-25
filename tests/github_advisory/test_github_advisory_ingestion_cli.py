@@ -1,8 +1,9 @@
+import logging
 from argparse import Namespace
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock, call, patch
 from uuid import UUID, uuid4
-from typing import Any
 
 import pytest
 
@@ -11,6 +12,12 @@ from infrastructure.cli.github_advisory_ingestion import (
     _parse_source_id,
     _validate_max_pages,
     main,
+)
+
+
+CLI_MODULE = (
+    "infrastructure.cli."
+    "github_advisory_ingestion"
 )
 
 
@@ -26,6 +33,17 @@ def _build_ingestion_result(
         records_persisted=persisted,
         records_skipped=skipped,
         pagination_complete=pagination_complete,
+    )
+
+
+def _find_log_record(
+    caplog: pytest.LogCaptureFixture,
+    message: str,
+) -> logging.LogRecord:
+    return next(
+        record
+        for record in caplog.records
+        if record.getMessage() == message
     )
 
 
@@ -120,28 +138,31 @@ def test_validate_max_pages_rejects_non_integer_values(
     ):
         _validate_max_pages(value)
 
+
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_processes_requested_number_of_pages(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     source_id = uuid4()
 
@@ -178,7 +199,8 @@ def test_main_processes_requested_number_of_pages(
 
     build_job.return_value = job
 
-    exit_code = main()
+    with caplog.at_level(logging.INFO):
+        exit_code = main()
 
     captured = capsys.readouterr()
 
@@ -193,6 +215,8 @@ def test_main_processes_requested_number_of_pages(
         override=False,
     )
 
+    configure_logging.assert_called_once_with()
+
     build_job.assert_called_once_with(
         source_id=source_id,
     )
@@ -204,52 +228,119 @@ def test_main_processes_requested_number_of_pages(
         call(),
     ]
 
-    assert (
-        "pages=3"
-        in captured.out
-    )
-    assert (
-        "received=250"
-        in captured.out
-    )
-    assert (
-        "persisted=230"
-        in captured.out
-    )
-    assert (
-        "skipped=20"
-        in captured.out
-    )
+    assert "pages=3" in captured.out
+    assert "received=250" in captured.out
+    assert "persisted=230" in captured.out
+    assert "skipped=20" in captured.out
+
     assert (
         "pagination_complete=False"
+        in captured.out
+    )
+    assert (
+        "stop_reason=max_pages_reached"
         in captured.out
     )
 
     assert captured.err == ""
 
+    started_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle started"
+        ),
+    )
+
+    assert (
+        started_record.__dict__["source_id"]
+        == str(source_id)
+    )
+    assert (
+        started_record.__dict__["max_pages"]
+        == 3
+    )
+
+    completed_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle completed"
+        ),
+    )
+
+    assert (
+        completed_record.levelno
+        == logging.WARNING
+    )
+    assert (
+        completed_record.__dict__[
+            "pages_processed"
+        ]
+        == 3
+    )
+    assert (
+        completed_record.__dict__[
+            "stop_reason"
+        ]
+        == "max_pages_reached"
+    )
+    assert (
+        completed_record.__dict__[
+            "records_received"
+        ]
+        == 250
+    )
+    assert (
+        completed_record.__dict__[
+            "records_persisted"
+        ]
+        == 230
+    )
+    assert (
+        completed_record.__dict__[
+            "records_skipped"
+        ]
+        == 20
+    )
+    assert (
+        completed_record.__dict__[
+            "pagination_complete"
+        ]
+        is False
+    )
+    assert isinstance(
+        completed_record.__dict__[
+            "duration_seconds"
+        ],
+        float,
+    )
+
 
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_stops_when_pagination_is_complete(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     source_id = uuid4()
 
@@ -278,61 +369,109 @@ def test_main_stops_when_pagination_is_complete(
 
     build_job.return_value = job
 
-    exit_code = main()
+    with caplog.at_level(logging.INFO):
+        exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
     assert job.run.call_count == 2
 
-    assert (
-        "pages=2"
-        in captured.out
-    )
-    assert (
-        "received=125"
-        in captured.out
-    )
-    assert (
-        "persisted=120"
-        in captured.out
-    )
-    assert (
-        "skipped=5"
-        in captured.out
-    )
+    assert "pages=2" in captured.out
+    assert "received=125" in captured.out
+    assert "persisted=120" in captured.out
+    assert "skipped=5" in captured.out
+
     assert (
         "pagination_complete=True"
         in captured.out
     )
+    assert (
+        "stop_reason=pagination_complete"
+        in captured.out
+    )
+
+    assert captured.err == ""
 
     load_dotenv.assert_called_once_with(
         dotenv_path=".env",
         override=False,
     )
 
+    configure_logging.assert_called_once_with()
+
+    completed_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle completed"
+        ),
+    )
+
+    assert (
+        completed_record.levelno
+        == logging.INFO
+    )
+    assert (
+        completed_record.__dict__[
+            "pages_processed"
+        ]
+        == 2
+    )
+    assert (
+        completed_record.__dict__[
+            "stop_reason"
+        ]
+        == "pagination_complete"
+    )
+    assert (
+        completed_record.__dict__[
+            "records_received"
+        ]
+        == 125
+    )
+    assert (
+        completed_record.__dict__[
+            "records_persisted"
+        ]
+        == 120
+    )
+    assert (
+        completed_record.__dict__[
+            "records_skipped"
+        ]
+        == 5
+    )
+    assert (
+        completed_record.__dict__[
+            "pagination_complete"
+        ]
+        is True
+    )
+
 
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_uses_single_page_by_default(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
 ) -> None:
     source_id = uuid4()
 
@@ -358,31 +497,35 @@ def test_main_uses_single_page_by_default(
     exit_code = main()
 
     assert exit_code == 0
+
+    configure_logging.assert_called_once_with()
     job.run.assert_called_once_with()
 
 
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_returns_error_code_when_job_fails(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     source_id = uuid4()
 
@@ -397,28 +540,48 @@ def test_main_returns_error_code_when_job_fails(
     job.run.side_effect = RuntimeError(
         "Authorization: Bearer ghp_secret_value "
         "GITHUB_TOKEN=another_secret "
-        "postgresql://app:db_password@localhost/database"
+        "postgresql://app:"
+        "db_password@localhost/database"
     )
 
     build_job.return_value = job
 
-    exit_code = main()
+    with caplog.at_level(logging.ERROR):
+        exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 1
     job.run.assert_called_once_with()
 
+    configure_logging.assert_called_once_with()
+
     assert captured.out == ""
 
-    assert "ghp_secret_value" not in captured.err
-    assert "another_secret" not in captured.err
-    assert "db_password" not in captured.err
-
-    assert "Authorization: [REDACTED]" in captured.err
-    assert "GITHUB_TOKEN=[REDACTED]" in captured.err
     assert (
-        "postgresql://app:[REDACTED]@localhost/database"
+        "ghp_secret_value"
+        not in captured.err
+    )
+    assert (
+        "another_secret"
+        not in captured.err
+    )
+    assert (
+        "db_password"
+        not in captured.err
+    )
+
+    assert (
+        "Authorization: [REDACTED]"
+        in captured.err
+    )
+    assert (
+        "GITHUB_TOKEN=[REDACTED]"
+        in captured.err
+    )
+    assert (
+        "postgresql://app:"
+        "[REDACTED]@localhost/database"
         in captured.err
     )
 
@@ -427,29 +590,68 @@ def test_main_returns_error_code_when_job_fails(
         in captured.err
     )
 
+    failure_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle failed"
+        ),
+    )
+
+    assert (
+        failure_record.levelno
+        == logging.ERROR
+    )
+    assert (
+        failure_record.__dict__["error_type"]
+        == "RuntimeError"
+    )
+
+    error_message = (
+        failure_record.__dict__[
+            "error_message"
+        ]
+    )
+
+    assert (
+        "ghp_secret_value"
+        not in error_message
+    )
+    assert (
+        "another_secret"
+        not in error_message
+    )
+    assert (
+        "db_password"
+        not in error_message
+    )
+    assert "[REDACTED]" in error_message
+
 
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_rejects_invalid_source_id(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     find_dotenv.return_value = ".env"
 
@@ -458,11 +660,14 @@ def test_main_rejects_invalid_source_id(
         max_pages=1,
     )
 
-    exit_code = main()
+    with caplog.at_level(logging.ERROR):
+        exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 1
+
+    configure_logging.assert_called_once_with()
     build_job.assert_not_called()
 
     assert (
@@ -470,29 +675,44 @@ def test_main_rejects_invalid_source_id(
         in captured.err
     )
 
+    failure_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle failed"
+        ),
+    )
+
+    assert (
+        failure_record.__dict__["error_type"]
+        == "ValueError"
+    )
+
 
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
+    f"{CLI_MODULE}.configure_logging"
+)
+@patch(
+    f"{CLI_MODULE}."
     "build_github_advisory_ingestion_job"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "_parse_arguments"
+    f"{CLI_MODULE}._parse_arguments"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "load_dotenv"
+    f"{CLI_MODULE}.load_dotenv"
 )
 @patch(
-    "infrastructure.cli.github_advisory_ingestion."
-    "find_dotenv"
+    f"{CLI_MODULE}.find_dotenv"
 )
 def test_main_rejects_invalid_max_pages(
     find_dotenv: Mock,
     load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
+    configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     find_dotenv.return_value = ".env"
 
@@ -501,16 +721,32 @@ def test_main_rejects_invalid_max_pages(
         max_pages=0,
     )
 
-    exit_code = main()
+    with caplog.at_level(logging.ERROR):
+        exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 1
+
+    configure_logging.assert_called_once_with()
     build_job.assert_not_called()
 
     assert (
         "max-pages must be greater than "
         "or equal to 1"
         in captured.err
+    )
+
+    failure_record = _find_log_record(
+        caplog,
+        (
+            "GitHub advisory ingestion "
+            "cycle failed"
+        ),
+    )
+
+    assert (
+        failure_record.__dict__["error_type"]
+        == "ValueError"
     )
 

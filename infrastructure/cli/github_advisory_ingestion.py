@@ -1,6 +1,8 @@
 import argparse
 import sys
 from uuid import UUID
+import logging
+from time import perf_counter
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -13,6 +15,8 @@ from application.security.sensitive_data_redactor import (
 from infrastructure.logging.configuration import (
     configure_logging,
 )
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_MAX_PAGES = 1
@@ -98,9 +102,20 @@ def main() -> int:
             arguments.max_pages
         )
 
+  
         job = build_github_advisory_ingestion_job(
             source_id=source_id,
         )
+
+        logger.info(
+            "GitHub advisory ingestion cycle started",
+            extra={
+                "source_id": str(source_id),
+                "max_pages": max_pages,
+            },
+        )
+
+        started_at = perf_counter()
 
         total_received = 0
         total_persisted = 0
@@ -125,21 +140,72 @@ def main() -> int:
             if pagination_complete:
                 break
 
+        duration_seconds = (
+            perf_counter()
+            - started_at
+        )
+
+        stop_reason = (
+            "pagination_complete"
+            if pagination_complete
+            else "max_pages_reached"
+        )
+
+        log_method = (
+            logger.info
+            if pagination_complete
+            else logger.warning
+        )
+
+        log_method(
+            "GitHub advisory ingestion cycle completed",
+            extra={
+                "source_id": str(source_id),
+                "pages_processed": pages_processed,
+                "max_pages": max_pages,
+                "records_received": total_received,
+                "records_persisted": total_persisted,
+                "records_skipped": total_skipped,
+                "pagination_complete": (
+                    pagination_complete
+                ),
+                "stop_reason": stop_reason,
+                "duration_seconds": round(
+                    duration_seconds,
+                    3,
+                ),
+            },
+        )
+
         print(
             "GitHub advisory ingestion execution completed: "
             f"pages={pages_processed}, "
             f"received={total_received}, "
             f"persisted={total_persisted}, "
             f"skipped={total_skipped}, "
-            f"pagination_complete={pagination_complete}"
+            f"pagination_complete={pagination_complete}, "
+            f"stop_reason={stop_reason}, "
+            f"duration_seconds={duration_seconds:.3f}"
         )
 
         return 0
+
+
 
     except Exception as error:
         sanitized_error = redact_sensitive_data(
             str(error),
             max_length=500,
+        )
+        
+        logger.error(
+            "GitHub advisory ingestion cycle failed",
+            extra={
+                "error_type": (
+                    type(error).__name__
+                ),
+                "error_message": sanitized_error,
+            },
         )
 
         print(
