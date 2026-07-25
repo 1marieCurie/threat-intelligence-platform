@@ -3,10 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
-
-from application.ports.outbound.ingestion_connector import (
-    IngestionConnector,
-)
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunData,
 )
@@ -26,9 +22,7 @@ from application.ports.outbound.ingestion_connector import (
     FetchResult,
     IngestionConnector,
 )
-from application.ports.outbound.sync_state_repository import (
-    SyncStateData,
-)
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +32,7 @@ class IngestionResult:
     records_persisted: int
     records_skipped: int
     status: str
+    pagination_complete: bool = True
 
 
 class IngestionService:
@@ -155,6 +150,9 @@ class IngestionService:
             records_persisted=records_persisted,
             records_skipped=records_skipped,
             status="completed",
+            pagination_complete=(
+                fetch_result.next_cursor is None
+            ),
         )
     def _mark_run_failed(
         self,
