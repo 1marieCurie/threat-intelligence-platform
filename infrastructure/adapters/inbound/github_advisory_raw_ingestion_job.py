@@ -1,9 +1,13 @@
+import logging #journalisation
 from uuid import UUID
 
 from application.services.ingestion_service import (
     IngestionResult,
     IngestionService,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class GitHubAdvisoryRawIngestionJob:
@@ -27,22 +31,51 @@ class GitHubAdvisoryRawIngestionJob:
         self._source_id = source_id
 
     def run(self) -> IngestionResult:
-        result = self._ingestion_service.ingest(
-            source_id=self._source_id,
+        logger.info(
+            "GitHub advisory raw ingestion started",
+            extra={
+                "source_id": str(self._source_id),
+            },
         )
 
-        self._print_summary(result)
+        try:
+            result = self._ingestion_service.ingest(
+                source_id=self._source_id,
+            )
+        except Exception:
+            logger.exception(
+                "GitHub advisory raw ingestion failed",
+                extra={
+                    "source_id": str(self._source_id),
+                },
+            )
+            raise
+
+        self._log_summary(result)
 
         return result
 
     @staticmethod
-    def _print_summary(
+    def _log_summary(
         result: IngestionResult,
     ) -> None:
-        print(
-            "GitHub advisory raw ingestion completed: "
-            f"received={result.records_received}, "
-            f"persisted={result.records_persisted}, "
-            f"skipped={result.records_skipped}, "
-            f"status={result.status}"
+        logger.info(
+            "GitHub advisory raw ingestion completed",
+            extra={
+                "run_id": str(result.run_id),
+                "records_received": (
+                    result.records_received
+                ),
+                "records_persisted": (
+                    result.records_persisted
+                ),
+                "records_skipped": (
+                    result.records_skipped
+                ),
+                "status": result.status,
+                "pagination_complete": (
+                    result.pagination_complete
+                ),
+            },
         )
+

@@ -10,6 +10,9 @@ from infrastructure.bootstrap.github_advisory_ingestion import (
 from application.security.sensitive_data_redactor import (
     redact_sensitive_data,
 )
+from infrastructure.logging.configuration import (
+    configure_logging,
+)
 
 
 DEFAULT_MAX_PAGES = 1
@@ -82,6 +85,8 @@ def main() -> int:
         dotenv_path=find_dotenv(usecwd=True),
         override=False,
     )
+    
+    configure_logging()
 
     arguments = _parse_arguments()
 

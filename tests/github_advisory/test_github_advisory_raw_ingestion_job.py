@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 from uuid import uuid4
+import logging
 
 import pytest
 
@@ -85,18 +86,21 @@ def test_job_returns_ingestion_result() -> None:
     assert result is expected_result
 
 
-def test_job_prints_execution_summary(
-    capsys: pytest.CaptureFixture[str],
+def test_job_logs_execution_summary(
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     source_id = uuid4()
-    ingestion_service = Mock()
 
-    ingestion_service.ingest.return_value = IngestionResult(
-        run_id=uuid4(),
-        records_received=5,
-        records_persisted=3,
-        records_skipped=2,
-        status="completed",
+    ingestion_service = Mock()
+    ingestion_service.ingest.return_value = (
+        IngestionResult(
+            run_id=uuid4(),
+            records_received=100,
+            records_persisted=90,
+            records_skipped=10,
+            status="completed",
+            pagination_complete=False,
+        )
     )
 
     job = GitHubAdvisoryRawIngestionJob(
@@ -104,20 +108,78 @@ def test_job_prints_execution_summary(
         source_id=source_id,
     )
 
-    job.run()
+    with caplog.at_level(logging.INFO):
+        result = job.run()
 
-    captured = capsys.readouterr()
+    assert result.records_received == 100
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+    ]
 
     assert (
-        captured.out
-        == (
-            "GitHub advisory raw ingestion completed: "
-            "received=5, "
-            "persisted=3, "
-            "skipped=2, "
-            "status=completed\n"
+        "GitHub advisory raw ingestion started"
+        in messages
+    )
+    assert (
+        "GitHub advisory raw ingestion completed"
+        in messages
+    )
+
+    completed_record = next(
+        record
+        for record in caplog.records
+        if record.getMessage()
+        == "GitHub advisory raw ingestion completed"
+    )
+
+    assert completed_record.__dict__["records_received"] == 100
+    assert completed_record.__dict__["records_persisted"] == 90
+    assert completed_record.__dict__["records_skipped"] == 10
+    assert completed_record.__dict__["status"] == "completed"
+    assert (
+        completed_record.__dict__["pagination_complete"]
+        is False
+    )
+
+
+def test_job_logs_failure_and_propagates_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    source_id = uuid4()
+
+    ingestion_service = Mock()
+    ingestion_service.ingest.side_effect = (
+        RuntimeError(
+            "GitHub API unavailable"
         )
     )
+
+    job = GitHubAdvisoryRawIngestionJob(
+        ingestion_service=ingestion_service,
+        source_id=source_id,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(
+            RuntimeError,
+            match="GitHub API unavailable",
+        ):
+            job.run()
+
+    failure_record = next(
+        record
+        for record in caplog.records
+        if record.getMessage()
+        == "GitHub advisory raw ingestion failed"
+    )
+
+    assert (
+        failure_record.__dict__["source_id"]
+        == str(source_id)
+    )
+    assert failure_record.exc_info is not None
 
 
 def test_job_propagates_ingestion_error() -> None:
