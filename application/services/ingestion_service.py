@@ -22,6 +22,9 @@ from application.ports.outbound.ingestion_connector import (
     FetchResult,
     IngestionConnector,
 )
+from application.security.sensitive_data_redactor import (
+    redact_sensitive_data,
+)
 
 
 
@@ -191,9 +194,15 @@ class IngestionService:
         if not message:
             return error_type
 
-        sanitized_message = message[:500]
+        sanitized_message = redact_sensitive_data(
+            message,
+            max_length=500,
+        )
 
-        return f"{error_type}: {sanitized_message}"
+        return (
+            f"{error_type}: "
+            f"{sanitized_message}"
+        )
     
     def ingest(
         self,

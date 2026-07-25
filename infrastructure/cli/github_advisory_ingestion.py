@@ -7,6 +7,9 @@ from dotenv import find_dotenv, load_dotenv
 from infrastructure.bootstrap.github_advisory_ingestion import (
     build_github_advisory_ingestion_job,
 )
+from application.security.sensitive_data_redactor import (
+    redact_sensitive_data,
+)
 
 
 DEFAULT_MAX_PAGES = 1
@@ -129,10 +132,17 @@ def main() -> int:
         return 0
 
     except Exception as error:
+        sanitized_error = redact_sensitive_data(
+            str(error),
+            max_length=500,
+        )
+
         print(
-            f"GitHub advisory ingestion failed: {error}",
+            "GitHub advisory ingestion failed: "
+            f"{sanitized_error}",
             file=sys.stderr,
         )
+
         return 1
 
 

@@ -395,7 +395,9 @@ def test_main_returns_error_code_when_job_fails(
 
     job = Mock()
     job.run.side_effect = RuntimeError(
-        "GitHub API unavailable"
+        "Authorization: Bearer ghp_secret_value "
+        "GITHUB_TOKEN=another_secret "
+        "postgresql://app:db_password@localhost/database"
     )
 
     build_job.return_value = job
@@ -408,15 +410,22 @@ def test_main_returns_error_code_when_job_fails(
     job.run.assert_called_once_with()
 
     assert captured.out == ""
+
+    assert "ghp_secret_value" not in captured.err
+    assert "another_secret" not in captured.err
+    assert "db_password" not in captured.err
+
+    assert "Authorization: [REDACTED]" in captured.err
+    assert "GITHUB_TOKEN=[REDACTED]" in captured.err
     assert (
-        "GitHub advisory ingestion failed: "
-        "GitHub API unavailable"
+        "postgresql://app:[REDACTED]@localhost/database"
         in captured.err
     )
 
-    # Le message ne doit pas exposer de token.
-    assert "GITHUB_TOKEN" not in captured.err
-    assert "Authorization" not in captured.err
+    assert (
+        "GitHub advisory ingestion failed:"
+        in captured.err
+    )
 
 
 @patch(
