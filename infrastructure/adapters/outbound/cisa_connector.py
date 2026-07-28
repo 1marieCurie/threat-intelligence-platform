@@ -1,12 +1,24 @@
+from __future__ import annotations
+
+from typing import Any
+
 import requests
-from typing import Dict
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class CISAConnector:
     """
-    Outbound Adapter
+    Connecteur HTTP vers le catalogue CISA KEV.
 
-    Handles communication with the CISA KEV feed.
+    Responsabilités :
+    - configurer une session HTTP réutilisable ;
+    - appliquer un timeout explicite ;
+    - réessayer uniquement les requêtes GET idempotentes ;
+    - valider le format JSON racine.
+
+    La validation détaillée du catalogue appartient à
+    CisaKevIngestionConnector.
     """
 
     KEV_URL = (
@@ -14,16 +26,115 @@ class CISAConnector:
         "known_exploited_vulnerabilities.json"
     )
 
-    def fetch(self) -> Dict:
-        """
-        Retrieve the complete CISA Known Exploited Vulnerabilities catalog.
+    DEFAULT_TIMEOUT = 30.0
 
-        Returns:
-            dict: Raw JSON response from CISA.
+    def __init__(
+        self,
+        *,
+        session: requests.Session | None = None,
+        timeout: int | float = DEFAULT_TIMEOUT,
+    ) -> None:
+        if isinstance(timeout, bool):
+            raise TypeError(
+                "timeout must be an integer or float."
+            )
+
+        if not isinstance(timeout, (int, float)):
+            raise TypeError(
+                "timeout must be an integer or float."
+            )
+
+        if timeout <= 0:
+            raise ValueError(
+                "timeout must be greater than zero."
+            )
+
+        self._timeout = float(timeout)
+        self._session = (
+            session
+            if session is not None
+            else self._build_session()
+        )
+
+        self._session.headers.update(
+            {
+                "Accept": "application/json",
+                "User-Agent": (
+                    "Threat-Intelligence-Engine/1.0"
+                ),
+            }
+        )
+
+    def fetch(self) -> dict[str, Any]:
+        """
+        Récupère le snapshot complet CISA KEV.
         """
 
-        response = requests.get(self.KEV_URL)
+        response = self._session.get(
+            self.KEV_URL,
+            timeout=self._timeout,
+        )
 
         response.raise_for_status()
 
-        return response.json()
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise ValueError(
+                "Invalid CISA KEV response: invalid JSON."
+            ) from error
+
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "Invalid CISA KEV response: "
+                "expected a JSON object."
+            )
+
+        return payload
+
+    @staticmethod
+    def _build_session() -> requests.Session:
+        """
+        Construit une session avec retries bornés.
+
+        Seules les opérations GET sont rejouées.
+        """
+
+        retry_policy = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            status=3,
+            backoff_factor=0.5,
+            status_forcelist=(
+                429,
+                500,
+                502,
+                503,
+                504,
+            ),
+            allowed_methods=frozenset(
+                {
+                    "GET",
+                }
+            ),
+            raise_on_status=False,
+        )
+
+        adapter = HTTPAdapter(
+            max_retries=retry_policy,  # type: ignore[arg-type]
+        )
+
+        session = requests.Session()
+
+        session.mount(
+            "https://",
+            adapter,
+        )
+
+        session.mount(
+            "http://",
+            adapter,
+        )
+
+        return session

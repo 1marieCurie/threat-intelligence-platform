@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 from uuid import uuid4
+from datetime import UTC, datetime
 
 import pytest
 
@@ -18,6 +19,20 @@ from application.services.ingestion_service import (
 def test_ingest_persists_new_records_and_commits() -> None:
     source_id = uuid4()
     run_id = uuid4()
+    
+    fetched_at = datetime(
+        2026,
+        7,
+        28,
+        14,
+        0,
+        tzinfo=UTC,
+    )
+
+    source_url = (
+        "https://www.cisa.gov/"
+        "known_exploited_vulnerabilities.json"
+    )
 
     unit_of_work = Mock()
     unit_of_work.__enter__ = Mock(
@@ -52,6 +67,8 @@ def test_ingest_persists_new_records_and_commits() -> None:
                 payload={
                     "id": "CVE-2026-0001",
                 },
+                source_url=source_url,
+                fetched_at=fetched_at,
                 http_status=200,
             )
         ],
@@ -81,6 +98,25 @@ def test_ingest_persists_new_records_and_commits() -> None:
     )
 
     unit_of_work.raw_payloads.save.assert_called_once()
+    saved_payload = (
+        unit_of_work.raw_payloads
+        .save
+        .call_args
+        .args[0]
+    )
+
+    assert saved_payload.source_id == source_id
+    assert saved_payload.ingestion_run_id == run_id
+    assert (
+        saved_payload.external_record_id
+        == "CVE-2026-0001"
+    )
+    assert saved_payload.request_url == source_url
+    assert saved_payload.retrieved_at == fetched_at
+    assert saved_payload.http_status == 200
+    assert saved_payload.payload_hash == "a" * 64
+    
+    
     unit_of_work.sync_states.upsert.assert_called_once()
     unit_of_work.ingestion_runs.mark_completed.assert_called_once()
 

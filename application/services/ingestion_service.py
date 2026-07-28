@@ -109,6 +109,8 @@ class IngestionService:
                         ),
                         payload=record.payload,
                         payload_hash=payload_hash,
+                        retrieved_at=record.fetched_at,
+                        request_url=record.source_url,
                         http_status=record.http_status,
                     )
                 )
