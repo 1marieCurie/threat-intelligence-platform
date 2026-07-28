@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
+from typing import Any
 
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunData,
@@ -28,16 +29,17 @@ class SqlAlchemyIngestionRunRepository:
         run_id = uuid4()
 
         model = IngestionRunModel(
-            id=run_id,
-            source_id=run.source_id,
-            status=run.status,
-            finished_at=run.finished_at,
-            records_received=run.records_received,
-            records_succeeded=run.records_succeeded,
-            records_failed=run.records_failed,
-            error_summary=run.error_summary,
-            connector_version=run.connector_version,
-        )
+        id=run_id,
+        source_id=run.source_id,
+        status=run.status,
+        finished_at=run.finished_at,
+        records_received=run.records_received,
+        records_succeeded=run.records_succeeded,
+        records_failed=run.records_failed,
+        error_summary=run.error_summary,
+        connector_version=run.connector_version,
+        metadata_=dict(run.metadata),
+    )
 
         if run.started_at is not None:
             model.started_at = run.started_at
@@ -55,10 +57,19 @@ class SqlAlchemyIngestionRunRepository:
         records_received: int,
         records_succeeded: int,
         records_failed: int,
+        connector_version: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
+        normalized_metadata = (
+            dict(metadata)
+            if metadata is not None
+            else {}
+        )
         statement = (
             update(IngestionRunModel)
-            .where(IngestionRunModel.id == run_id)
+            .where(
+                IngestionRunModel.id == run_id
+            )
             .values(
                 status="completed",
                 finished_at=finished_at,
@@ -66,6 +77,8 @@ class SqlAlchemyIngestionRunRepository:
                 records_succeeded=records_succeeded,
                 records_failed=records_failed,
                 error_summary=None,
+                connector_version=connector_version,
+                metadata_=normalized_metadata,
             )
             .returning(IngestionRunModel.id)
         )

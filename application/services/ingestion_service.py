@@ -132,15 +132,21 @@ class IngestionService:
             )
 
             updated = (
-                unit_of_work.ingestion_runs
-                .mark_completed(
-                    run_id=run_id,
-                    finished_at=completed_at,
-                    records_received=records_received,
-                    records_succeeded=records_persisted,
-                    records_failed=0,
-                )
+            unit_of_work.ingestion_runs
+            .mark_completed(
+                run_id=run_id,
+                finished_at=completed_at,
+                records_received=records_received,
+                records_succeeded=records_persisted,
+                records_failed=0,
+                connector_version=(
+                    fetch_result.connector_version
+                ),
+                metadata=dict(
+                    fetch_result.metadata
+                ),
             )
+        )
 
             if not updated:
                 raise RuntimeError(

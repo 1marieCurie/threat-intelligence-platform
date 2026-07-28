@@ -487,6 +487,14 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
                 ]
                 is True
             )
+            assert runs[0].connector_version == "1.0.0"
+            assert runs[0].metadata_["source"] == "cisa_kev"
+            assert runs[0].metadata_["catalog_version"] == "2026.07.28"
+            assert runs[0].metadata_["declared_count"] == 2
+            assert runs[0].metadata_["records_count"] == 2
+
+            assert runs[1].connector_version == "1.0.0"
+            assert runs[1].metadata_["source"] == "cisa_kev"
 
     finally:
         _delete_test_data(

@@ -146,6 +146,15 @@ class IngestionRunModel(Base):
         String(100),
         nullable=True,
     )
+    metadata_: Mapped[dict[str, object]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=sa.text(
+            "'{}'::jsonb"
+        ),
+    )
 
 class SyncStateModel(Base):
     __tablename__ = "sync_state"

@@ -127,6 +127,22 @@ def test_ingest_persists_new_records_and_commits() -> None:
     assert result.records_persisted == 1
     assert result.records_skipped == 0
     assert result.status == "completed"
+    
+    completed_call = (
+        unit_of_work.ingestion_runs
+        .mark_completed
+        .call_args
+        .kwargs
+    )
+
+    assert (
+        completed_call["connector_version"]
+        == "1.0.0"
+    )
+
+    assert completed_call["metadata"] == {
+        "page": 2,
+    }
 
 
 def test_ingest_skips_existing_payload() -> None:

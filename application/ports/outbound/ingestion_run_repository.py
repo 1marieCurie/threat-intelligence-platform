@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 
@@ -18,6 +18,9 @@ class IngestionRunData:
     records_failed: int = 0
     error_summary: str | None = None
     connector_version: str | None = None
+    metadata: dict[str, Any] = field(
+        default_factory=dict
+    )
 
 
 class IngestionRunRepository(Protocol):
@@ -29,13 +32,15 @@ class IngestionRunRepository(Protocol):
         ...
 
     def mark_completed(
-        self,
+         self,
         *,
         run_id: UUID,
         finished_at: datetime,
         records_received: int,
         records_succeeded: int,
         records_failed: int,
+        connector_version: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Marque une exécution comme terminée."""
         ...
