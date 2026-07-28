@@ -59,7 +59,7 @@ def test_integration_collect_real_phishtank_threats(
         )
 
         assert threat.source == "PHISHTANK"
-        assert threat.threat_type == "phishing"
+        assert threat.category.value == "phishing"
 
         assert threat.external_ids.get(
             "PHISHTANK"
