@@ -445,9 +445,9 @@ def display_threat(
     )
 
     print(
-        f"Weaknesses            : "
-        f"{threat.weaknesses or 'N/A'}"
-    )
+        f"Weakness IDs          : "
+        f"{threat.weakness_ids or 'N/A'}"
+)
 
     print(
         f"Products              : "
@@ -778,7 +778,7 @@ def test_real_multi_source_synergy_for_log4shell() -> None:
     # NVD provides severity and CVSS information.
     assert nvd_threat.description
     assert nvd_threat.cvss_score is not None
-    assert nvd_threat.weaknesses
+    assert nvd_threat.weakness_ids
     assert nvd_threat.references
 
     # CISA confirms known exploitation and remediation.
