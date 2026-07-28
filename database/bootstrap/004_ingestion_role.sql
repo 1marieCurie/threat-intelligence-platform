@@ -24,7 +24,7 @@ ON DATABASE threat_intelligence
 TO threat_intel_ingestion;
 
 GRANT USAGE
-ON SCHEMA ops, raw
+ON SCHEMA ops, raw, normalized
 TO threat_intel_ingestion_role;
 
 GRANT SELECT
@@ -43,6 +43,7 @@ GRANT SELECT, INSERT, UPDATE
 ON TABLE raw.source_payload
 TO threat_intel_ingestion_role;
 
+
 -- Future migrations
 ALTER DEFAULT PRIVILEGES
 FOR ROLE threat_intel_owner
@@ -54,6 +55,13 @@ TO threat_intel_ingestion_role;
 ALTER DEFAULT PRIVILEGES
 FOR ROLE threat_intel_owner
 IN SCHEMA raw
+GRANT SELECT, INSERT, UPDATE
+ON TABLES
+TO threat_intel_ingestion_role;
+
+ALTER DEFAULT PRIVILEGES
+FOR ROLE threat_intel_owner
+IN SCHEMA normalized
 GRANT SELECT, INSERT, UPDATE
 ON TABLES
 TO threat_intel_ingestion_role;

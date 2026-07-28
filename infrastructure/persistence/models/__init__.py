@@ -4,6 +4,9 @@ from infrastructure.persistence.models.ops import (
     SourceModel,
     SyncStateModel,
 )
+from infrastructure.persistence.models.normalized import (
+    CisaKevVulnerabilityModel,
+)
 
 from infrastructure.persistence.models.raw import SourcePayloadModel
 
@@ -13,4 +16,5 @@ __all__ = [
     "IngestionRunModel",
     "SourcePayloadModel",
     "SyncStateModel",
+    "CisaKevVulnerabilityModel",
 ]

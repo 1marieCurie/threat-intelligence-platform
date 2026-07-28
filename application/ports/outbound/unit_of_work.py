@@ -12,11 +12,17 @@ from application.ports.outbound.ingestion_run_repository import (
 from application.ports.outbound.sync_state_repository import (
     SyncStateRepository,
 )
+from application.ports.outbound.cisa_kev_vulnerability_repository import (
+    CisaKevVulnerabilityRepository,
+)
 
 class UnitOfWork(Protocol):
     ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
     sync_states: SyncStateRepository
+    cisa_kev_vulnerabilities: (
+        CisaKevVulnerabilityRepository
+    )
 
     def __enter__(self) -> Self:
         ...

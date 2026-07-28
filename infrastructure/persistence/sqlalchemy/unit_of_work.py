@@ -24,6 +24,12 @@ from application.ports.outbound.sync_state_repository import (
 from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
     SqlAlchemySyncStateRepository,
 )
+from application.ports.outbound.cisa_kev_vulnerability_repository import (
+    CisaKevVulnerabilityRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
+    SqlAlchemyCisaKevVulnerabilityRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -36,6 +42,9 @@ class SqlAlchemyUnitOfWork:
         self.ingestion_runs: IngestionRunRepository
         self.raw_payloads: RawPayloadRepository
         self.sync_states: SyncStateRepository
+        self.cisa_kev_vulnerabilities: (
+            CisaKevVulnerabilityRepository
+        )
 
     def __enter__(self) -> Self:
         if self._session is not None:
@@ -49,6 +58,11 @@ class SqlAlchemyUnitOfWork:
         )
         self.raw_payloads = SqlAlchemyRawPayloadRepository(
             session=self._session,
+        )
+        self.cisa_kev_vulnerabilities = (
+                    SqlAlchemyCisaKevVulnerabilityRepository(
+                        session=self._session,
+                    )
         )
         self.sync_states = SqlAlchemySyncStateRepository(
             session=self._session,

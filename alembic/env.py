@@ -87,6 +87,7 @@ MANAGED_SCHEMAS: set[str] = {
     "threat_intel",
     "ops",
     "raw",
+    "normalized",
 }
 
 

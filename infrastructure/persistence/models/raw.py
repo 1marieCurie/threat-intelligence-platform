@@ -35,6 +35,10 @@ class SourcePayloadModel(Base):
             "('pending', 'processing', 'processed', 'failed')",
             name="processing_status_valid",
         ),
+         CheckConstraint(
+            "processing_attempts >= 0",
+            name="processing_attempts_non_negative",
+        ),
         UniqueConstraint(
             "source_id",
             "external_record_id",
@@ -57,6 +61,14 @@ class SourcePayloadModel(Base):
             "id",
             postgresql_where=text(
                 "processing_status = 'pending'"
+            ),
+        ),
+        Index(
+            "ix_source_payload_processing_lease",
+            "source_id",
+            "processing_started_at",
+            postgresql_where=text(
+                "processing_status = 'processing'"
             ),
         ),
         {
@@ -128,6 +140,18 @@ class SourcePayloadModel(Base):
         String(30),
         nullable=False,
         server_default=text("'pending'"),
+    )
+    processing_started_at: Mapped[datetime | None] = (
+    mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    )
+
+    processing_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
     )
 
     error_message: Mapped[str | None] = mapped_column(

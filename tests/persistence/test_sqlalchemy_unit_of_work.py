@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from infrastructure.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
 )
+from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
+    SqlAlchemyCisaKevVulnerabilityRepository,
+)
 
 
 def test_commit_delegates_to_session() -> None:
@@ -76,3 +79,26 @@ def test_commit_outside_context_is_rejected() -> None:
         match="Unit of Work is not active",
     ):
         unit_of_work.commit()
+
+def test_context_initializes_cisa_repository() -> None:
+    session = Mock(
+        spec=Session,
+    )
+
+    session_factory = Mock(
+        spec=sessionmaker,
+        return_value=session,
+    )
+
+    unit_of_work = SqlAlchemyUnitOfWork(
+        session_factory=session_factory,
+    )
+
+    with unit_of_work:
+        assert isinstance(
+            unit_of_work.cisa_kev_vulnerabilities,
+            SqlAlchemyCisaKevVulnerabilityRepository,
+        )
+
+    session.rollback.assert_called_once_with()
+    session.close.assert_called_once_with()

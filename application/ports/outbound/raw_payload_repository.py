@@ -37,6 +37,8 @@ class PersistedRawPayload:
     http_status: int | None = None
     source_updated_at: datetime | None = None
     error_message: str | None = None
+    processing_started_at: datetime | None = None
+    processing_attempts: int = 0
 
 
 class RawPayloadRepository(Protocol):
@@ -89,3 +91,24 @@ class RawPayloadRepository(Protocol):
     ) -> bool:
         """Marque un payload comme échoué avec une erreur assainie."""
         ...
+    
+    def recover_stale_processing(
+        self,
+        *,
+        source_id: UUID,
+        stale_before: datetime,
+        max_attempts: int,
+        failure_message: str,
+    ) -> RawPayloadRecoveryResult:
+        """
+        Récupère les payloads dont la lease a expiré.
+
+        Les payloads sous la limite sont remis en attente.
+        Ceux ayant atteint la limite sont marqués failed.
+        """
+        ...
+
+@dataclass(frozen=True, slots=True)
+class RawPayloadRecoveryResult:
+    requeued: int
+    failed: int
