@@ -30,6 +30,11 @@ class SourcePayloadModel(Base):
             "(http_status >= 100 AND http_status <= 599)",
             name="http_status_valid",
         ),
+         CheckConstraint(
+            "processing_status IN "
+            "('pending', 'processing', 'processed', 'failed')",
+            name="processing_status_valid",
+        ),
         UniqueConstraint(
             "source_id",
             "external_record_id",
@@ -44,6 +49,15 @@ class SourcePayloadModel(Base):
         Index(
             "ix_source_payload_ingestion_run_id",
             "ingestion_run_id",
+        ),
+        Index(
+            "ix_source_payload_pending_claim",
+            "source_id",
+            "retrieved_at",
+            "id",
+            postgresql_where=text(
+                "processing_status = 'pending'"
+            ),
         ),
         {
             "schema": "raw",
