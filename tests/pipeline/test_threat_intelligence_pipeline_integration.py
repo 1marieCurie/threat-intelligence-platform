@@ -91,9 +91,13 @@ def display_real_pipeline_result(
 
     if epss_metadata:
         for key, value in epss_metadata.items():
-            print(f"{key:<25}: {value}")
+            print(
+                f"{key:<25}: {value}"
+            )
     else:
-        print("No EPSS metadata available.")
+        print(
+            "No EPSS metadata available."
+        )
 
     print("\n----- Multi-source groups -----")
 
@@ -127,11 +131,6 @@ def display_real_pipeline_result(
             )
 
             for threat in threats:
-                print(
-                    f"    Title       : "
-                    f"{threat.title or 'N/A'}"
-                )
-
                 description = (
                     threat.description
                     or "N/A"
@@ -143,31 +142,56 @@ def display_real_pipeline_result(
                         + "..."
                     )
 
+                cvss_value = (
+                    threat.cvss_score
+                    if threat.cvss_score is not None
+                    else "N/A"
+                )
+
+                epss_value = (
+                    threat.epss_score
+                    if threat.epss_score is not None
+                    else "N/A"
+                )
+
                 print(
-                    f"    Description : {description}"
+                    "    Title          : "
+                    f"{threat.title or 'N/A'}"
                 )
                 print(
-                    f"    Severity    : "
+                    "    Description    : "
+                    f"{description}"
+                )
+                print(
+                    "    Severity       : "
                     f"{threat.severity or 'N/A'}"
                 )
                 print(
-                    f"    CVSS        : "
-                    f"{threat.cvss_score if threat.cvss_score is not None else 'N/A'}"
+                    "    CVSS           : "
+                    f"{cvss_value}"
                 )
                 print(
-                    f"    EPSS        : "
-                    f"{threat.epss_score if threat.epss_score is not None else 'N/A'}"
+                    "    EPSS           : "
+                    f"{epss_value}"
                 )
                 print(
-                    f"    Products    : "
+                    "    Products       : "
                     f"{len(threat.affected_products)}"
                 )
                 print(
-                    f"    Weaknesses  : "
-                    f"{len(threat.weaknesses)}"
+                    "    Weakness refs  : "
+                    f"{len(threat.weakness_references)}"
                 )
                 print(
-                    f"    References  : "
+                    "    Resolved CWEs  : "
+                    f"{len(threat.weakness_ids)}"
+                )
+                print(
+                    "    Official CWEs  : "
+                    f"{len(threat.official_weaknesses)}"
+                )
+                print(
+                    "    References     : "
                     f"{len(threat.references)}"
                 )
 
@@ -177,7 +201,9 @@ def display_real_pipeline_result(
         for error in result.errors:
             print(error)
     else:
-        print("No pipeline errors.")
+        print(
+            "No pipeline errors."
+        )
 
 
 @pytest.mark.integration
@@ -240,7 +266,10 @@ def test_complete_pipeline_with_real_sources(
         ThreatIntelligencePipelineResult,
     )
 
-    assert result.metadata["configured_sources"] == 4
+    assert (
+        result.metadata["configured_sources"]
+        == 4
+    )
 
     assert (
         result.metadata["successful_sources"]
@@ -252,7 +281,10 @@ def test_complete_pipeline_with_real_sources(
         > 0
     )
 
-    assert result.metadata["unique_threats"] > 0
+    assert (
+        result.metadata["unique_threats"]
+        > 0
+    )
 
     assert (
         result.metadata["fusion_performed"]
@@ -276,18 +308,27 @@ def test_complete_pipeline_with_real_sources(
         dict,
     )
 
-    # Every correlated record must still be a source-specific
-    # object stored inside its original source group.
-    for group in result.correlation_result.all_groups():
+    # Every correlated record must still be a
+    # source-specific object stored inside its
+    # original source group.
+    for group in (
+        result.correlation_result.all_groups()
+    ):
         assert group.id
 
-        assert len(group.threats) == sum(
-            len(threats)
-            for threats
+        expected_threat_count = sum(
+            len(source_threats)
+            for source_threats
             in group.threats_by_source.values()
         )
 
+        assert (
+            len(group.threats)
+            == expected_threat_count
+        )
+
         for source_name in group.sources:
-            assert source_name in (
-                group.threats_by_source
+            assert (
+                source_name
+                in group.threats_by_source
             )
