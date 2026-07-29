@@ -388,3 +388,195 @@ class GitHubAdvisoryVulnerabilityModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+    
+class CWEWeaknessModel(Base):
+    """
+    Entrée officielle du catalogue MITRE CWE.
+
+    Une seule ligne est conservée par identifiant canonique.
+    Les payloads MITRE bruts ne sont volontairement pas persistés.
+    """
+
+    __tablename__ = "cwe_weakness"
+
+    __table_args__ = (
+        CheckConstraint(
+            "cwe_id ~ '^CWE-[1-9][0-9]*$'",
+            name="cwe_id_valid",
+        ),
+        {
+            "schema": "normalized",
+        },
+    )
+
+    cwe_id: Mapped[str] = mapped_column(
+        String(32),
+        primary_key=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    abstraction: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    structure: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    status: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    extended_description: Mapped[
+        str | None
+    ] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    likelihood_of_exploit: Mapped[
+        str | None
+    ] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    mapping_usage: Mapped[
+        str | None
+    ] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    mapping_rationale: Mapped[
+        str | None
+    ] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    relationships: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    consequences: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    mitigations: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    detection_methods: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    applicable_platforms: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    modes_of_introduction: Mapped[
+        list[dict[str, object]]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'[]'::jsonb"
+        ),
+    )
+
+    alternate_terms: Mapped[
+        list[str]
+    ] = mapped_column(
+        ARRAY(
+            Text(),
+        ),
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'{}'::text[]"
+        ),
+    )
+
+    related_capec_ids: Mapped[
+        list[str]
+    ] = mapped_column(
+        ARRAY(
+            String(32),
+        ),
+        nullable=False,
+        default=list,
+        server_default=text(
+            "'{}'::character varying[]"
+        ),
+    )
+
+    catalog_version: Mapped[
+        str | None
+    ] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    catalog_date: Mapped[
+        str | None
+    ] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+
+    synchronized_at: Mapped[
+        datetime
+    ] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

@@ -35,6 +35,12 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
 from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
     SqlAlchemySyncStateRepository,
 )
+from application.ports.outbound.cwe_repository import (
+    WritableCWERepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.cwe_repository import (
+    SqlAlchemyCWERepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -71,6 +77,10 @@ class SqlAlchemyUnitOfWork:
 
         self.github_advisory_vulnerabilities: (
             GitHubAdvisoryVulnerabilityRepository
+        )
+        
+        self.cwe_weaknesses: (
+            WritableCWERepository
         )
 
     def __enter__(self) -> Self:
@@ -109,6 +119,12 @@ class SqlAlchemyUnitOfWork:
 
         self.github_advisory_vulnerabilities = (
             SqlAlchemyGitHubAdvisoryVulnerabilityRepository(
+                session=self._session,
+            )
+        )
+        
+        self.cwe_weaknesses = (
+            SqlAlchemyCWERepository(
                 session=self._session,
             )
         )

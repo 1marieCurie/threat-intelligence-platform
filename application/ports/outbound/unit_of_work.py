@@ -18,6 +18,9 @@ from application.ports.outbound.raw_payload_repository import (
 from application.ports.outbound.sync_state_repository import (
     SyncStateRepository,
 )
+from application.ports.outbound.cwe_repository import (
+    WritableCWERepository,
+)
 
 
 class UnitOfWork(Protocol):
@@ -32,6 +35,7 @@ class UnitOfWork(Protocol):
     github_advisory_vulnerabilities: (
         GitHubAdvisoryVulnerabilityRepository
     )
+    cwe_weaknesses: WritableCWERepository
 
     def __enter__(self) -> Self:
         ...

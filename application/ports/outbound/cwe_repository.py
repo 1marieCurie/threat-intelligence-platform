@@ -8,7 +8,10 @@ from domain.cwe_weakness import CWEWeakness
 
 class CWERepository(ABC):
     """
-    Outbound persistence port for the official CWE catalog.
+    Port de lecture du catalogue officiel CWE.
+
+    Les services d'enrichissement dépendent uniquement de ce
+    contrat en lecture.
     """
 
     @abstractmethod
@@ -17,7 +20,7 @@ class CWERepository(ABC):
         cwe_id: str,
     ) -> CWEWeakness | None:
         """
-        Return one official CWE weakness or None when it is absent.
+        Retourne une faiblesse officielle ou None.
         """
 
     def find_many_by_ids(
@@ -25,10 +28,10 @@ class CWERepository(ABC):
         cwe_ids: Iterable[str],
     ) -> list[CWEWeakness]:
         """
-        Default multi-ID implementation.
+        Implémentation générique multi-identifiants.
 
-        Persistent repositories may override this method with a
-        single optimized database query.
+        Les repositories persistants doivent surcharger cette méthode
+        afin d'utiliser une seule requête SQL.
         """
 
         weaknesses: list[CWEWeakness] = []
@@ -44,3 +47,23 @@ class CWERepository(ABC):
                 )
 
         return weaknesses
+
+
+class WritableCWERepository(CWERepository):
+    """
+    Port du catalogue CWE disposant des opérations d'écriture.
+
+    Cette séparation évite d'imposer une méthode d'écriture aux
+    repositories de lecture utilisés dans les tests ou adapters API.
+    """
+
+    @abstractmethod
+    def upsert_many(
+        self,
+        weaknesses: Iterable[CWEWeakness],
+    ) -> int:
+        """
+        Insère ou actualise plusieurs entrées CWE.
+
+        Retourne le nombre d'identifiants uniques pris en charge.
+        """
