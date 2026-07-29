@@ -41,6 +41,12 @@ from application.ports.outbound.cwe_repository import (
 from infrastructure.persistence.sqlalchemy.repositories.cwe_repository import (
     SqlAlchemyCWERepository,
 )
+from application.ports.outbound.cwe_reference_repository import (
+    VulnerabilityCWEReferenceRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.cwe_reference_repository import (
+    SqlAlchemyVulnerabilityCWEReferenceRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -125,6 +131,12 @@ class SqlAlchemyUnitOfWork:
         
         self.cwe_weaknesses = (
             SqlAlchemyCWERepository(
+                session=self._session,
+            )
+        )
+        
+        self.vulnerability_cwe_references = (
+            SqlAlchemyVulnerabilityCWEReferenceRepository(
                 session=self._session,
             )
         )
