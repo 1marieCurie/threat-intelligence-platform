@@ -5,7 +5,7 @@ from collections.abc import MutableMapping
 from logging.config import fileConfig
 from typing import Literal, TypeAlias
 from pathlib import Path
-from infrastructure.persistence.models.base import Base
+from infrastructure.persistence.models import Base
 
 from dotenv import load_dotenv
 
