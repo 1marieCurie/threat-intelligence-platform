@@ -6,6 +6,15 @@ from typing import Protocol, Self
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
+from application.ports.outbound.cwe_reference_repository import (
+    VulnerabilityCWEReferenceRepository,
+)
+from application.ports.outbound.cwe_repository import (
+    WritableCWERepository,
+)
+from application.ports.outbound.epss_score_repository import (
+    WritableEPSSScoreRepository,
+)
 from application.ports.outbound.github_advisory_vulnerability_repository import (
     GitHubAdvisoryVulnerabilityRepository,
 )
@@ -18,15 +27,16 @@ from application.ports.outbound.raw_payload_repository import (
 from application.ports.outbound.sync_state_repository import (
     SyncStateRepository,
 )
-from application.ports.outbound.cwe_repository import (
-    WritableCWERepository,
-)
-from application.ports.outbound.cwe_reference_repository import (
-    VulnerabilityCWEReferenceRepository,
-)
 
 
 class UnitOfWork(Protocol):
+    """
+    Contrat transactionnel partagé par les services applicatifs.
+
+    Les services dépendent de ce protocole plutôt que de
+    l'implémentation SQLAlchemy.
+    """
+
     ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
     sync_states: SyncStateRepository
@@ -38,11 +48,14 @@ class UnitOfWork(Protocol):
     github_advisory_vulnerabilities: (
         GitHubAdvisoryVulnerabilityRepository
     )
+
     cwe_weaknesses: WritableCWERepository
-    
+
     vulnerability_cwe_references: (
         VulnerabilityCWEReferenceRepository
     )
+
+    epss_scores: WritableEPSSScoreRepository
 
     def __enter__(self) -> Self:
         ...

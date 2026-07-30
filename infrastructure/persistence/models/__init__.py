@@ -3,6 +3,7 @@ from infrastructure.persistence.models.base import (
 )
 from infrastructure.persistence.models.normalized import (
     CisaKevVulnerabilityModel,
+    EPSSScoreModel,
     GitHubAdvisoryVulnerabilityModel,
 )
 from infrastructure.persistence.models.ops import (
@@ -13,6 +14,8 @@ from infrastructure.persistence.models.ops import (
 from infrastructure.persistence.models.raw import (
     SourcePayloadModel,
 )
+
+
 __all__ = [
     "Base",
     "SourceModel",
@@ -21,4 +24,5 @@ __all__ = [
     "SyncStateModel",
     "CisaKevVulnerabilityModel",
     "GitHubAdvisoryVulnerabilityModel",
+    "EPSSScoreModel",
 ]
