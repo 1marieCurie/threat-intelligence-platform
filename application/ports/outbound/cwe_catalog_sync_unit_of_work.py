@@ -11,11 +11,20 @@ from domain.cwe_weakness import CWEWeakness
 
 
 class CWEWeaknessBatchWriter(Protocol):
+        
     """
-    Port minimal d'écriture utilisé par la synchronisation CWE.
-
-    Il ne dépend pas du repository complet en lecture/écriture.
+    Port minimal de lecture et d'écriture utilisé
+    par la synchronisation du catalogue CWE.
     """
+    
+    def find_many_by_ids(
+        self,
+        cwe_ids: Iterable[str],
+    ) -> list[CWEWeakness]:
+        """
+        Retourne en une lecture bornée les CWE déjà persistés.
+        """
+        ...
 
     def upsert_many(
         self,

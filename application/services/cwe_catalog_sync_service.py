@@ -13,6 +13,10 @@ from application.ports.outbound.cwe_catalog_sync_unit_of_work import (
 from application.services.cwe_weakness_mapper import (
     CWEWeaknessMapper,
 )
+from domain.cwe_weakness import CWEWeakness
+
+
+MAX_CWE_CATALOG_BATCH_SIZE = 50
 
 
 @dataclass(
@@ -29,6 +33,7 @@ class CWECatalogSyncResult:
     batches: int
 
     missing_ids: tuple[str, ...] = ()
+    up_to_date_weaknesses: int = 0
 
 
 class CWECatalogSyncService:
@@ -38,9 +43,15 @@ class CWECatalogSyncService:
     Les opérations réseau sont exécutées hors transaction.
     Chaque lot est persisté dans une transaction PostgreSQL courte.
     """
-
-    MAX_BATCH_SIZE = 50
-    DEFAULT_BATCH_SIZE = 50
+    
+    MAX_BATCH_SIZE = (
+        MAX_CWE_CATALOG_BATCH_SIZE
+    )
+    
+    DEFAULT_BATCH_SIZE = (
+        MAX_CWE_CATALOG_BATCH_SIZE
+    )
+    
     DEFAULT_MAX_CWE_IDS = 5_000
 
     def __init__(
@@ -109,6 +120,30 @@ class CWECatalogSyncService:
                 version_payload
             )
         )
+        
+        (
+            pending_cwe_ids,
+            up_to_date_weaknesses,
+        ) = self._load_pending_ids(
+            cwe_ids=cwe_ids,
+            catalog_version=catalog_version,
+            catalog_date=catalog_date,
+        )
+
+        if not pending_cwe_ids:
+            return CWECatalogSyncResult(
+                catalog_version=catalog_version,
+                catalog_date=catalog_date,
+                requested_ids=len(
+                    cwe_ids
+                ),
+                fetched_weaknesses=0,
+                persisted_weaknesses=0,
+                batches=0,
+                up_to_date_weaknesses=(
+                    up_to_date_weaknesses
+                ),
+            )
 
         fetched_weaknesses = 0
         persisted_weaknesses = 0
@@ -117,7 +152,7 @@ class CWECatalogSyncService:
         missing_ids: set[str] = set()
 
         for batch in self._chunked(
-            cwe_ids,
+            pending_cwe_ids,
             self._batch_size,
         ):
             # L'appel HTTP est volontairement effectué
@@ -203,7 +238,108 @@ class CWECatalogSyncService:
                     key=self._cwe_sort_key,
                 )
             ),
+            up_to_date_weaknesses=(
+                up_to_date_weaknesses
+            ),
+
         )
+    
+    def _load_pending_ids(
+        self,
+        *,
+        cwe_ids: list[str],
+        catalog_version: str | None,
+        catalog_date: str | None,
+    ) -> tuple[
+        list[str],
+        int,
+    ]:
+        """
+        Retourne uniquement les CWE absents ou obsolètes.
+
+        La lecture PostgreSQL est effectuée en une requête
+        et dans une transaction courte.
+        """
+
+        with self._unit_of_work as uow:
+            existing_weaknesses = (
+                uow.cwe_weaknesses
+                .find_many_by_ids(
+                    cwe_ids
+                )
+            )
+
+        existing_by_id = {
+            weakness.id: weakness
+            for weakness in existing_weaknesses
+        }
+
+        pending_ids: list[str] = []
+
+        for cwe_id in cwe_ids:
+            existing = existing_by_id.get(
+                cwe_id
+            )
+
+            if existing is None:
+                pending_ids.append(
+                    cwe_id
+                )
+
+                continue
+
+            if not self._is_catalog_entry_current(
+                weakness=existing,
+                catalog_version=catalog_version,
+                catalog_date=catalog_date,
+            ):
+                pending_ids.append(
+                    cwe_id
+                )
+
+        return (
+            pending_ids,
+            len(cwe_ids) - len(
+                pending_ids
+            ),
+        )
+
+    @staticmethod
+    def _is_catalog_entry_current(
+        *,
+        weakness: CWEWeakness,
+        catalog_version: str | None,
+        catalog_date: str | None,
+    ) -> bool:
+        """
+        Vérifie les marqueurs de version disponibles.
+
+        Sans version ni date MITRE exploitable, une actualisation
+        est imposée afin d'éviter de considérer une donnée
+        potentiellement obsolète comme valide.
+        """
+
+        has_catalog_marker = False
+
+        if catalog_version is not None:
+            has_catalog_marker = True
+
+            if (
+                weakness.catalog_version
+                != catalog_version
+            ):
+                return False
+
+        if catalog_date is not None:
+            has_catalog_marker = True
+
+            if (
+                weakness.catalog_date
+                != catalog_date
+            ):
+                return False
+
+        return has_catalog_marker
 
     def _load_referenced_ids(
         self,

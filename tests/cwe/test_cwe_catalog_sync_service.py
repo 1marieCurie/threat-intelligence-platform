@@ -93,10 +93,35 @@ class FakeReferenceRepository:
 class FakeWritableRepository:
     def __init__(
         self,
+        *,
+        existing: list[CWEWeakness] | None = None,
     ) -> None:
+        self.existing = list(
+            existing or []
+        )
+
         self.saved: list[
             list[CWEWeakness]
         ] = []
+
+    def find_many_by_ids(
+        self,
+        cwe_ids: Iterable[str],
+    ) -> list[CWEWeakness]:
+        requested_ids = list(
+            cwe_ids
+        )
+
+        existing_by_id = {
+            weakness.id: weakness
+            for weakness in self.existing
+        }
+
+        return [
+            existing_by_id[cwe_id]
+            for cwe_id in requested_ids
+            if cwe_id in existing_by_id
+        ]
 
     def upsert_many(
         self,
@@ -114,7 +139,6 @@ class FakeWritableRepository:
             values
         )
 
-
 class FakeUnitOfWork:
     """
     Faux Unit of Work limité au contrat CWE.
@@ -126,6 +150,8 @@ class FakeUnitOfWork:
     def __init__(
         self,
         cwe_ids: list[str],
+        *,
+        existing: list[CWEWeakness] | None = None,
     ) -> None:
         self.vulnerability_cwe_references: (
             VulnerabilityCWEReferenceRepository
@@ -136,6 +162,12 @@ class FakeUnitOfWork:
         self.cwe_weaknesses: (
             CWEWeaknessBatchWriter
         ) = FakeWritableRepository()
+        
+        self.cwe_weaknesses = (
+            FakeWritableRepository(
+                existing=existing
+            )
+        )
 
         self.commit_count = 0
         self.enter_count = 0
@@ -240,8 +272,8 @@ def test_synchronize_referenced_in_batches(
 
     # Une entrée initiale pour la lecture des références,
     # puis une transaction par lot persisté.
-    assert unit_of_work.enter_count == 3
-    assert unit_of_work.exit_count == 3
+    assert unit_of_work.enter_count == 4
+    assert unit_of_work.exit_count == 4
 
 
 def test_missing_cwe_is_reported(
@@ -527,3 +559,123 @@ def test_invalid_catalog_version_is_rejected(
             ),
         ):
             service.synchronize_referenced()
+
+def _stored_weakness(
+    cwe_id: str,
+    *,
+    catalog_version: str = "4.20",
+    catalog_date: str = "2026-04-30",
+) -> CWEWeakness:
+    return CWEWeakness(
+        id=cwe_id,
+        name=f"Stored {cwe_id}",
+        description=(
+            f"Stored description {cwe_id}"
+        ),
+        catalog_version=catalog_version,
+        catalog_date=catalog_date,
+    )
+    
+def test_synchronize_fetches_only_missing_or_stale_entries(
+) -> None:
+    client = FakeClient(
+        responses=[
+            _payload(
+                "89",
+                "502",
+            ),
+        ]
+    )
+
+    unit_of_work = FakeUnitOfWork(
+        [
+            "CWE-79",
+            "CWE-89",
+            "CWE-502",
+        ],
+        existing=[
+            _stored_weakness(
+                "CWE-79"
+            ),
+            _stored_weakness(
+                "CWE-89",
+                catalog_version="4.19",
+            ),
+        ],
+    )
+
+    service = CWECatalogSyncService(
+        client=client,
+        unit_of_work=unit_of_work,
+        batch_size=10,
+    )
+
+    result = (
+        service.synchronize_referenced()
+    )
+
+    assert client.weakness_calls == [
+        [
+            "CWE-89",
+            "CWE-502",
+        ],
+    ]
+
+    assert result.requested_ids == 3
+
+    assert (
+        result.up_to_date_weaknesses
+        == 1
+    )
+
+    assert result.fetched_weaknesses == 2
+    assert result.persisted_weaknesses == 2
+    assert result.batches == 1
+
+    assert unit_of_work.commit_count == 1
+    
+def test_synchronize_skips_network_when_catalog_is_current(
+) -> None:
+    client = FakeClient(
+        responses=[]
+    )
+
+    unit_of_work = FakeUnitOfWork(
+        [
+            "CWE-79",
+            "CWE-89",
+        ],
+        existing=[
+            _stored_weakness(
+                "CWE-79"
+            ),
+            _stored_weakness(
+                "CWE-89"
+            ),
+        ],
+    )
+
+    service = CWECatalogSyncService(
+        client=client,
+        unit_of_work=unit_of_work,
+    )
+
+    result = (
+        service.synchronize_referenced()
+    )
+
+    assert client.version_calls == 1
+    assert client.weakness_calls == []
+
+    assert result.requested_ids == 2
+
+    assert (
+        result.up_to_date_weaknesses
+        == 2
+    )
+
+    assert result.fetched_weaknesses == 0
+    assert result.persisted_weaknesses == 0
+    assert result.batches == 0
+
+    assert unit_of_work.commit_count == 0

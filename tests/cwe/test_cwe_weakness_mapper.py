@@ -313,46 +313,168 @@ def test_invalid_nested_collection_is_rejected(
         )
 
 
-def test_invalid_platform_shape_is_rejected(
+def test_flat_platform_list_is_supported(
 ) -> None:
     raw = _complete_raw_weakness()
 
     raw["ApplicablePlatforms"] = [
         {
-            "Name": "Python",
+            "Type": "Language",
+            "Class": (
+                "Not Language-Specific"
+            ),
+            "Prevalence": "Undetermined",
+        },
+        {
+            "Type": "Technology",
+            "Name": "Web Server",
+            "Prevalence": "Undetermined",
         },
     ]
 
-    with pytest.raises(
-        ValueError,
-        match=(
-            "ApplicablePlatforms must "
-            "be a mapping"
-        ),
-    ):
+    result = (
         CWEWeaknessMapper.map_weakness(
             raw
         )
+    )
 
+    assert result.applicable_platforms == (
+        {
+            "type": "Language",
+            "Class": (
+                "Not Language-Specific"
+            ),
+            "Prevalence": "Undetermined",
+        },
+        {
+            "type": "Technology",
+            "Name": "Web Server",
+            "Prevalence": "Undetermined",
+        },
+    )
 
-def test_invalid_capec_id_is_rejected(
+def test_scalar_capec_identifiers_are_supported(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["RelatedAttackPatterns"] = [
+        63,
+        "CAPEC-100",
+        "00063",
+    ]
+
+    result = (
+        CWEWeaknessMapper.map_weakness(
+            raw
+        )
+    )
+
+    assert result.related_capec_ids == (
+        "CAPEC-63",
+        "CAPEC-100",
+    )
+
+def test_mixed_capec_shapes_are_supported(
 ) -> None:
     raw = _complete_raw_weakness()
 
     raw["RelatedAttackPatterns"] = [
         {
-            "CAPECID": "invalid",
+            "CAPECID": "63",
+        },
+        "CAPEC-100",
+        {
+            "ID": "CAPEC-66",
+        },
+        None,
+        "invalid",
+        {
+            "Name": (
+                "Missing CAPEC identifier"
+            ),
         },
     ]
 
-    with pytest.raises(
-        ValueError,
-        match="CAPEC identifier is invalid",
-    ):
+    result = (
         CWEWeaknessMapper.map_weakness(
             raw
         )
+    )
 
+    assert result.related_capec_ids == (
+        "CAPEC-63",
+        "CAPEC-100",
+        "CAPEC-66",
+    )
+    
+def test_invalid_capec_data_does_not_block_enrichment(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["ID"] = "79"
+    raw["Name"] = "Cross-site Scripting"
+    raw["Description"] = (
+        "Improper neutralization of web output."
+    )
+
+    raw["RelatedAttackPatterns"] = [
+        None,
+        True,
+        "invalid",
+        {
+            "CAPECID": "invalid",
+        },
+        {
+            "unexpected": "value",
+        },
+    ]
+
+    result = (
+        CWEWeaknessMapper.map_weakness(
+            raw
+        )
+    )
+
+    assert result.id == "CWE-79"
+
+    assert result.name == (
+        "Cross-site Scripting"
+    )
+
+    assert result.description == (
+        "Improper neutralization "
+        "of web output."
+    )
+
+    assert result.related_capec_ids == ()
+    
+    
+def test_nested_capec_collection_is_supported(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["RelatedAttackPatterns"] = {
+        "RelatedAttackPattern": [
+            {
+                "CAPEC_ID": "63",
+            },
+            {
+                "CAPECID": "100",
+            },
+        ],
+    }
+
+    result = (
+        CWEWeaknessMapper.map_weakness(
+            raw
+        )
+    )
+
+    assert result.related_capec_ids == (
+        "CAPEC-63",
+        "CAPEC-100",
+    )
+    
 
 def test_collection_size_is_bounded(
 ) -> None:
@@ -426,4 +548,84 @@ def test_map_payload_requires_weakness_list(
                     invalid_weaknesses
                 ),
             }
+        )
+        
+def test_grouped_platform_mapping_supports_notes(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["ApplicablePlatforms"] = {
+        "Languages": [
+            {
+                "Name": "Python",
+                "Prevalence": "Often",
+            },
+        ],
+        "PlatformNotes": (
+            "Applicable independently "
+            "of the operating system."
+        ),
+    }
+
+    result = (
+        CWEWeaknessMapper.map_weakness(
+            raw
+        )
+    )
+
+    assert result.applicable_platforms == (
+        {
+            "type": "Languages",
+            "Name": "Python",
+            "Prevalence": "Often",
+        },
+        {
+            "type": "PlatformNotes",
+            "value": (
+                "Applicable independently "
+                "of the operating system."
+            ),
+        },
+    )
+    
+def test_invalid_platform_list_element_is_rejected(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["ApplicablePlatforms"] = [
+        {
+            "Type": "Language",
+            "Name": "Python",
+        },
+        "invalid",
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "ApplicablePlatforms must "
+            "contain mapping elements"
+        ),
+    ):
+        CWEWeaknessMapper.map_weakness(
+            raw
+        )
+        
+def test_invalid_platform_root_type_is_rejected(
+) -> None:
+    raw = _complete_raw_weakness()
+
+    raw["ApplicablePlatforms"] = (
+        "invalid"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "ApplicablePlatforms must be "
+            "a mapping or a list"
+        ),
+    ):
+        CWEWeaknessMapper.map_weakness(
+            raw
         )

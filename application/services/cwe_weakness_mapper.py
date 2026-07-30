@@ -355,65 +355,211 @@ class CWEWeaknessMapper:
         cls,
         value: Any,
     ) -> tuple[dict[str, Any], ...]:
+        """
+        Normalise les deux représentations MITRE observées :
+
+        Forme groupée :
+            {
+                "Languages": [...],
+                "OperatingSystems": [...],
+            }
+
+        Forme plate :
+            [
+                {
+                    "Type": "Language",
+                    "Name": "Python",
+                },
+            ]
+
+        Les structures sont copiées afin de ne pas modifier
+        le payload externe.
+        """
+
         if value is None:
             return ()
-
-        if not isinstance(
-            value,
-            Mapping,
-        ):
-            raise ValueError(
-                "ApplicablePlatforms must "
-                "be a mapping"
-            )
 
         normalized: list[
             dict[str, Any]
         ] = []
 
-        for platform_type, items in value.items():
-            if not isinstance(
-                platform_type,
-                str,
-            ):
-                raise ValueError(
-                    "ApplicablePlatforms keys "
-                    "must be strings"
+        if isinstance(
+            value,
+            Mapping,
+        ):
+            for platform_type, items in value.items():
+                if not isinstance(
+                    platform_type,
+                    str,
+                ):
+                    raise ValueError(
+                        "ApplicablePlatforms keys "
+                        "must be strings"
+                    )
+
+                normalized_type = (
+                    platform_type.strip()
                 )
 
-            if not isinstance(
-                items,
-                list,
-            ):
+                if not normalized_type:
+                    raise ValueError(
+                        "ApplicablePlatforms keys "
+                        "must not be empty"
+                    )
+
+                if items is None:
+                    continue
+
+                if isinstance(
+                    items,
+                    list,
+                ):
+                    cls._validate_collection_size(
+                        items,
+                        field_name=(
+                            "ApplicablePlatforms."
+                            f"{normalized_type}"
+                        ),
+                    )
+
+                    for item in items:
+                        if not isinstance(
+                            item,
+                            Mapping,
+                        ):
+                            raise ValueError(
+                                "ApplicablePlatforms lists "
+                                "must contain mappings"
+                            )
+
+                        normalized.append(
+                            {
+                                "type": normalized_type,
+                                **dict(item),
+                            }
+                        )
+
+                    continue
+
+                if isinstance(
+                    items,
+                    Mapping,
+                ):
+                    normalized.append(
+                        {
+                            "type": normalized_type,
+                            **dict(items),
+                        }
+                    )
+
+                    continue
+
+                if isinstance(
+                    items,
+                    str,
+                ):
+                    normalized_text = (
+                        cls._optional_text(
+                            items,
+                            field_name=(
+                                "ApplicablePlatforms."
+                                f"{normalized_type}"
+                            ),
+                        )
+                    )
+
+                    if normalized_text is not None:
+                        normalized.append(
+                            {
+                                "type": normalized_type,
+                                "value": normalized_text,
+                            }
+                        )
+
+                    continue
+
                 raise ValueError(
                     "ApplicablePlatforms values "
-                    "must be lists"
+                    "must be lists, mappings "
+                    "or strings"
                 )
 
+        elif isinstance(
+            value,
+            list,
+        ):
             cls._validate_collection_size(
-                items,
-                field_name=(
-                    "ApplicablePlatforms."
-                    f"{platform_type}"
-                ),
+                value,
+                field_name="ApplicablePlatforms",
             )
 
-            for item in items:
+            for item in value:
                 if not isinstance(
                     item,
                     Mapping,
                 ):
                     raise ValueError(
-                        "ApplicablePlatforms lists "
-                        "must contain mappings"
+                        "ApplicablePlatforms must "
+                        "contain mapping elements"
                     )
 
-                normalized.append(
-                    {
-                        "type": platform_type,
-                        **dict(item),
-                    }
+                normalized_item = dict(
+                    item
                 )
+
+                # La réponse MITRE plate utilise parfois "Type".
+                # Le domaine conserve une clé canonique "type".
+                raw_type = normalized_item.pop(
+                    "Type",
+                    None,
+                )
+
+                if raw_type is not None:
+                    platform_type = (
+                        cls._optional_text(
+                            raw_type,
+                            field_name=(
+                                "ApplicablePlatforms.Type"
+                            ),
+                        )
+                    )
+
+                    if platform_type is not None:
+                        normalized_item[
+                            "type"
+                        ] = platform_type
+
+                elif "type" in normalized_item:
+                    platform_type = (
+                        cls._optional_text(
+                            normalized_item[
+                                "type"
+                            ],
+                            field_name=(
+                                "ApplicablePlatforms.type"
+                            ),
+                        )
+                    )
+
+                    if platform_type is None:
+                        normalized_item.pop(
+                            "type",
+                            None,
+                        )
+                    else:
+                        normalized_item[
+                            "type"
+                        ] = platform_type
+
+                normalized.append(
+                    normalized_item
+                )
+
+        else:
+            raise ValueError(
+                "ApplicablePlatforms must be "
+                "a mapping or a list"
+            )
 
         cls._validate_collection_size(
             normalized,
@@ -492,20 +638,74 @@ class CWEWeaknessMapper:
         cls,
         value: Any,
     ) -> tuple[str, ...]:
+        """
+        Extrait les références CAPEC sans bloquer
+        l'enrichissement principal du CWE.
+
+        Formes acceptées :
+        - liste de mappings ;
+        - liste d'identifiants ;
+        - mapping unique ;
+        - identifiant unique ;
+        - mapping contenant une collection imbriquée.
+
+        Les éléments optionnels invalides sont ignorés.
+        """
+
         if value is None:
             return ()
 
-        if not isinstance(
+        raw_items: list[Any]
+
+        if isinstance(
+            value,
+            Mapping,
+        ):
+            nested_items = (
+                value.get(
+                    "RelatedAttackPattern"
+                )
+                or value.get(
+                    "RelatedAttackPatterns"
+                )
+                or value.get(
+                    "AttackPatterns"
+                )
+            )
+
+            if nested_items is None:
+                raw_items = [
+                    value,
+                ]
+
+            elif isinstance(
+                nested_items,
+                list,
+            ):
+                raw_items = list(
+                    nested_items
+                )
+
+            else:
+                raw_items = [
+                    nested_items,
+                ]
+
+        elif isinstance(
             value,
             list,
         ):
-            raise ValueError(
-                "RelatedAttackPatterns must "
-                "be a list"
+            raw_items = list(
+                value
             )
 
+        else:
+            raw_items = [
+                value,
+            ]
+
         cls._validate_collection_size(
-            value,
+            raw_items,
             field_name=(
                 "RelatedAttackPatterns"
             ),
@@ -513,30 +713,52 @@ class CWEWeaknessMapper:
 
         normalized: list[str] = []
 
-        for item in value:
-            if not isinstance(
+        for item in raw_items:
+            raw_id: Any = None
+
+            if isinstance(
                 item,
                 Mapping,
             ):
-                raise ValueError(
-                    "RelatedAttackPatterns must "
-                    "contain mappings"
+                raw_id = (
+                    item.get("CAPECID")
+                    or item.get("CAPEC_ID")
+                    or item.get("CapecID")
+                    or item.get("CAPECId")
+                    or item.get("ID")
+                    or item.get("Id")
                 )
 
-            raw_id = (
-                item.get("CAPECID")
-                or item.get("CAPEC_ID")
-                or item.get("CapecID")
-            )
+            elif (
+                not isinstance(item, bool)
+                and isinstance(
+                    item,
+                    (
+                        str,
+                        int,
+                    ),
+                )
+            ):
+                raw_id = item
 
+            # Champ d'enrichissement optionnel :
+            # un élément inutilisable ne doit pas
+            # invalider tout le CWE.
             if raw_id is None:
                 continue
 
-            capec_id = (
-                cls._normalize_capec_id(
-                    raw_id
+            try:
+                capec_id = (
+                    cls._normalize_capec_id(
+                        raw_id
+                    )
                 )
-            )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
 
             normalized.append(
                 capec_id

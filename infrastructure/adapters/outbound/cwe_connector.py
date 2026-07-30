@@ -216,12 +216,16 @@ class CWEConnector:
         """
         Retrieve several CWE weaknesses.
 
-        The official API accepts comma-separated identifiers:
+        The MITRE endpoint accepts comma-separated identifiers:
 
             GET /cwe/weakness/79,89,502
 
-        Large collections are split into batches and merged while
-        preserving the API response order.
+        MITRE can return HTTP 404 for the complete request when only
+        one identifier is unknown. In that case, the failed batch is
+        divided recursively until missing individual identifiers are
+        isolated.
+
+        Valid batches still require only one HTTP request.
         """
 
         normalized_ids = (
@@ -235,25 +239,26 @@ class CWEConnector:
                 "Weaknesses": [],
             }
 
-        weaknesses: list[dict[str, Any]] = []
+        weaknesses: list[
+            dict[str, Any]
+        ] = []
+
         seen_ids: set[str] = set()
 
         for batch in self._chunked(
             normalized_ids,
             self.MAX_IDS_PER_REQUEST,
         ):
-            joined_ids = ",".join(batch)
-
-            payload = self._get_json(
-                f"/cwe/weakness/{joined_ids}"
+            batch_weaknesses = (
+                self._fetch_weakness_batch(
+                    batch
+                )
             )
 
-            self._validate_weakness_response(
-                payload
-            )
-
-            for weakness in payload["Weaknesses"]:
-                raw_id = weakness.get("ID")
+            for weakness in batch_weaknesses:
+                raw_id = weakness.get(
+                    "ID"
+                )
 
                 normalized_response_id = (
                     self._normalize_response_cwe_id(
@@ -261,8 +266,9 @@ class CWEConnector:
                     )
                 )
 
-                # If the server response has no usable ID, preserve
-                # the item using a deterministic fallback key.
+                # Preserve malformed records so the application mapper
+                # can reject them explicitly instead of silently
+                # discarding remote data.
                 if normalized_response_id is None:
                     deduplication_key = repr(
                         weakness
@@ -275,7 +281,10 @@ class CWEConnector:
                 if deduplication_key in seen_ids:
                     continue
 
-                weaknesses.append(weakness)
+                weaknesses.append(
+                    weakness
+                )
+
                 seen_ids.add(
                     deduplication_key
                 )
@@ -283,6 +292,71 @@ class CWEConnector:
         return {
             "Weaknesses": weaknesses,
         }
+    
+    def _fetch_weakness_batch(
+        self,
+        normalized_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Retrieve one normalized CWE batch.
+
+        A batch-level 404 is isolated through binary subdivision.
+        A 404 for one individual CWE means that the referenced
+        identifier is absent from the current MITRE catalog.
+
+        Recursion depth remains bounded because public batches contain
+        at most MAX_IDS_PER_REQUEST identifiers.
+        """
+
+        if not normalized_ids:
+            return []
+
+        joined_ids = ",".join(
+            normalized_ids
+        )
+
+        try:
+            payload = self._get_json(
+                f"/cwe/weakness/{joined_ids}"
+            )
+
+        except LookupError:
+            if len(normalized_ids) == 1:
+                return []
+
+            middle = (
+                len(normalized_ids)
+                // 2
+            )
+
+            left_weaknesses = (
+                self._fetch_weakness_batch(
+                    normalized_ids[
+                        :middle
+                    ]
+                )
+            )
+
+            right_weaknesses = (
+                self._fetch_weakness_batch(
+                    normalized_ids[
+                        middle:
+                    ]
+                )
+            )
+
+            return [
+                *left_weaknesses,
+                *right_weaknesses,
+            ]
+
+        self._validate_weakness_response(
+            payload
+        )
+
+        return payload[
+            "Weaknesses"
+        ]
 
     # =========================================================
     # CWE metadata
