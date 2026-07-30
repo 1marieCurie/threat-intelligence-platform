@@ -1,253 +1,811 @@
-import pytest
+from __future__ import annotations
 
+from datetime import date
+from unittest.mock import Mock
+
+import pytest
+import requests
+
+from application.models.epss_snapshot import (
+    EPSSSnapshot,
+)
+from application.ports.outbound.epss_provider import (
+    EPSSProviderError,
+    EPSSProviderUnavailableError,
+    InvalidEPSSResponseError,
+)
 from infrastructure.adapters.outbound.epss_connector import (
     EPSSConnector,
 )
 
 
-@pytest.mark.integration
-def test_fetch_single_cve_epss():
+def _build_record(
+    *,
+    cve_id: str = "CVE-2021-44228",
+    score: object = "0.950000000",
+    percentile: object = "0.990000000",
+    score_date: object = "2026-07-30",
+) -> dict[str, object]:
+    return {
+        "cve": cve_id,
+        "epss": score,
+        "percentile": percentile,
+        "date": score_date,
+    }
 
-    connector = EPSSConnector()
 
-    response = connector.fetch_by_cve(
-        "CVE-2021-44228"
+def _build_payload(
+    *records: dict[str, object],
+    version: object = "2026.07",
+) -> dict[str, object]:
+    return {
+        "status": "OK",
+        "status-code": 200,
+        "version": version,
+        "total": len(records),
+        "data": list(records),
+    }
+
+
+def _build_response(
+    *,
+    payload: object,
+) -> Mock:
+    response = Mock(
+        spec=requests.Response,
     )
 
-    print("\n[EPSS CONNECTOR] Single CVE EPSS retrieval")
-    print(f"Status      : {response.get('status')}")
-    print(f"Status code : {response.get('status-code')}")
-    print(f"Total       : {response.get('total')}")
+    response.raise_for_status.return_value = None
+    response.json.return_value = payload
 
-    assert response is not None
-    assert isinstance(response, dict)
-
-    assert response.get("status") == "OK"
-    assert response.get("status-code") == 200
-
-    assert "data" in response
-    assert isinstance(response["data"], list)
-
-    assert response.get("total", 0) >= 1
-
-    item = response["data"][0]
-
-    print("\nReturned EPSS record:")
-    print(f"CVE        : {item.get('cve')}")
-    print(f"EPSS       : {item.get('epss')}")
-    print(f"Percentile : {item.get('percentile')}")
-    print(f"Date       : {item.get('date')}")
-
-    assert item.get("cve") == "CVE-2021-44228"
-    assert "epss" in item
-    assert "percentile" in item
-    assert "date" in item
+    return response
 
 
-@pytest.mark.integration
-def test_fetch_multiple_cves_epss():
-
-    connector = EPSSConnector()
-
-    cve_ids = [
-        "CVE-2021-44228",
-        "CVE-2024-4577",
-    ]
-
-    response = connector.fetch_by_cves(
-        cve_ids
+def _build_session(
+    *responses: Mock,
+) -> Mock:
+    session = Mock(
+        spec=requests.Session,
     )
 
-    print("\n[EPSS CONNECTOR] Multiple CVE EPSS retrieval")
-    print(f"Requested CVEs : {len(cve_ids)}")
-    print(f"Returned total : {response.get('total')}")
+    # EPSSConnector configure les en-têtes lors
+    # de son initialisation.
+    session.headers = {}
 
-    assert response is not None
-    assert isinstance(response, dict)
+    if len(responses) == 1:
+        session.get.return_value = responses[0]
 
-    assert response.get("status") == "OK"
-    assert response.get("status-code") == 200
+    elif responses:
+        session.get.side_effect = list(
+            responses
+        )
 
-    assert "data" in response
-    assert isinstance(response["data"], list)
-
-    returned_cves = [
-        item.get("cve")
-        for item in response["data"]
-    ]
-
-    print("Returned CVEs:")
-
-    for cve in returned_cves:
-        print(f"  - {cve}")
-
-    assert "CVE-2021-44228" in returned_cves
-    assert "CVE-2024-4577" in returned_cves
+    return session
 
 
-@pytest.mark.integration
-def test_epss_response_fields_are_valid():
+def test_constructor_configures_http_headers() -> None:
+    session = _build_session()
 
-    connector = EPSSConnector()
-
-    response = connector.fetch_by_cve(
-        "CVE-2021-44228"
+    EPSSConnector(
+        session=session,
     )
 
-    item = response["data"][0]
-
-    print("\n[EPSS CONNECTOR] Response field validation")
-    print(f"CVE        : {item.get('cve')}")
-    print(f"EPSS       : {item.get('epss')}")
-    print(f"Percentile : {item.get('percentile')}")
-    print(f"Date       : {item.get('date')}")
-
-    assert isinstance(
-        item.get("cve"),
-        str,
-    )
-
-    epss_score = float(
-        item.get("epss")
-    )
-
-    percentile = float(
-        item.get("percentile")
-    )
-
-    assert 0 <= epss_score <= 1
-    assert 0 <= percentile <= 1
-
-    assert isinstance(
-        item.get("date"),
-        str,
-    )
+    assert session.headers == {
+        "Accept": "application/json",
+        "User-Agent": (
+            "Threat-Intelligence-Engine"
+        ),
+    }
 
 
-def test_clean_cve_ids():
-
-    connector = EPSSConnector()
-
-    cve_ids = [
-        "cve-2021-44228",
-        " CVE-2021-44228 ",
-        "",
+@pytest.mark.parametrize(
+    "invalid_timeout",
+    [
+        True,
+        "10",
         None,
-        "INVALID-ID",
-        "CVE-2024-4577",
-    ]
+    ],
+)
+def test_constructor_rejects_invalid_timeout_type(
+    invalid_timeout: object,
+) -> None:
+    session = _build_session()
 
-    cleaned = connector._clean_cve_ids(
-        cve_ids
+    with pytest.raises(
+        TypeError,
+        match="timeout must be a number",
+    ):
+        EPSSConnector(
+            session=session,
+            timeout=invalid_timeout,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_timeout",
+    [
+        0,
+        -1,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+    ],
+)
+def test_constructor_rejects_invalid_timeout_value(
+    invalid_timeout: float,
+) -> None:
+    session = _build_session()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "timeout must be a finite "
+            "positive number"
+        ),
+    ):
+        EPSSConnector(
+            session=session,
+            timeout=invalid_timeout,
+        )
+
+
+def test_fetch_by_cve_ids_returns_typed_snapshots() -> None:
+    response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                cve_id="CVE-2021-44228",
+                score="0.95",
+                percentile="0.99",
+            ),
+            _build_record(
+                cve_id="CVE-2024-4577",
+                score="0.80",
+                percentile="0.90",
+            ),
+        )
     )
 
-    print("\n[EPSS CONNECTOR] CVE ID cleaning")
-    print("Cleaned CVEs:")
+    session = _build_session(
+        response
+    )
 
-    for cve in cleaned:
-        print(f"  - {cve}")
+    connector = EPSSConnector(
+        session=session,
+    )
 
-    assert cleaned == [
+    result = connector.fetch_by_cve_ids(
+        [
+            " cve-2021-44228 ",
+            "CVE-2024-4577",
+            "CVE-2021-44228",
+        ]
+    )
+
+    assert list(result) == [
         "CVE-2021-44228",
         "CVE-2024-4577",
     ]
 
+    first_snapshot = result[
+        "CVE-2021-44228"
+    ]
 
-def test_fetch_empty_cve_list_returns_empty_response():
+    assert isinstance(
+        first_snapshot,
+        EPSSSnapshot,
+    )
 
-    connector = EPSSConnector()
+    assert first_snapshot.score == 0.95
+    assert first_snapshot.percentile == 0.99
+    assert first_snapshot.score_date == date(
+        2026,
+        7,
+        30,
+    )
+    assert first_snapshot.api_version == "2026.07"
 
-    response = connector.fetch_by_cves(
+    second_snapshot = result[
+        "CVE-2024-4577"
+    ]
+
+    assert second_snapshot.score == 0.80
+    assert second_snapshot.percentile == 0.90
+
+
+def test_fetch_by_cve_ids_sends_expected_parameters() -> None:
+    response = _build_response(
+        payload=_build_payload(
+            _build_record()
+        )
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+        timeout=5,
+    )
+
+    connector.fetch_by_cve_ids(
+        [
+            "CVE-2021-44228",
+        ],
+        score_date=date(
+            2026,
+            7,
+            30,
+        ),
+    )
+
+    session.get.assert_called_once_with(
+        connector.BASE_URL,
+        params={
+            "cve": "CVE-2021-44228",
+            "limit": 1,
+            "date": "2026-07-30",
+        },
+        timeout=5.0,
+    )
+
+
+def test_fetch_by_cve_ids_returns_empty_without_http_call(
+) -> None:
+    session = _build_session()
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    result = connector.fetch_by_cve_ids(
         []
     )
 
-    print("\n[EPSS CONNECTOR] Empty CVE list handling")
-    print(response)
-
-    assert response["status"] == "OK"
-    assert response["status-code"] == 200
-    assert response["total"] == 0
-    assert response["data"] == []
+    assert result == {}
+    session.get.assert_not_called()
 
 
-def test_build_cve_batches_respects_query_limit():
+def test_fetch_by_cve_ids_ignores_invalid_identifiers(
+) -> None:
+    session = _build_session()
 
-    connector = EPSSConnector()
-
-    cve_ids = [
-        f"CVE-2026-{str(i).zfill(4)}"
-        for i in range(1, 300)
-    ]
-
-    batches = connector._build_cve_batches(
-        cve_ids
+    connector = EPSSConnector(
+        session=session,
     )
 
-    print("\n[EPSS CONNECTOR] CVE batching validation")
-    print(f"Input CVEs : {len(cve_ids)}")
-    print(f"Batches    : {len(batches)}")
-
-    for index, batch in enumerate(
-        batches,
-        start=1,
-    ):
-        query = ",".join(batch)
-
-        print(
-            f"Batch {index}: "
-            f"{len(batch)} CVEs, "
-            f"query length = {len(query)}"
-        )
-
-        assert (
-            len(query)
-            <= connector.MAX_CVE_QUERY_LENGTH
-        )
-
-    total_cves_in_batches = sum(
-        len(batch)
-        for batch in batches
+    result = connector.fetch_by_cve_ids(
+        [
+            "",
+            "INVALID-ID",
+            "CVE-2026-123",
+            None,  # type: ignore[list-item]
+        ]
     )
 
-    assert total_cves_in_batches == len(cve_ids)
+    assert result == {}
+    session.get.assert_not_called()
 
 
-@pytest.mark.integration
-def test_fetch_by_batches():
+def test_fetch_by_cve_ids_omits_missing_cves() -> None:
+    response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                cve_id="CVE-2021-44228",
+            )
+        )
+    )
 
-    connector = EPSSConnector()
+    session = _build_session(
+        response
+    )
 
-    cve_ids = [
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    result = connector.fetch_by_cve_ids(
+        [
+            "CVE-2021-44228",
+            "CVE-2024-4577",
+        ]
+    )
+
+    assert list(result) == [
         "CVE-2021-44228",
-        "CVE-2024-4577",
-        "CVE-2019-19781",
     ]
 
-    responses = connector.fetch_by_batches(
-        cve_ids
+
+def test_fetch_by_cve_ids_batches_large_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                cve_id="CVE-2026-1001",
+            ),
+            _build_record(
+                cve_id="CVE-2026-1002",
+            ),
+        )
     )
 
-    print("\n[EPSS CONNECTOR] Batch fetch validation")
-    print(
-        f"Number of API responses: {len(responses)}"
+    second_response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                cve_id="CVE-2026-1003",
+            )
+        )
     )
 
-    assert isinstance(responses, list)
-    assert len(responses) >= 1
+    session = _build_session(
+        first_response,
+        second_response,
+    )
 
-    total_returned = 0
+    connector = EPSSConnector(
+        session=session,
+    )
 
-    for response in responses:
-        assert response.get("status") == "OK"
-        assert "data" in response
+    # Deux identifiants de 13 caractères et
+    # une virgule occupent exactement 27 caractères.
+    monkeypatch.setattr(
+        connector,
+        "MAX_CVE_QUERY_LENGTH",
+        27,
+    )
 
-        total_returned += len(
-            response["data"]
+    result = connector.fetch_by_cve_ids(
+        [
+            "CVE-2026-1001",
+            "CVE-2026-1002",
+            "CVE-2026-1003",
+        ]
+    )
+
+    assert list(result) == [
+        "CVE-2026-1001",
+        "CVE-2026-1002",
+        "CVE-2026-1003",
+    ]
+
+    assert session.get.call_count == 2
+
+    first_params = (
+        session.get.call_args_list[0]
+        .kwargs["params"]
+    )
+
+    second_params = (
+        session.get.call_args_list[1]
+        .kwargs["params"]
+    )
+
+    assert first_params == {
+        "cve": (
+            "CVE-2026-1001,"
+            "CVE-2026-1002"
+        ),
+        "limit": 2,
+    }
+
+    assert second_params == {
+        "cve": "CVE-2026-1003",
+        "limit": 1,
+    }
+
+
+def test_fetch_by_cve_ids_rejects_unexpected_cve(
+) -> None:
+    response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                cve_id="CVE-2024-4577",
+            )
+        )
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+        match=(
+            "unexpected CVE identifier"
+        ),
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
         )
 
-    print(
-        f"Total EPSS records returned: "
-        f"{total_returned}"
+
+def test_fetch_by_cve_ids_rejects_conflicting_duplicates(
+) -> None:
+    response = _build_response(
+        payload=_build_payload(
+            _build_record(
+                score="0.80",
+            ),
+            _build_record(
+                score="0.90",
+            ),
+        )
     )
 
-    assert total_returned >= 1
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+        match=(
+            "conflicting duplicate data"
+        ),
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_data",
+    [
+        None,
+        {},
+        "invalid",
+        123,
+    ],
+)
+def test_fetch_by_cve_ids_rejects_invalid_data_field(
+    invalid_data: object,
+) -> None:
+    payload = _build_payload()
+    payload["data"] = invalid_data
+
+    response = _build_response(
+        payload=payload
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+        match="'data' must be a list",
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    (
+        "field_name",
+        "invalid_value",
+    ),
+    [
+        (
+            "epss",
+            "invalid",
+        ),
+        (
+            "epss",
+            "1.50",
+        ),
+        (
+            "percentile",
+            "invalid",
+        ),
+        (
+            "percentile",
+            "-0.10",
+        ),
+        (
+            "date",
+            "30-07-2026",
+        ),
+        (
+            "date",
+            None,
+        ),
+    ],
+)
+def test_fetch_by_cve_ids_rejects_invalid_record_values(
+    field_name: str,
+    invalid_value: object,
+) -> None:
+    record = _build_record()
+
+    record[field_name] = invalid_value
+
+    response = _build_response(
+        payload=_build_payload(
+            record
+        )
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+def test_fetch_by_cve_ids_rejects_invalid_json() -> None:
+    response = Mock(
+        spec=requests.Response,
+    )
+
+    response.raise_for_status.return_value = None
+    response.json.side_effect = ValueError(
+        "invalid JSON"
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+        match="invalid JSON",
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+def test_fetch_by_cve_ids_rejects_non_object_json(
+) -> None:
+    response = _build_response(
+        payload=[]
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        InvalidEPSSResponseError,
+        match="must be a JSON object",
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "network_error",
+    [
+        requests.Timeout(),
+        requests.ConnectionError(),
+    ],
+)
+def test_fetch_by_cve_ids_maps_network_errors_to_unavailable(
+    network_error: requests.RequestException,
+) -> None:
+    session = _build_session()
+    session.get.side_effect = network_error
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        EPSSProviderUnavailableError,
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "status_code",
+    [
+        429,
+        500,
+        503,
+    ],
+)
+def test_fetch_by_cve_ids_maps_retryable_http_errors(
+    status_code: int,
+) -> None:
+    response = Mock(
+        spec=requests.Response,
+    )
+
+    response.status_code = status_code
+
+    response.raise_for_status.side_effect = (
+        requests.HTTPError(
+            response=response
+        )
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        EPSSProviderUnavailableError,
+        match=f"HTTP {status_code}",
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+def test_fetch_by_cve_ids_maps_non_retryable_http_error(
+) -> None:
+    response = Mock(
+        spec=requests.Response,
+    )
+
+    response.status_code = 400
+
+    response.raise_for_status.side_effect = (
+        requests.HTTPError(
+            response=response
+        )
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    with pytest.raises(
+        EPSSProviderError,
+        match="HTTP 400",
+    ):
+        connector.fetch_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+
+def test_legacy_fetch_by_cves_returns_raw_payload(
+) -> None:
+    payload = _build_payload(
+        _build_record()
+    )
+
+    response = _build_response(
+        payload=payload
+    )
+
+    session = _build_session(
+        response
+    )
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    result = connector.fetch_by_cves(
+        [
+            "cve-2021-44228",
+        ],
+        date="2026-07-30",
+    )
+
+    assert result == payload
+
+    session.get.assert_called_once_with(
+        connector.BASE_URL,
+        params={
+            "cve": "CVE-2021-44228",
+            "limit": 1,
+            "date": "2026-07-30",
+        },
+        timeout=10.0,
+    )
+
+
+def test_legacy_fetch_by_cves_returns_empty_response(
+) -> None:
+    session = _build_session()
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    result = connector.fetch_by_cves(
+        []
+    )
+
+    assert result == {
+        "status": "OK",
+        "status-code": 200,
+        "total": 0,
+        "data": [],
+    }
+
+    session.get.assert_not_called()
+
+
+def test_close_does_not_close_injected_session(
+) -> None:
+    session = _build_session()
+
+    connector = EPSSConnector(
+        session=session,
+    )
+
+    connector.close()
+
+    session.close.assert_not_called()
+
+
+def test_close_closes_connector_owned_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _build_session()
+
+    monkeypatch.setattr(
+        requests,
+        "Session",
+        Mock(
+            return_value=session,
+        ),
+    )
+
+    connector = EPSSConnector()
+
+    connector.close()
+
+    session.close.assert_called_once_with()

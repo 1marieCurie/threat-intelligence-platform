@@ -464,6 +464,7 @@ def test_unit_invalid_cve_ids_return_empty_lookup():
 
 
 @pytest.mark.integration
+@pytest.mark.external
 def test_integration_enrich_single_threat_with_real_epss_api():
 
     service = EPSSEnrichmentService()
