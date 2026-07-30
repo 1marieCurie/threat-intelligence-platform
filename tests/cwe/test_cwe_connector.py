@@ -1,6 +1,7 @@
 # tests/cwe/test_cwe_connector.py
 
 from __future__ import annotations
+import os
 
 from typing import Any, Callable
 
@@ -11,6 +12,28 @@ from infrastructure.adapters.outbound.cwe_connector import (
     CWEConnector,
 )
 
+RUN_EXTERNAL_TESTS = (
+    os.getenv(
+        "RUN_EXTERNAL_TESTS",
+        "",
+    )
+    .strip()
+    .lower()
+    in {
+        "1",
+        "true",
+        "yes",
+    }
+)
+
+
+requires_external_cwe_api = pytest.mark.skipif(
+    not RUN_EXTERNAL_TESTS,
+    reason=(
+        "Set RUN_EXTERNAL_TESTS=1 "
+        "to run live MITRE CWE API tests."
+    ),
+)
 
 # ============================================================
 # Fake HTTP response
@@ -1850,6 +1873,8 @@ def test_unit_chunked_rejects_invalid_size_types(
 
 
 @pytest.mark.integration
+@pytest.mark.external
+@requires_external_cwe_api
 def test_integration_fetch_current_cwe_version(
 ) -> None:
     """
@@ -1884,6 +1909,8 @@ def test_integration_fetch_current_cwe_version(
 
 
 @pytest.mark.integration
+@pytest.mark.external
+@requires_external_cwe_api
 def test_integration_fetch_cwe_79(
 ) -> None:
     """
@@ -1935,6 +1962,9 @@ def test_integration_fetch_cwe_79(
 
 
 @pytest.mark.integration
+@pytest.mark.external
+@pytest.mark.external_unstable
+@requires_external_cwe_api
 def test_integration_fetch_multiple_cwes(
 ) -> None:
     """
@@ -1983,7 +2013,8 @@ def test_integration_fetch_multiple_cwes(
 
 
 @pytest.mark.integration
-@pytest.mark.external_unstable
+@pytest.mark.external
+@requires_external_cwe_api
 def test_integration_fetch_all_weaknesses(
 ) -> None:
     """
@@ -2034,6 +2065,8 @@ def test_integration_fetch_all_weaknesses(
 
 
 @pytest.mark.integration
+@pytest.mark.external
+@requires_external_cwe_api
 def test_integration_fetch_cwe_metadata(
 ) -> None:
     """
@@ -2068,6 +2101,8 @@ def test_integration_fetch_cwe_metadata(
 
 
 @pytest.mark.integration
+@pytest.mark.external
+@requires_external_cwe_api
 def test_integration_fetch_cwe_79_relationships(
 ) -> None:
     """
@@ -2092,3 +2127,141 @@ def test_integration_fetch_cwe_79_relationships(
 
     for parent in parents:
         assert isinstance(parent, dict)
+
+def test_unit_fetch_multiple_isolates_missing_cwe_after_batch_404(
+    connector_factory,
+) -> None:
+    connector, session = connector_factory(
+        [
+            # 79,999,89,502
+            FakeResponse(
+                status_code=404
+            ),
+            # 79,999
+            FakeResponse(
+                status_code=404
+            ),
+            # 79
+            FakeResponse(
+                json_data={
+                    "Weaknesses": [
+                        {
+                            "ID": "79",
+                            "Name": (
+                                "Cross-site Scripting"
+                            ),
+                        },
+                    ],
+                }
+            ),
+            # 999
+            FakeResponse(
+                status_code=404
+            ),
+            # 89,502
+            FakeResponse(
+                json_data={
+                    "Weaknesses": [
+                        {
+                            "ID": "89",
+                            "Name": (
+                                "SQL Injection"
+                            ),
+                        },
+                        {
+                            "ID": "502",
+                            "Name": (
+                                "Deserialization of "
+                                "Untrusted Data"
+                            ),
+                        },
+                    ],
+                }
+            ),
+        ]
+    )
+
+    result = connector.fetch_weaknesses(
+        [
+            "CWE-79",
+            "CWE-999",
+            "CWE-89",
+            "CWE-502",
+        ]
+    )
+
+    assert [
+        weakness["ID"]
+        for weakness in result[
+            "Weaknesses"
+        ]
+    ] == [
+        "79",
+        "89",
+        "502",
+    ]
+
+    assert [
+        call["url"].rsplit(
+            "/",
+            maxsplit=1,
+        )[-1]
+        for call in session.calls
+    ] == [
+        "79,999,89,502",
+        "79,999",
+        "79",
+        "999",
+        "89,502",
+    ]
+    
+def test_unit_fetch_multiple_returns_empty_for_missing_single_cwe(
+    connector_factory,
+) -> None:
+    connector, session = connector_factory(
+        [
+            FakeResponse(
+                status_code=404
+            ),
+        ]
+    )
+
+    result = connector.fetch_weaknesses(
+        [
+            "CWE-999999999",
+        ]
+    )
+
+    assert result == {
+        "Weaknesses": [],
+    }
+
+    assert len(
+        session.calls
+    ) == 1
+    
+def test_unit_fetch_multiple_does_not_split_server_error(
+    connector_factory,
+) -> None:
+    connector, session = connector_factory(
+        [
+            FakeResponse(
+                status_code=500
+            ),
+        ]
+    )
+
+    with pytest.raises(
+        ConnectionError,
+        match="HTTP status 500",
+    ):
+        connector.fetch_weaknesses(
+            [
+                "CWE-79",
+                "CWE-89",
+            ]
+        )
+
+    assert len(
+        session.calls
+    ) == 1

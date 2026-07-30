@@ -736,6 +736,7 @@ def test_unit_run_handles_missing_cwe(
 
 
 @pytest.mark.integration
+@pytest.mark.external
 def test_integration_run_single_with_live_cwe_api(
 ) -> None:
     repository = LiveCWERepository()
@@ -831,6 +832,7 @@ def test_integration_run_single_with_live_cwe_api(
 
 
 @pytest.mark.integration
+@pytest.mark.external
 def test_integration_run_multiple_with_live_cwe_api(
 ) -> None:
     repository = LiveCWERepository()

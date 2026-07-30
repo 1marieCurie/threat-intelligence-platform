@@ -1133,6 +1133,7 @@ def test_unit_normalize_cwe_id_rejects_invalid_value(
 
 
 @pytest.mark.integration
+@pytest.mark.external
 def test_integration_enrich_single_threat_with_live_cwe(
 ) -> None:
     repository = LiveCWERepository()
@@ -1213,6 +1214,7 @@ def test_integration_enrich_single_threat_with_live_cwe(
 
 
 @pytest.mark.integration
+@pytest.mark.external
 def test_integration_enrich_multiple_threats_with_live_cwe(
 ) -> None:
     repository = LiveCWERepository()
