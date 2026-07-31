@@ -18,6 +18,9 @@ from application.ports.outbound.epss_score_repository import (
 from application.ports.outbound.github_advisory_vulnerability_repository import (
     GitHubAdvisoryVulnerabilityRepository,
 )
+from application.ports.outbound.ingestion_run_payload_repository import (
+    IngestionRunPayloadRepository,
+)
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunRepository,
 )
@@ -33,17 +36,16 @@ class UnitOfWork(Protocol):
     """
     Contrat transactionnel partagé par les services applicatifs.
 
-    Les services dépendent de ce protocole plutôt que de
-    l'implémentation SQLAlchemy.
+    Tous les repositories sont injectés par l'implémentation
+    concrète de l'Unit of Work.
     """
 
     ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
+    ingestion_run_payloads: IngestionRunPayloadRepository
     sync_states: SyncStateRepository
 
-    cisa_kev_vulnerabilities: (
-        CisaKevVulnerabilityRepository
-    )
+    cisa_kev_vulnerabilities: CisaKevVulnerabilityRepository
 
     github_advisory_vulnerabilities: (
         GitHubAdvisoryVulnerabilityRepository
