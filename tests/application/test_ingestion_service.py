@@ -305,11 +305,15 @@ def test_ingest_persists_new_records_and_commits() -> None:
     )
 
     assert completed_call["metadata"] == {
-        "page": 2,
-        "records_persisted": 1,
-        "records_skipped": 0,
-        "batch_size": 500,
+    "page": 2,
+    "pagination_complete": False,
+    "records_persisted": 1,
+    "records_skipped": 0,
+    "records_succeeded": 1,
+    "batch_size": 500,
     }
+    
+    assert result.pagination_complete is False
 
 
 def test_ingest_links_existing_payload_to_new_run() -> None:

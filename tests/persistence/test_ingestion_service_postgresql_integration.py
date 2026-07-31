@@ -702,13 +702,35 @@ def test_ingestion_service_persists_complete_snapshot(
             ]
             is True
         )
-
+        
         assert (
             sync_state.metadata_[
-                "records_persisted"
+                "pagination_complete"
             ]
-            == 3
+            is True
         )
+
+        assert (
+            "records_persisted"
+            not in sync_state.metadata_
+        )
+
+        assert (
+            "records_skipped"
+            not in sync_state.metadata_
+        )
+
+        assert (
+            "records_succeeded"
+            not in sync_state.metadata_
+        )
+
+        assert (
+            "batch_size"
+            not in sync_state.metadata_
+        )
+
+    
 
 
 def test_ingestion_service_preserves_first_batch_when_second_fails(

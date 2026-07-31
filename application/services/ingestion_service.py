@@ -52,10 +52,10 @@ class IngestionResult:
 )
 class _IngestionProgress:
     """
-    État interne de progression d'un run.
+    Conserve les compteurs déjà validés par des commits SQL.
 
-    Ces compteurs permettent de conserver une observabilité
-    exacte lorsqu'une défaillance survient entre deux lots.
+    Un payload déjà présent est considéré comme traité avec
+    succès, même s'il ne crée pas une nouvelle ligne brute.
     """
 
     records_received: int = 0
@@ -63,15 +63,21 @@ class _IngestionProgress:
     records_skipped: int = 0
 
     @property
-    def records_failed(self) -> int:
-        """
-        Retourne les enregistrements qui n'ont été ni persistés
-        ni identifiés comme déjà existants.
-        """
+    def records_succeeded(
+        self,
+    ) -> int:
+        return (
+            self.records_persisted
+            + self.records_skipped
+        )
+
+    @property
+    def records_failed(
+        self,
+    ) -> int:
         return max(
             self.records_received
-            - self.records_persisted
-            - self.records_skipped,
+            - self.records_succeeded,
             0,
         )
 
@@ -80,11 +86,15 @@ class IngestionService:
     """
     Orchestre une ingestion brute générique.
 
-    Les appels fournisseurs et les calculs de hash sont exécutés
-    hors transaction PostgreSQL.
+    Principes :
 
-    Les payloads et leurs liens avec le run sont persistés par
-    lots bornés dans des transactions courtes.
+    - les appels fournisseurs sont exécutés hors transaction ;
+    - les calculs de hash sont exécutés hors transaction ;
+    - les payloads sont persistés par lots bornés ;
+    - chaque lot utilise une transaction courte ;
+    - les payloads existants sont associés au nouveau run ;
+    - les métriques techniques ne sont pas renvoyées au
+      connecteur via son état de synchronisation.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -160,6 +170,10 @@ class IngestionService:
                 state_metadata=state_metadata,
             )
 
+            self._validate_fetch_result(
+                fetch_result
+            )
+
             progress.records_received = len(
                 fetch_result.records
             )
@@ -220,14 +234,6 @@ class IngestionService:
         fetch_result: FetchResult,
         progress: _IngestionProgress,
     ) -> IngestionResult:
-        if not isinstance(
-            fetch_result,
-            FetchResult,
-        ):
-            raise TypeError(
-                "connector result must be a FetchResult"
-            )
-
         for record_batch in self._iter_batches(
             fetch_result.records
         ):
@@ -246,7 +252,7 @@ class IngestionService:
                 payloads=prepared_payloads,
             )
 
-            # Mise à jour uniquement après le commit du lot.
+            # Les compteurs ne sont modifiés qu'après le commit.
             progress.records_persisted += (
                 batch_persisted
             )
@@ -259,12 +265,17 @@ class IngestionService:
             UTC
         )
 
+        fetch_complete = self._is_fetch_complete(
+            fetch_result
+        )
+
         self._complete_run(
             source_id=source_id,
             run_id=run_id,
             fetch_result=fetch_result,
             completed_at=completed_at,
             progress=progress,
+            fetch_complete=fetch_complete,
         )
 
         return IngestionResult(
@@ -279,9 +290,7 @@ class IngestionService:
                 progress.records_skipped
             ),
             status="completed",
-            pagination_complete=(
-                fetch_result.next_cursor is None
-            ),
+            pagination_complete=fetch_complete,
         )
 
     def _prepare_batch(
@@ -291,7 +300,9 @@ class IngestionService:
         run_id: UUID,
         records: Sequence[FetchedRecord],
     ) -> tuple[RawPayloadData, ...]:
-        payloads: list[RawPayloadData] = []
+        payloads: list[
+            RawPayloadData
+        ] = []
 
         for record in records:
             if not isinstance(
@@ -335,8 +346,8 @@ class IngestionService:
         payloads: Sequence[RawPayloadData],
     ) -> tuple[int, int]:
         """
-        Persiste un lot de payloads et leurs observations dans
-        une transaction unique et bornée.
+        Persiste les payloads et leurs observations dans une
+        transaction unique et bornée.
         """
         if not payloads:
             return 0, 0
@@ -405,22 +416,37 @@ class IngestionService:
         fetch_result: FetchResult,
         completed_at: datetime,
         progress: _IngestionProgress,
+        fetch_complete: bool,
     ) -> None:
-        metadata = dict(
+        """
+        Enregistre séparément :
+
+        - l'état utile à la prochaine synchronisation ;
+        - les métriques techniques propres au run.
+        """
+        sync_metadata = dict(
             fetch_result.metadata
         )
 
-        metadata.update(
-            {
-                "records_persisted": (
-                    progress.records_persisted
-                ),
-                "records_skipped": (
-                    progress.records_skipped
-                ),
-                "batch_size": self._batch_size,
-            }
-        )
+        # Normalise une éventuelle incohérence fournisseur entre
+        # snapshot_complete et pagination_complete.
+        sync_metadata[
+            "pagination_complete"
+        ] = fetch_complete
+
+        run_metadata = {
+            **sync_metadata,
+            "records_persisted": (
+                progress.records_persisted
+            ),
+            "records_skipped": (
+                progress.records_skipped
+            ),
+            "records_succeeded": (
+                progress.records_succeeded
+            ),
+            "batch_size": self._batch_size,
+        }
 
         with self._unit_of_work as unit_of_work:
             unit_of_work.sync_states.upsert(
@@ -429,7 +455,7 @@ class IngestionService:
                     cursor=fetch_result.next_cursor,
                     last_attempt_at=completed_at,
                     last_success_at=completed_at,
-                    metadata=metadata,
+                    metadata=sync_metadata,
                 )
             )
 
@@ -442,13 +468,13 @@ class IngestionService:
                         progress.records_received
                     ),
                     records_succeeded=(
-                        progress.records_persisted
+                        progress.records_succeeded
                     ),
                     records_failed=0,
                     connector_version=(
                         fetch_result.connector_version
                     ),
-                    metadata=metadata,
+                    metadata=run_metadata,
                 )
             )
 
@@ -487,7 +513,7 @@ class IngestionService:
                         progress.records_received
                     ),
                     records_succeeded=(
-                        progress.records_persisted
+                        progress.records_succeeded
                     ),
                     records_failed=(
                         progress.records_failed
@@ -560,6 +586,45 @@ class IngestionService:
         return observation_times
 
     @staticmethod
+    def _is_fetch_complete(
+        fetch_result: FetchResult,
+    ) -> bool:
+        """
+        Détermine si la collecte correspond à un snapshot complet.
+
+        snapshot_complete est prioritaire pour les fournisseurs
+        basés sur un snapshot comme PhishTank.
+        """
+        snapshot_complete = (
+            fetch_result.metadata.get(
+                "snapshot_complete"
+            )
+        )
+
+        if isinstance(
+            snapshot_complete,
+            bool,
+        ):
+            return snapshot_complete
+
+        pagination_complete = (
+            fetch_result.metadata.get(
+                "pagination_complete"
+            )
+        )
+
+        if isinstance(
+            pagination_complete,
+            bool,
+        ):
+            return pagination_complete
+
+        return (
+            fetch_result.next_cursor
+            is None
+        )
+
+    @staticmethod
     def _build_error_summary(
         error: Exception,
     ) -> str:
@@ -585,6 +650,18 @@ class IngestionService:
             f"{error_type}: "
             f"{sanitized_message}"
         )
+
+    @staticmethod
+    def _validate_fetch_result(
+        fetch_result: object,
+    ) -> None:
+        if not isinstance(
+            fetch_result,
+            FetchResult,
+        ):
+            raise TypeError(
+                "connector result must be a FetchResult"
+            )
 
     @staticmethod
     def _validate_source_id(
