@@ -1,526 +1,1101 @@
-from typing import Optional
+from __future__ import annotations
+
+from types import TracebackType
+from typing import Any
+
+from datetime import date
+from unittest.mock import Mock
 
 import pytest
-import requests
 
+from application.models.epss_snapshot import (
+    EPSSSnapshot,
+)
+from application.services.epss_enrichment_service import (
+    EPSSEnrichmentResult,
+    EPSSEnrichmentService,
+)
 from domain.threat import Threat
 from domain.threat_category import ThreatCategory
-from domain.collection_result import CollectionResult
-
-from infrastructure.adapters.outbound.epss_connector import EPSSConnector
-
-from application.services.epss_enrichment_service import (
-    EPSSEnrichmentService,
-    EPSSEnrichmentResult
-)
-
-from application.services.threat_correlation_service import (
-    ThreatCorrelationService
-)
 
 
-class FakeEPSSConnector(EPSSConnector):
+class FakeEPSSRepository:
     """
-    Fake EPSS connector used for unit tests.
+    Repository EPSS déterministe sans accès PostgreSQL.
 
-    It does not call the real FIRST EPSS API.
-    It returns deterministic EPSS records.
+    Le résultat reste typé comme object afin de pouvoir tester
+    les réponses invalides provenant d'un adapter défectueux.
     """
 
-    def __init__(self):
-        self.calls = []
-
-        self.fake_database = {
-            "CVE-2021-44228": {
-                "cve": "CVE-2021-44228",
-                "epss": "0.999990000",
-                "percentile": "1.000000000",
-                "date": "2026-07-10"
-            },
-            "CVE-2024-4577": {
-                "cve": "CVE-2024-4577",
-                "epss": "0.999870000",
-                "percentile": "0.999830000",
-                "date": "2026-07-10"
-            },
-            "CVE-2019-19781": {
-                "cve": "CVE-2019-19781",
-                "epss": "0.999990000",
-                "percentile": "0.999980000",
-                "date": "2026-07-10"
-            }
-        }
-
-    def fetch_by_batches(
+    def __init__(
         self,
-        cve_ids,
-        date: Optional[str] = None
-    ):
-        """
-        Simulates EPSSConnector.fetch_by_batches().
-        """
-
-        normalized_cve_ids = [
-            cve_id.strip().upper()
-            for cve_id in cve_ids
-            if isinstance(cve_id, str)
-        ]
-
-        self.calls.append(
-            {
-                "cve_ids": normalized_cve_ids,
-                "date": date
-            }
+        *,
+        result: object | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = (
+            {}
+            if result is None
+            else result
         )
 
-        data = []
+        self.error = error
+        self.calls: list[list[str]] = []
 
-        for cve_id in normalized_cve_ids:
-            if cve_id in self.fake_database:
-                data.append(
-                    self.fake_database[cve_id]
-                )
+    def find_many_by_cve_ids(
+        self,
+        cve_ids: list[str],
+    ) -> object:
+        self.calls.append(
+            list(cve_ids)
+        )
 
-        return [
-            {
-                "status": "OK",
-                "status-code": 200,
-                "total": len(data),
-                "data": data
-            }
-        ]
+        if self.error is not None:
+            raise self.error
+
+        return self.result
+
+class FakeUnitOfWork:
+    """
+    Unit of Work de test conforme au protocole applicatif.
+
+    Les repositories non concernés par ces tests sont représentés
+    par des mocks génériques. Seul epss_scores possède un
+    comportement fonctionnel.
+    """
+
+    def __init__(
+        self,
+        repository: FakeEPSSRepository,
+    ) -> None:
+        # Repositories imposés par UnitOfWork mais non utilisés
+        # par les tests d'enrichissement EPSS.
+        self.ingestion_runs: Any = Mock()
+        self.raw_payloads: Any = Mock()
+        self.sync_states: Any = Mock()
+
+        self.cisa_kev_vulnerabilities: Any = (
+            Mock()
+        )
+
+        self.github_advisory_vulnerabilities: Any = (
+            Mock()
+        )
+
+        self.cwe_weaknesses: Any = Mock()
+
+        self.vulnerability_cwe_references: Any = (
+            Mock()
+        )
+
+        # Repository réellement utilisé par le service testé.
+        self.epss_scores: Any = repository
+
+        self.enter_count = 0
+        self.exit_count = 0
+        self.commit_count = 0
+        self.rollback_count = 0
+
+        self.exited = False
+
+        self.exit_exception_type: (
+            type[BaseException] | None
+        ) = None
+
+    def __enter__(
+        self,
+    ) -> FakeUnitOfWork:
+        self.enter_count += 1
+        self.exited = False
+
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.exit_count += 1
+        self.exited = True
+        self.exit_exception_type = exc_type
+
+    def commit(
+        self,
+    ) -> None:
+        self.commit_count += 1
+
+    def rollback(
+        self,
+    ) -> None:
+        self.rollback_count += 1
 
 
-def _build_unit_service():
-    fake_connector = FakeEPSSConnector()
-
-    service = EPSSEnrichmentService(
-        connector=fake_connector
+def _snapshot(
+    *,
+    score: float = 0.99999,
+    percentile: float = 1.0,
+    score_date: date = date(
+        2026,
+        7,
+        30,
+    ),
+) -> EPSSSnapshot:
+    return EPSSSnapshot(
+        score=score,
+        percentile=percentile,
+        score_date=score_date,
     )
 
-    return service, fake_connector
+
+def _build_service(
+    *,
+    repository_result: object | None = None,
+    repository_error: Exception | None = None,
+    max_cve_ids: int = 50_000,
+) -> tuple[
+    EPSSEnrichmentService,
+    FakeUnitOfWork,
+    FakeEPSSRepository,
+]:
+    repository = FakeEPSSRepository(
+        result=repository_result,
+        error=repository_error,
+    )
+
+    unit_of_work = FakeUnitOfWork(
+        repository
+    )
+
+    service = EPSSEnrichmentService(
+        unit_of_work=unit_of_work,
+        max_cve_ids=max_cve_ids,
+    )
+
+    return (
+        service,
+        unit_of_work,
+        repository,
+    )
 
 
-def test_unit_enrich_single_threat_with_fake_connector():
+def test_constructor_rejects_missing_unit_of_work(
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="unit_of_work must not be None",
+    ):
+        EPSSEnrichmentService(
+            unit_of_work=None,  # type: ignore[arg-type]
+        )
 
-    service, fake_connector = _build_unit_service()
+
+@pytest.mark.parametrize(
+    "invalid_limit",
+    [
+        True,
+        1.5,
+        "100",
+        None,
+    ],
+)
+def test_constructor_rejects_invalid_limit_type(
+    invalid_limit: object,
+) -> None:
+    repository = FakeEPSSRepository()
+    unit_of_work = FakeUnitOfWork(
+        repository
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="max_cve_ids must be an integer",
+    ):
+        EPSSEnrichmentService(
+            unit_of_work=unit_of_work,
+            max_cve_ids=invalid_limit,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_limit",
+    [
+        0,
+        -1,
+    ],
+)
+def test_constructor_rejects_non_positive_limit(
+    invalid_limit: int,
+) -> None:
+    repository = FakeEPSSRepository()
+    unit_of_work = FakeUnitOfWork(
+        repository
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "max_cve_ids must be "
+            "greater than zero"
+        ),
+    ):
+        EPSSEnrichmentService(
+            unit_of_work=unit_of_work,
+            max_cve_ids=invalid_limit,
+        )
+
+
+def test_fetch_returns_empty_without_transaction(
+) -> None:
+    service, unit_of_work, repository = (
+        _build_service()
+    )
+
+    result = service.fetch_epss_by_cve_ids(
+        [
+            None,
+            "",
+            "INVALID",
+            "GHSA-xxxx-yyyy-zzzz",
+        ]
+    )
+
+    assert result == {}
+
+    assert repository.calls == []
+    assert unit_of_work.enter_count == 0
+    assert unit_of_work.exit_count == 0
+
+
+def test_fetch_normalizes_and_deduplicates_cves(
+) -> None:
+    snapshot = _snapshot()
+
+    service, unit_of_work, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
+
+    result = service.fetch_epss_by_cve_ids(
+        [
+            " cve-2021-44228 ",
+            "CVE-2021-44228",
+            None,
+            "INVALID",
+        ]
+    )
+
+    assert result == {
+        "CVE-2021-44228": snapshot,
+    }
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
+    ]
+
+    assert unit_of_work.enter_count == 1
+    assert unit_of_work.exit_count == 1
+    assert unit_of_work.commit_count == 0
+
+
+def test_fetch_preserves_requested_order(
+) -> None:
+    first_snapshot = _snapshot(
+        score=0.91,
+    )
+
+    second_snapshot = _snapshot(
+        score=0.82,
+    )
+
+    service, _, _ = _build_service(
+        repository_result={
+            "CVE-2024-3094": (
+                second_snapshot
+            ),
+            "CVE-2021-44228": (
+                first_snapshot
+            ),
+        },
+    )
+
+    result = service.fetch_epss_by_cve_ids(
+        [
+            "CVE-2021-44228",
+            "CVE-2024-3094",
+        ]
+    )
+
+    assert list(result) == [
+        "CVE-2021-44228",
+        "CVE-2024-3094",
+    ]
+
+
+def test_fetch_omits_missing_cves(
+) -> None:
+    snapshot = _snapshot()
+
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
+
+    result = service.fetch_epss_by_cve_ids(
+        [
+            "CVE-2021-44228",
+            "CVE-2099-0001",
+        ]
+    )
+
+    assert result == {
+        "CVE-2021-44228": snapshot,
+    }
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+            "CVE-2099-0001",
+        ]
+    ]
+
+
+def test_fetch_rejects_string_collection(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "cve_ids must be an iterable "
+            "of identifiers"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            "CVE-2021-44228"  # type: ignore[arg-type]
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_fetch_rejects_non_iterable_collection(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="cve_ids must be iterable",
+    ):
+        service.fetch_epss_by_cve_ids(
+            123  # type: ignore[arg-type]
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_fetch_enforces_configured_limit(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service(
+            max_cve_ids=1,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "cve_ids exceeds the configured "
+            "limit of 1"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+                "CVE-2024-3094",
+            ]
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_fetch_rejects_historical_date_before_transaction(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "historical EPSS enrichment "
+            "is not supported by local storage"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ],
+            date="2026-07-29",
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_fetch_rejects_non_mapping_repository_result(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service(
+            repository_result=[
+                _snapshot(),
+            ],
+        )
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "epss repository result "
+            "must be a mapping"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+    assert unit_of_work.exited is True
+
+
+def test_fetch_rejects_unexpected_repository_cve(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service(
+            repository_result={
+                "CVE-2024-3094": _snapshot(),
+            },
+        )
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "epss repository returned "
+            "unexpected CVE identifiers"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+    assert unit_of_work.exited is True
+
+
+def test_fetch_rejects_invalid_repository_value(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": {
+                    "score": 0.99,
+                },
+            },
+        )
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "epss repository values must "
+            "be EPSSSnapshot instances"
+        ),
+    ):
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+    assert unit_of_work.exited is True
+
+
+def test_repository_failure_closes_transaction(
+) -> None:
+    expected_error = RuntimeError(
+        "PostgreSQL read failure"
+    )
+
+    service, unit_of_work, _ = (
+        _build_service(
+            repository_error=expected_error,
+        )
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="PostgreSQL read failure",
+    ) as raised_error:
+        service.fetch_epss_by_cve_ids(
+            [
+                "CVE-2021-44228",
+            ]
+        )
+
+    assert raised_error.value is expected_error
+
+    assert unit_of_work.enter_count == 1
+    assert unit_of_work.exit_count == 1
+    assert unit_of_work.exited is True
+
+    assert (
+        unit_of_work.exit_exception_type
+        is RuntimeError
+    )
+
+    assert unit_of_work.commit_count == 0
+
+
+def test_enriches_single_threat_from_local_snapshot(
+) -> None:
+    snapshot = _snapshot(
+        score=0.99999,
+        percentile=0.99998,
+        score_date=date(
+            2026,
+            7,
+            30,
+        ),
+    )
+
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
 
     threat = Threat(
         id="CVE-2021-44228",
-        description="Apache Log4j vulnerability"
+        description=(
+            "Apache Log4j vulnerability"
+        ),
     )
 
     result = service.enrich_threats(
-        [threat]
-    )
-
-    print("\n[EPSS UNIT] Single Threat enrichment")
-    print(f"Threat ID        : {threat.id}")
-    print(f"EPSS Score       : {threat.epss_score}")
-    print(f"EPSS Percentile  : {threat.epss_percentile}")
-    print(f"EPSS Date        : {threat.epss_date}")
-
-    assert isinstance(
-        result,
-        EPSSEnrichmentResult
-    )
-
-    assert result.metadata["source"] == "EPSS"
-    assert result.metadata["requested_cves"] == 1
-    assert result.metadata["epss_records_found"] == 1
-    assert result.metadata["enriched_threats"] == 1
-    assert result.metadata["missing_cves"] == []
-    assert result.metadata["non_cve_threats"] == 0
-
-    assert threat.epss_score == 0.99999
-    assert threat.epss_percentile == 1.0
-    assert threat.epss_date == "2026-07-10"
-
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228"
-    ]
-
-
-def test_unit_enrich_multiple_threats_with_fake_connector():
-
-    service, fake_connector = _build_unit_service()
-
-    threats = [
-        Threat(
-            id="CVE-2021-44228",
-            description="Apache Log4j vulnerability"
-        ),
-        Threat(
-            id="CVE-2024-4577",
-            description="PHP CGI vulnerability"
-        ),
-        Threat(
-            id="CVE-2019-19781",
-            description="Citrix ADC vulnerability"
-        )
-    ]
-
-    result = service.enrich_threats(
-        threats
-    )
-
-    print("\n[EPSS UNIT] Multiple Threat enrichment")
-    print(f"Requested CVEs      : {result.metadata['requested_cves']}")
-    print(f"EPSS records found  : {result.metadata['epss_records_found']}")
-    print(f"Enriched threats    : {result.metadata['enriched_threats']}")
-
-    assert result.metadata["requested_cves"] == 3
-    assert result.metadata["epss_records_found"] == 3
-    assert result.metadata["enriched_threats"] == 3
-    assert result.metadata["missing_cves"] == []
-
-    for threat in threats:
-        assert threat.epss_score is not None
-        assert threat.epss_percentile is not None
-        assert threat.epss_date == "2026-07-10"
-
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228",
-        "CVE-2024-4577",
-        "CVE-2019-19781"
-    ]
-
-
-def test_unit_fetch_epss_by_cve_ids_without_threat_objects():
-
-    service, fake_connector = _build_unit_service()
-
-    epss_lookup = service.fetch_epss_by_cve_ids(
         [
-            "CVE-2021-44228",
-            "CVE-2024-4577"
+            threat,
         ]
     )
 
-    print("\n[EPSS UNIT] Direct CVE ID lookup")
-    print(f"Records found: {len(epss_lookup)}")
-
     assert isinstance(
-        epss_lookup,
-        dict
+        result,
+        EPSSEnrichmentResult,
     )
 
-    assert "CVE-2021-44228" in epss_lookup
-    assert "CVE-2024-4577" in epss_lookup
+    assert result.threats == [
+        threat,
+    ]
 
-    assert epss_lookup["CVE-2021-44228"]["epss"] == "0.999990000"
-    assert epss_lookup["CVE-2024-4577"]["percentile"] == "0.999830000"
+    assert threat.epss_score == 0.99999
+    assert threat.epss_percentile == 0.99998
+    assert threat.epss_date == "2026-07-30"
 
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228",
-        "CVE-2024-4577"
+    assert result.metadata == {
+        "source": "EPSS",
+        "storage": "PostgreSQL",
+        "requested_cves": 1,
+        "epss_records_found": 1,
+        "enriched_threats": 1,
+        "missing_cves": [],
+        "non_cve_threats": 0,
+        "date_requested": None,
+    }
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
     ]
 
 
-def test_unit_non_cve_threat_is_ignored_gracefully():
+def test_duplicate_cves_are_loaded_once_and_all_threats_enriched(
+) -> None:
+    snapshot = _snapshot()
 
-    service, fake_connector = _build_unit_service()
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
 
     threats = [
         Threat(
-            id="GHSA-xxxx-yyyy-zzzz",
-            description="Future GitHub Advisory without CVE"
+            id="CVE-2021-44228",
+            description="NVD record",
         ),
         Threat(
-            id="CVE-2021-44228",
-            description="Apache Log4j vulnerability"
-        )
+            id="cve-2021-44228",
+            description="CISA record",
+        ),
+        Threat(
+            id="GHSA-example",
+            external_ids={
+                "CVE": [
+                    "CVE-2021-44228",
+                ],
+            },
+            description=(
+                "GitHub Advisory record"
+            ),
+        ),
     ]
 
     result = service.enrich_threats(
         threats
     )
 
-    ghsa_threat = threats[0]
-    cve_threat = threats[1]
+    assert (
+        result.metadata[
+            "requested_cves"
+        ]
+        == 1
+    )
 
-    print("\n[EPSS UNIT] Non-CVE Threat handling")
-    print(f"Non-CVE threats  : {result.metadata['non_cve_threats']}")
-    print(f"Requested CVEs   : {result.metadata['requested_cves']}")
-    print(f"Enriched threats : {result.metadata['enriched_threats']}")
+    assert (
+        result.metadata[
+            "enriched_threats"
+        ]
+        == 3
+    )
 
-    assert result.metadata["non_cve_threats"] == 1
-    assert result.metadata["requested_cves"] == 1
-    assert result.metadata["enriched_threats"] == 1
+    for threat in threats:
+        assert threat.epss_score == 0.99999
+        assert threat.epss_percentile == 1.0
+        assert threat.epss_date == "2026-07-30"
 
-    assert ghsa_threat.epss_score is None
-    assert ghsa_threat.epss_percentile is None
-    assert ghsa_threat.epss_date is None
-
-    assert cve_threat.epss_score == 0.99999
-    assert cve_threat.epss_percentile == 1.0
-    assert cve_threat.epss_date == "2026-07-10"
-
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228"
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
     ]
 
 
-def test_unit_empty_threat_list_returns_empty_result():
+def test_non_cve_threat_is_preserved_without_enrichment(
+) -> None:
+    snapshot = _snapshot()
 
-    service, fake_connector = _build_unit_service()
+    service, _, _ = _build_service(
+        repository_result={
+            "CVE-2021-44228": snapshot,
+        },
+    )
+
+    non_cve_threat = Threat(
+        id="GHSA-xxxx-yyyy-zzzz",
+    )
+
+    cve_threat = Threat(
+        id="CVE-2021-44228",
+    )
+
+    result = service.enrich_threats(
+        [
+            non_cve_threat,
+            cve_threat,
+        ]
+    )
+
+    assert non_cve_threat.epss_score is None
+    assert non_cve_threat.epss_percentile is None
+    assert non_cve_threat.epss_date is None
+
+    assert cve_threat.epss_score == 0.99999
+
+    assert (
+        result.metadata[
+            "non_cve_threats"
+        ]
+        == 1
+    )
+
+
+def test_external_cve_identifier_is_supported(
+) -> None:
+    snapshot = _snapshot(
+        score=0.75,
+    )
+
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2024-3094": snapshot,
+            },
+        )
+    )
+
+    threat = Threat(
+        id="GHSA-example",
+        external_ids={
+            "CVE": [
+                "cve-2024-3094",
+            ],
+        },
+    )
+
+    result = service.enrich_threats(
+        [
+            threat,
+        ]
+    )
+
+    assert threat.epss_score == 0.75
+
+    assert (
+        result.metadata[
+            "requested_cves"
+        ]
+        == 1
+    )
+
+    assert repository.calls == [
+        [
+            "CVE-2024-3094",
+        ]
+    ]
+
+
+def test_missing_cve_is_reported_in_metadata(
+) -> None:
+    snapshot = _snapshot()
+
+    service, _, _ = _build_service(
+        repository_result={
+            "CVE-2021-44228": snapshot,
+        },
+    )
+
+    known_threat = Threat(
+        id="CVE-2021-44228",
+    )
+
+    missing_threat = Threat(
+        id="CVE-2099-0001",
+    )
+
+    result = service.enrich_threats(
+        [
+            known_threat,
+            missing_threat,
+        ]
+    )
+
+    assert known_threat.epss_score is not None
+    assert missing_threat.epss_score is None
+
+    assert (
+        result.metadata[
+            "epss_records_found"
+        ]
+        == 1
+    )
+
+    assert (
+        result.metadata[
+            "enriched_threats"
+        ]
+        == 1
+    )
+
+    assert (
+        result.metadata[
+            "missing_cves"
+        ]
+        == [
+            "CVE-2099-0001",
+        ]
+    )
+
+
+def test_empty_threat_list_skips_transaction(
+) -> None:
+    service, unit_of_work, repository = (
+        _build_service()
+    )
 
     result = service.enrich_threats(
         []
     )
 
-    print("\n[EPSS UNIT] Empty Threat list")
-    print(result.metadata)
-
-    assert isinstance(
-        result,
-        EPSSEnrichmentResult
-    )
-
     assert result.threats == []
-    assert result.metadata["source"] == "EPSS"
-    assert result.metadata["requested_cves"] == 0
-    assert result.metadata["epss_records_found"] == 0
-    assert result.metadata["enriched_threats"] == 0
-    assert result.metadata["missing_cves"] == []
-    assert result.metadata["non_cve_threats"] == 0
 
-    assert len(fake_connector.calls) == 0
+    assert result.metadata == {
+        "source": "EPSS",
+        "storage": "PostgreSQL",
+        "requested_cves": 0,
+        "epss_records_found": 0,
+        "enriched_threats": 0,
+        "missing_cves": [],
+        "non_cve_threats": 0,
+        "date_requested": None,
+    }
+
+    assert repository.calls == []
+    assert unit_of_work.enter_count == 0
 
 
-def test_unit_duplicate_cves_are_requested_once_but_all_threats_are_enriched():
-
-    service, fake_connector = _build_unit_service()
-
-    threats = [
-        Threat(
-            id="CVE-2021-44228",
-            description="NVD version"
-        ),
-        Threat(
-            id="CVE-2021-44228",
-            description="CISA version"
-        ),
-        Threat(
-            id="cve-2021-44228",
-            description="MITRE version with lowercase id"
-        )
-    ]
-
-    result = service.enrich_threats(
-        threats
+def test_enrich_threats_rejects_non_list(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
     )
 
-    print("\n[EPSS UNIT] Duplicate CVE handling")
-    print(f"Requested CVEs   : {result.metadata['requested_cves']}")
-    print(f"Enriched threats : {result.metadata['enriched_threats']}")
-
-    assert result.metadata["requested_cves"] == 1
-    assert result.metadata["enriched_threats"] == 3
-
-    for threat in threats:
-        assert threat.epss_score == 0.99999
-        assert threat.epss_percentile == 1.0
-        assert threat.epss_date == "2026-07-10"
-
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228"
-    ]
-
-
-def test_unit_missing_cve_is_reported_in_metadata():
-
-    service, fake_connector = _build_unit_service()
-
-    threats = [
-        Threat(
-            id="CVE-2021-44228",
-            description="Known in fake EPSS database"
-        ),
-        Threat(
-            id="CVE-2099-0001",
-            description="Not found in fake EPSS database"
-        )
-    ]
-
-    result = service.enrich_threats(
-        threats
-    )
-
-    known_threat = threats[0]
-    missing_threat = threats[1]
-
-    print("\n[EPSS UNIT] Missing CVE handling")
-    print(f"Requested CVEs      : {result.metadata['requested_cves']}")
-    print(f"EPSS records found  : {result.metadata['epss_records_found']}")
-    print(f"Enriched threats    : {result.metadata['enriched_threats']}")
-    print(f"Missing CVEs        : {result.metadata['missing_cves']}")
-
-    assert result.metadata["requested_cves"] == 2
-    assert result.metadata["epss_records_found"] == 1
-    assert result.metadata["enriched_threats"] == 1
-    assert result.metadata["missing_cves"] == [
-        "CVE-2099-0001"
-    ]
-
-    assert known_threat.epss_score == 0.99999
-
-    assert missing_threat.epss_score is None
-    assert missing_threat.epss_percentile is None
-    assert missing_threat.epss_date is None
-
-    assert len(fake_connector.calls) == 1
-
-
-def test_unit_enrich_correlation_result_with_fake_connector():
-
-    service, fake_connector = _build_unit_service()
-
-    nvd_result = CollectionResult(
-        threats=[
-            Threat(
-                id="CVE-2021-44228",
-                description="NVD description"
+    with pytest.raises(
+        TypeError,
+        match="threats must be a list",
+    ):
+        service.enrich_threats(
+            (  # type: ignore[arg-type]
+                Threat(
+                    id="CVE-2021-44228",
+                ),
             )
-        ],
-        metadata={
-            "source": "NVD"
-        }
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_enrich_threats_rejects_invalid_element(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
     )
 
-    cisa_result = CollectionResult(
-        threats=[
-            Threat(
-                id="CVE-2021-44228",
-                description="CISA description"
-            )
-        ],
-        metadata={
-            "source": "CISA"
-        }
+    with pytest.raises(
+        TypeError,
+        match=(
+            "threats must contain only "
+            "Threat objects"
+        ),
+    ):
+        service.enrich_threats(
+            [
+                Threat(
+                    id="CVE-2021-44228",
+                ),
+                "invalid",  # type: ignore[list-item]
+            ]
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_enrichment_preserves_threat_category(
+) -> None:
+    snapshot = _snapshot()
+
+    service, _, _ = _build_service(
+        repository_result={
+            "CVE-2021-44228": snapshot,
+        },
     )
-
-    correlation_service = ThreatCorrelationService()
-
-    correlation_result = correlation_service.correlate_results(
-        [
-            nvd_result,
-            cisa_result
-        ]
-    )
-
-    epss_result = service.enrich_correlation_result(
-        correlation_result
-    )
-
-    group = correlation_result.groups[
-        "CVE-2021-44228"
-    ]
-
-    print("\n[EPSS UNIT] Correlation result enrichment")
-    print(f"Group ID         : {group.id}")
-    print(f"Group sources    : {group.sources}")
-    print(f"Threats in group : {len(group.threats)}")
-    print(f"Enriched threats : {epss_result.metadata['enriched_threats']}")
-
-    assert epss_result.metadata["requested_cves"] == 1
-    assert epss_result.metadata["enriched_threats"] == 2
-
-    for threat in group.threats:
-        assert threat.epss_score == 0.99999
-        assert threat.epss_percentile == 1.0
-        assert threat.epss_date == "2026-07-10"
-
-    assert len(fake_connector.calls) == 1
-    assert fake_connector.calls[0]["cve_ids"] == [
-        "CVE-2021-44228"
-    ]
-
-
-def test_unit_invalid_cve_ids_return_empty_lookup():
-
-    service, fake_connector = _build_unit_service()
-
-    epss_lookup = service.fetch_epss_by_cve_ids(
-        [
-            "",
-            None,
-            "INVALID-ID",
-            "GHSA-xxxx-yyyy-zzzz"
-        ]
-    )
-
-    print("\n[EPSS UNIT] Invalid CVE ID lookup")
-    print(epss_lookup)
-
-    assert epss_lookup == {}
-
-    assert len(fake_connector.calls) == 0
-
-
-@pytest.mark.integration
-@pytest.mark.external
-def test_integration_enrich_single_threat_with_real_epss_api():
-
-    service = EPSSEnrichmentService()
 
     threat = Threat(
         id="CVE-2021-44228",
-        description="Apache Log4j vulnerability"
-    )
-
-    try:
-        result = service.enrich_threats(
-            [threat]
-        )
-
-    except requests.exceptions.RequestException as error:
-        pytest.skip(
-            f"Skipping EPSS integration test due to external API/network issue: {error}"
-        )
-
-    print("\n[EPSS INTEGRATION] Real API enrichment")
-    print(f"Threat ID        : {threat.id}")
-    print(f"EPSS Score       : {threat.epss_score}")
-    print(f"EPSS Percentile  : {threat.epss_percentile}")
-    print(f"EPSS Date        : {threat.epss_date}")
-
-    assert result.metadata["source"] == "EPSS"
-    assert result.metadata["requested_cves"] == 1
-    assert result.metadata["epss_records_found"] >= 1
-    assert result.metadata["enriched_threats"] == 1
-
-    assert threat.epss_score is not None
-    assert threat.epss_percentile is not None
-    assert threat.epss_date is not None
-
-    assert isinstance(threat.epss_score, float)
-    assert isinstance(threat.epss_percentile, float)
-    assert isinstance(threat.epss_date, str)
-
-    assert 0 <= threat.epss_score <= 1
-    assert 0 <= threat.epss_percentile <= 1
-
-
-def test_epss_preserves_threat_category() -> None:
-    service, _ = _build_unit_service()
-
-    threat = Threat(
-        id="CVE-2021-44228",
-        category=ThreatCategory.VULNERABILITY,
+        category=(
+            ThreatCategory.VULNERABILITY
+        ),
     )
 
     result = service.enrich_threats(
-        [threat],
-        date="2026-07-16",
+        [
+            threat,
+        ]
     )
 
     assert (
         result.threats[0].category
         is ThreatCategory.VULNERABILITY
     )
+
+
+def test_transaction_closes_before_threat_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _snapshot()
+
+    service, unit_of_work, _ = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
+
+    threat = Threat(
+        id="CVE-2021-44228",
+    )
+
+    original_apply = (
+        service._apply_epss_to_threats
+    )
+
+    def guarded_apply(
+        *,
+        threats: list[Threat],
+        epss_lookup: dict[
+            str,
+            EPSSSnapshot,
+        ],
+    ) -> int:
+        assert unit_of_work.exited is True
+
+        return original_apply(
+            threats=threats,
+            epss_lookup=epss_lookup,
+        )
+
+    monkeypatch.setattr(
+        service,
+        "_apply_epss_to_threats",
+        guarded_apply,
+    )
+
+    service.enrich_threats(
+        [
+            threat,
+        ]
+    )
+
+    assert threat.epss_score == 0.99999
+    assert unit_of_work.commit_count == 0
+
+
+def test_enriches_correlation_result(
+) -> None:
+    snapshot = _snapshot()
+
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
+    )
+
+    nvd_threat = Threat(
+        id="CVE-2021-44228",
+        source="NVD",
+    )
+
+    cisa_threat = Threat(
+        id="CVE-2021-44228",
+        source="CISA",
+    )
+
+    first_group = Mock()
+    first_group.threats = [
+        nvd_threat,
+    ]
+
+    second_group = Mock()
+    second_group.threats = [
+        cisa_threat,
+    ]
+
+    correlation_result = Mock()
+
+    correlation_result.all_groups.return_value = [
+        first_group,
+        second_group,
+    ]
+
+    result = (
+        service.enrich_correlation_result(
+            correlation_result
+        )
+    )
+
+    assert (
+        result.metadata[
+            "requested_cves"
+        ]
+        == 1
+    )
+
+    assert (
+        result.metadata[
+            "enriched_threats"
+        ]
+        == 2
+    )
+
+    assert nvd_threat.epss_score == 0.99999
+    assert cisa_threat.epss_score == 0.99999
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
+    ]
+
+
+def test_enrich_correlation_result_rejects_none(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "correlation_result "
+            "must not be None"
+        ),
+    ):
+        service.enrich_correlation_result(
+            None  # type: ignore[arg-type]
+        )
+
+    assert unit_of_work.enter_count == 0
+
+
+def test_enrich_threats_rejects_historical_date(
+) -> None:
+    service, unit_of_work, _ = (
+        _build_service()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "historical EPSS enrichment "
+            "is not supported by local storage"
+        ),
+    ):
+        service.enrich_threats(
+            [
+                Threat(
+                    id="CVE-2021-44228",
+                ),
+            ],
+            date="2026-07-29",
+        )
+
+    assert unit_of_work.enter_count == 0

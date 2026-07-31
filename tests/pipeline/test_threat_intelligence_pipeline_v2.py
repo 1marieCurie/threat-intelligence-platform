@@ -224,24 +224,30 @@ class FakeEPSSEnrichmentService(
             },
         )
 
-
 class FailingEPSSEnrichmentService(
     EPSSEnrichmentService
 ):
     """
-    Fake EPSS service that simulates API failure.
+    Fake EPSS service that simulates enrichment failure.
     """
+
+    def __init__(
+        self,
+    ) -> None:
+        # Aucun UnitOfWork n'est nécessaire :
+        # enrich_correlation_result est entièrement remplacé.
+        pass
 
     def enrich_correlation_result(
         self,
         correlation_result: ThreatCorrelationResult,
-        date: Optional[str] = None,
+        date: str | None = None,
     ) -> EPSSEnrichmentResult:
         raise TimeoutError(
             "Simulated EPSS timeout."
         )
-
-
+        
+        
 # ============================================================
 # Fake source data
 # ============================================================

@@ -17,6 +17,9 @@ from application.services.threat_correlation_service import (
     ThreatCorrelationResult,
     ThreatCorrelationService,
 )
+from application.security.operational_error_sanitizer import (
+    sanitize_exception_message,
+)
 from domain.collection_result import CollectionResult
 from domain.threat import Threat
 
@@ -219,8 +222,11 @@ class ThreatIntelligencePipelineService:
                 instance is created when omitted.
 
             epss_enrichment_service:
-                Optional EPSS enrichment dependency. A default
-                instance is created when omitted.
+                Optional EPSS enrichment dependency.
+
+                It must be provided when EPSS enrichment is enabled.
+                The pipeline never constructs infrastructure-backed
+                dependencies implicitly.
 
             fail_fast:
                 When True, the first source or EPSS error stops the
@@ -241,7 +247,6 @@ class ThreatIntelligencePipelineService:
 
         self.epss_enrichment_service = (
             epss_enrichment_service
-            or EPSSEnrichmentService()
         )
 
         self.fail_fast = fail_fast
@@ -267,6 +272,12 @@ class ThreatIntelligencePipelineService:
             source-specific records, correlation groups, enrichment
             metadata and pipeline execution information.
         """
+        
+        epss_enrichment_service = (
+            self._require_epss_enrichment_service()
+            if enrich_with_epss
+            else None
+        )
 
         pipeline_started_at = datetime.now(
             UTC
@@ -311,12 +322,12 @@ class ThreatIntelligencePipelineService:
         epss_duration = 0.0
         epss_error: Optional[Dict[str, str]] = None
 
-        if enrich_with_epss:
+        if epss_enrichment_service is not None:
             epss_started = perf_counter()
 
             try:
                 epss_result = (
-                    self.epss_enrichment_service
+                    epss_enrichment_service
                     .enrich_correlation_result(
                         correlation_result=correlation_result,
                         date=epss_date,
@@ -327,7 +338,11 @@ class ThreatIntelligencePipelineService:
                 epss_error = {
                     "stage": "EPSS",
                     "error_type": type(error).__name__,
-                    "error_message": str(error),
+                    "error_message": (
+                        sanitize_exception_message(
+                            error
+                        )
+                    ),
                 }
 
                 errors.append(
@@ -376,6 +391,25 @@ class ThreatIntelligencePipelineService:
             errors=errors,
         )
 
+
+    def _require_epss_enrichment_service(
+        self,
+    ) -> EPSSEnrichmentService:
+        """
+        Retourne le service EPSS injecté.
+
+        Une dépendance de composition manquante est une erreur
+        de configuration. Elle doit être détectée avant tout appel
+        aux sources externes afin d'éviter une exécution partielle.
+        """
+        if self.epss_enrichment_service is None:
+            raise RuntimeError(
+                "epss_enrichment_service is required "
+                "when EPSS enrichment is enabled"
+            )
+
+        return self.epss_enrichment_service
+    
     # ========================================================
     # Collection stage
     # ========================================================
@@ -451,7 +485,11 @@ class ThreatIntelligencePipelineService:
                 source_name=source_name,
                 success=False,
                 error_type=type(error).__name__,
-                error_message=str(error),
+                error_message=(
+                    sanitize_exception_message(
+                        error
+                    )
+                ),
                 duration_seconds=(
                     perf_counter()
                     - started
