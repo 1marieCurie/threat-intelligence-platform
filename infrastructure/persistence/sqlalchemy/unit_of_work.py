@@ -8,6 +8,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
+from application.ports.outbound.cwe_reference_repository import (
+    VulnerabilityCWEReferenceRepository,
+)
+from application.ports.outbound.cwe_repository import (
+    WritableCWERepository,
+)
+from application.ports.outbound.epss_score_repository import (
+    WritableEPSSScoreRepository,
+)
 from application.ports.outbound.github_advisory_vulnerability_repository import (
     GitHubAdvisoryVulnerabilityRepository,
 )
@@ -23,6 +32,15 @@ from application.ports.outbound.sync_state_repository import (
 from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
     SqlAlchemyCisaKevVulnerabilityRepository,
 )
+from infrastructure.persistence.sqlalchemy.repositories.cwe_reference_repository import (
+    SqlAlchemyVulnerabilityCWEReferenceRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.cwe_repository import (
+    SqlAlchemyCWERepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.epss_score_repository import (
+    SqlAlchemyEPSSScoreRepository,
+)
 from infrastructure.persistence.sqlalchemy.repositories.github_advisory_vulnerability_repository import (
     SqlAlchemyGitHubAdvisoryVulnerabilityRepository,
 )
@@ -35,21 +53,17 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
 from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
     SqlAlchemySyncStateRepository,
 )
-from application.ports.outbound.cwe_repository import (
-    WritableCWERepository,
-)
-from infrastructure.persistence.sqlalchemy.repositories.cwe_repository import (
-    SqlAlchemyCWERepository,
-)
-from application.ports.outbound.cwe_reference_repository import (
-    VulnerabilityCWEReferenceRepository,
-)
-from infrastructure.persistence.sqlalchemy.repositories.cwe_reference_repository import (
-    SqlAlchemyVulnerabilityCWEReferenceRepository,
-)
 
 
 class SqlAlchemyUnitOfWork:
+    """
+    Unit of Work SQLAlchemy de la plateforme.
+
+    Chaque entrée dans le contexte ouvre une session unique.
+    Tous les repositories partagent cette même session et donc
+    la même transaction PostgreSQL.
+    """
+
     def __init__(
         self,
         session_factory: sessionmaker[Session],
@@ -84,9 +98,17 @@ class SqlAlchemyUnitOfWork:
         self.github_advisory_vulnerabilities: (
             GitHubAdvisoryVulnerabilityRepository
         )
-        
+
         self.cwe_weaknesses: (
             WritableCWERepository
+        )
+
+        self.vulnerability_cwe_references: (
+            VulnerabilityCWEReferenceRepository
+        )
+
+        self.epss_scores: (
+            WritableEPSSScoreRepository
         )
 
     def __enter__(self) -> Self:
@@ -128,15 +150,21 @@ class SqlAlchemyUnitOfWork:
                 session=self._session,
             )
         )
-        
+
         self.cwe_weaknesses = (
             SqlAlchemyCWERepository(
                 session=self._session,
             )
         )
-        
+
         self.vulnerability_cwe_references = (
             SqlAlchemyVulnerabilityCWEReferenceRepository(
+                session=self._session,
+            )
+        )
+
+        self.epss_scores = (
+            SqlAlchemyEPSSScoreRepository(
                 session=self._session,
             )
         )
@@ -154,9 +182,8 @@ class SqlAlchemyUnitOfWork:
                 self.rollback()
 
             elif self._session is not None:
-                # Aucune transaction implicite ne doit
-                # rester ouverte lorsque commit() a été
-                # oublié par le service appelant.
+                # Une transaction non explicitement validée
+                # doit être annulée à la sortie du contexte.
                 self.rollback()
 
         finally:

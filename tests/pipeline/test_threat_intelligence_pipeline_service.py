@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, List, Optional
+from typing import Any
 
-from domain.indicator import Indicator
 import pytest
 
-from application.ports.inbound.threat_source import (
-    ThreatSource,
-)
+from application.ports.inbound.threat_source import ThreatSource
 from application.services.epss_enrichment_service import (
     EPSSEnrichmentResult,
     EPSSEnrichmentService,
@@ -18,11 +15,11 @@ from application.services.threat_correlation_service import (
     ThreatCorrelationService,
 )
 from application.services.threat_intelligence_pipeline_service import (
-    SourceExecutionResult,
     ThreatIntelligencePipelineResult,
     ThreatIntelligencePipelineService,
 )
 from domain.collection_result import CollectionResult
+from domain.indicator import Indicator
 from domain.threat import Threat
 from domain.weakness_reference import WeaknessReference
 
@@ -37,15 +34,14 @@ COMMON_CVE = "CVE-2021-44228"
 
 class FakeThreatSource(ThreatSource):
     """
-    Deterministic ThreatSource used to test the complete pipeline
-    without accessing external APIs.
+    Deterministic source that never accesses an external provider.
     """
 
     def __init__(
         self,
         source_name: str,
-        threats: List[Threat],
-        metadata: Optional[dict[str, Any]] = None,
+        threats: list[Threat],
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         self._source_name = source_name
         self._threats = threats
@@ -80,13 +76,13 @@ class FakeThreatSource(ThreatSource):
     def parse(
         self,
         raw_data: Any,
-    ) -> List[Threat]:
+    ) -> list[Threat]:
         return self._threats
 
 
 class FailingThreatSource(ThreatSource):
     """
-    Fake source that always fails during collection.
+    Source that always fails during collection.
     """
 
     def __init__(
@@ -114,20 +110,20 @@ class FailingThreatSource(ThreatSource):
     def parse(
         self,
         raw_data: Any,
-    ) -> List[Threat]:
+    ) -> list[Threat]:
         return []
 
 
 class InvalidResultThreatSource(ThreatSource):
     """
-    Fake source returning an invalid value instead of CollectionResult.
+    Source returning an invalid value instead of CollectionResult.
     """
 
     def name(self) -> str:
         return "INVALID_SOURCE"
 
     def collect(self) -> CollectionResult:
-        # Intentionally invalid for testing runtime validation.
+        # Intentionally invalid to verify runtime validation.
         return "invalid result"  # type: ignore[return-value]
 
     def fetch_raw(self) -> Any:
@@ -136,12 +132,12 @@ class InvalidResultThreatSource(ThreatSource):
     def parse(
         self,
         raw_data: Any,
-    ) -> List[Threat]:
+    ) -> list[Threat]:
         return []
 
 
 # ============================================================
-# Fake EPSS service
+# Fake EPSS services
 # ============================================================
 
 
@@ -149,35 +145,42 @@ class FakeEPSSEnrichmentService(
     EPSSEnrichmentService
 ):
     """
-    Deterministic EPSS enrichment service.
-
-    It enriches every source-specific Threat representing
-    CVE-2021-44228.
+    Deterministic EPSS service used without PostgreSQL.
     """
 
-    def __init__(self) -> None:
-        # No real EPSSConnector is needed.
+    def __init__(
+        self,
+    ) -> None:
+        # The enrichment method is fully overridden.
+        # No real UnitOfWork is required by this test double.
         self.enrichment_calls = 0
-        self.received_dates: List[Optional[str]] = []
+
+        self.received_dates: list[
+            str | None
+        ] = []
 
     def enrich_correlation_result(
         self,
         correlation_result: ThreatCorrelationResult,
-        date: Optional[str] = None,
+        date: str | None = None,
     ) -> EPSSEnrichmentResult:
         self.enrichment_calls += 1
-        self.received_dates.append(date)
 
-        all_threats: List[Threat] = []
+        self.received_dates.append(
+            date
+        )
 
-        for group in correlation_result.all_groups():
-            all_threats.extend(
-                group.threats
+        threats = [
+            threat
+            for group in (
+                correlation_result.all_groups()
             )
+            for threat in group.threats
+        ]
 
         enriched_count = 0
 
-        for threat in all_threats:
+        for threat in threats:
             if threat.id != COMMON_CVE:
                 continue
 
@@ -192,8 +195,10 @@ class FakeEPSSEnrichmentService(
 
         requested_cves = {
             threat.id
-            for threat in all_threats
-            if threat.id.startswith("CVE-")
+            for threat in threats
+            if threat.id.startswith(
+                "CVE-"
+            )
         }
 
         missing_cves = sorted(
@@ -204,21 +209,29 @@ class FakeEPSSEnrichmentService(
 
         non_cve_threats = sum(
             1
-            for threat in all_threats
-            if not threat.id.startswith("CVE-")
+            for threat in threats
+            if not threat.id.startswith(
+                "CVE-"
+            )
         )
 
         return EPSSEnrichmentResult(
-            threats=all_threats,
+            threats=threats,
             metadata={
                 "source": "EPSS",
                 "requested_cves": len(
                     requested_cves
                 ),
                 "epss_records_found": 1,
-                "enriched_threats": enriched_count,
-                "missing_cves": missing_cves,
-                "non_cve_threats": non_cve_threats,
+                "enriched_threats": (
+                    enriched_count
+                ),
+                "missing_cves": (
+                    missing_cves
+                ),
+                "non_cve_threats": (
+                    non_cve_threats
+                ),
                 "date_requested": date,
             },
         )
@@ -228,13 +241,20 @@ class FailingEPSSEnrichmentService(
     EPSSEnrichmentService
 ):
     """
-    Fake EPSS service that simulates API failure.
+    EPSS service that always fails during enrichment.
     """
+
+    def __init__(
+        self,
+    ) -> None:
+        # The enrichment method is fully overridden.
+        # No real UnitOfWork is required by this test double.
+        pass
 
     def enrich_correlation_result(
         self,
         correlation_result: ThreatCorrelationResult,
-        date: Optional[str] = None,
+        date: str | None = None,
     ) -> EPSSEnrichmentResult:
         raise TimeoutError(
             "Simulated EPSS timeout."
@@ -246,12 +266,13 @@ class FailingEPSSEnrichmentService(
 # ============================================================
 
 
-def build_fake_sources() -> List[FakeThreatSource]:
+def build_fake_sources(
+) -> list[FakeThreatSource]:
     """
-    Create four sources containing the same CVE, plus
-    source-specific vulnerabilities.
+    Build five deterministic sources.
 
-    The common CVE demonstrates correlation without fusion.
+    NVD, CISA, MITRE and GitHub Advisory share one CVE.
+    URLhaus provides a non-CVE threat.
     """
 
     nvd_threats = [
@@ -287,23 +308,34 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 WeaknessReference(
                     source="NVD",
                     cwe_id="CWE-502",
-                    resolution_status="resolved",
-                    resolution_method="explicit_id",
-                ),
+                    resolution_status=(
+                        "resolved"
+                    ),
+                    resolution_method=(
+                        "explicit_id"
+                    ),
+                )
             ],
             references=[
-                "https://nvd.example/CVE-2021-44228",
+                (
+                    "https://nvd.example/"
+                    "CVE-2021-44228"
+                )
             ],
             published_date=(
                 "2021-12-10T10:15:00.000Z"
             ),
             raw={
-                "sourceIdentifier": "nvd@nist.gov",
+                "sourceIdentifier": (
+                    "nvd@nist.gov"
+                ),
             },
         ),
         Threat(
             id="CVE-2026-1001",
-            description="Threat available only in NVD.",
+            description=(
+                "Threat available only in NVD."
+            ),
             severity="MEDIUM",
             cvss_score=6.5,
             raw={
@@ -320,13 +352,19 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 "Execution Vulnerability"
             ),
             description=(
-                "CISA KEV description for Log4Shell."
+                "CISA KEV description for "
+                "Log4Shell."
             ),
-            known_exploited_date="2021-12-10",
+            known_exploited_date=(
+                "2021-12-10"
+            ),
             remediation=(
-                "Apply updates according to vendor instructions."
+                "Apply updates according to "
+                "vendor instructions."
             ),
-            ransomware_campaign_use="Known",
+            ransomware_campaign_use=(
+                "Known"
+            ),
             affected_products=[
                 {
                     "vendor": "Apache",
@@ -337,12 +375,19 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 WeaknessReference(
                     source="GITHUB_ADVISORY",
                     cwe_id="CWE-502",
-                    resolution_status="resolved",
-                    resolution_method="explicit_id",
-                ),
+                    resolution_status=(
+                        "resolved"
+                    ),
+                    resolution_method=(
+                        "explicit_id"
+                    ),
+                )
             ],
             references=[
-                "https://cisa.example/CVE-2021-44228",
+                (
+                    "https://cisa.example/"
+                    "CVE-2021-44228"
+                )
             ],
             raw={
                 "cveID": COMMON_CVE,
@@ -351,9 +396,15 @@ def build_fake_sources() -> List[FakeThreatSource]:
         ),
         Threat(
             id="CVE-2026-1002",
-            title="Threat available only in CISA",
-            description="CISA-only vulnerability.",
-            known_exploited_date="2026-07-10",
+            title=(
+                "Threat available only in CISA"
+            ),
+            description=(
+                "CISA-only vulnerability."
+            ),
+            known_exploited_date=(
+                "2026-07-10"
+            ),
             raw={
                 "source": "CISA",
             },
@@ -364,16 +415,20 @@ def build_fake_sources() -> List[FakeThreatSource]:
         Threat(
             id=COMMON_CVE,
             title=(
-                "Apache Log4j remote code execution"
+                "Apache Log4j remote code "
+                "execution"
             ),
             description=(
-                "MITRE CNA description for Log4Shell."
+                "MITRE CNA description for "
+                "Log4Shell."
             ),
             severity="CRITICAL",
             cvss_score=10.0,
             affected_products=[
                 {
-                    "vendor": "Apache Software Foundation",
+                    "vendor": (
+                        "Apache Software Foundation"
+                    ),
                     "product": "Log4j",
                     "versions": [
                         {
@@ -384,12 +439,15 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 }
             ],
             references=[
-                "https://mitre.example/CVE-2021-44228",
+                (
+                    "https://mitre.example/"
+                    "CVE-2021-44228"
+                )
             ],
             source_dates={
                 "cna_updated": (
                     "2021-12-10T00:00:00Z"
-                ),
+                )
             },
             raw={
                 "dataType": "CVE_RECORD",
@@ -397,7 +455,9 @@ def build_fake_sources() -> List[FakeThreatSource]:
         ),
         Threat(
             id="CVE-2026-1003",
-            description="MITRE-only vulnerability.",
+            description=(
+                "MITRE-only vulnerability."
+            ),
             raw={
                 "source": "MITRE",
             },
@@ -415,7 +475,9 @@ def build_fake_sources() -> List[FakeThreatSource]:
                     "GHSA-jfh8-c2jp-5v3q",
                 ],
             },
-            title="Remote code injection in Log4j",
+            title=(
+                "Remote code injection in Log4j"
+            ),
             description=(
                 "GitHub Advisory description "
                 "for Log4Shell."
@@ -439,24 +501,30 @@ def build_fake_sources() -> List[FakeThreatSource]:
                 WeaknessReference(
                     source="GITHUB_ADVISORY",
                     cwe_id="CWE-502",
-                    resolution_status="resolved",
-                    resolution_method="explicit_id",
-                ),
+                    resolution_status=(
+                        "resolved"
+                    ),
+                    resolution_method=(
+                        "explicit_id"
+                    ),
+                )
             ],
             references=[
                 (
                     "https://github.example/"
                     "GHSA-jfh8-c2jp-5v3q"
-                ),
+                )
             ],
             source_urls={
                 "github_advisory": (
                     "https://github.example/"
                     "GHSA-jfh8-c2jp-5v3q"
-                ),
+                )
             },
             raw={
-                "ghsa_id": "GHSA-jfh8-c2jp-5v3q",
+                "ghsa_id": (
+                    "GHSA-jfh8-c2jp-5v3q"
+                ),
             },
         ),
         Threat(
@@ -464,99 +532,112 @@ def build_fake_sources() -> List[FakeThreatSource]:
             external_ids={
                 "GHSA": [
                     "GHSA-xxxx-yyyy-zzzz",
-                ]
+                ],
             },
             title="GHSA-only advisory",
             description=(
-                "GitHub advisory without CVE identifier."
+                "GitHub advisory without "
+                "CVE identifier."
             ),
             advisory_type="reviewed",
             raw={
-                "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+                "ghsa_id": (
+                    "GHSA-xxxx-yyyy-zzzz"
+                ),
             },
         ),
     ]
-    
+
     urlhaus_threats = [
-    Threat(
-        id="URLHAUS-3886385",
-        external_ids={
-            "URLHAUS": [
-                "3886385",
-            ],
-        },
-        title=(
-            "ClearFake malware distribution "
-            "from malware.example.test"
-        ),
-        description=(
-            "URLhaus reported an active malware "
-            "distribution URL."
-        ),
-        advisory_type="malware_download",
-        threat_type="malware_distribution",
-        source="URLHAUS",
-        indicators=[
-            Indicator(
-                type="url",
-                value=(
-                    "http://malware.example.test/"
-                    "payload"
+        Threat(
+            id="URLHAUS-3886385",
+            external_ids={
+                "URLHAUS": [
+                    "3886385",
+                ],
+            },
+            title=(
+                "ClearFake malware distribution "
+                "from malware.example.test"
+            ),
+            description=(
+                "URLhaus reported an active "
+                "malware distribution URL."
+            ),
+            advisory_type=(
+                "malware_download"
+            ),
+            threat_type=(
+                "malware_distribution"
+            ),
+            source="URLHAUS",
+            indicators=[
+                Indicator(
+                    type="url",
+                    value=(
+                        "http://malware.example.test/"
+                        "payload"
+                    ),
+                    metadata={
+                        "source": "URLHAUS",
+                        "urlhaus_id": "3886385",
+                        "status": "online",
+                    },
                 ),
-                metadata={
-                    "source": "URLHAUS",
-                    "urlhaus_id": "3886385",
-                    "status": "online",
-                },
-            ),
-            Indicator(
-                type="domain",
-                value="malware.example.test",
-                metadata={
-                    "source": "URLHAUS",
-                    "urlhaus_id": "3886385",
-                },
-            ),
-            Indicator(
-                type="sha256",
-                value="a" * 64,
-                metadata={
-                    "source": "URLHAUS",
-                    "urlhaus_id": "3886385",
-                    "malware_signature": "ClearFake",
-                },
-            ),
-        ],
-        labels=[
-            "ClearFake",
-            "windows",
-        ],
-        references=[
-            (
-                "https://urlhaus.abuse.ch/"
-                "url/3886385/"
-            ),
-        ],
-        source_urls={
-            "URLHAUS": (
-                "https://urlhaus.abuse.ch/"
-                "url/3886385/"
-            ),
-        },
-        source_dates={
-            "date_added": (
-                "2026-07-14 11:54:28 UTC"
-            ),
-            "first_seen": (
-                "2026-07-14 11:54:28 UTC"
-            ),
-        },
-        raw={
-            "id": 3886385,
-            "threat": "malware_download",
-        },
-    ),
-]
+                Indicator(
+                    type="domain",
+                    value=(
+                        "malware.example.test"
+                    ),
+                    metadata={
+                        "source": "URLHAUS",
+                        "urlhaus_id": "3886385",
+                    },
+                ),
+                Indicator(
+                    type="sha256",
+                    value="a" * 64,
+                    metadata={
+                        "source": "URLHAUS",
+                        "urlhaus_id": "3886385",
+                        "malware_signature": (
+                            "ClearFake"
+                        ),
+                    },
+                ),
+            ],
+            labels=[
+                "ClearFake",
+                "windows",
+            ],
+            references=[
+                (
+                    "https://urlhaus.abuse.ch/"
+                    "url/3886385/"
+                )
+            ],
+            source_urls={
+                "URLHAUS": (
+                    "https://urlhaus.abuse.ch/"
+                    "url/3886385/"
+                )
+            },
+            source_dates={
+                "date_added": (
+                    "2026-07-14 11:54:28 UTC"
+                ),
+                "first_seen": (
+                    "2026-07-14 11:54:28 UTC"
+                ),
+            },
+            raw={
+                "id": 3886385,
+                "threat": (
+                    "malware_download"
+                ),
+            },
+        )
+    ]
 
     return [
         FakeThreatSource(
@@ -570,14 +651,18 @@ def build_fake_sources() -> List[FakeThreatSource]:
             source_name="CISA",
             threats=cisa_threats,
             metadata={
-                "catalog_version": "2026.07.11",
+                "catalog_version": (
+                    "2026.07.11"
+                ),
             },
         ),
         FakeThreatSource(
             source_name="MITRE",
             threats=mitre_threats,
             metadata={
-                "current_commit": "fake-commit",
+                "current_commit": (
+                    "fake-commit"
+                ),
             },
         ),
         FakeThreatSource(
@@ -601,167 +686,33 @@ def build_fake_sources() -> List[FakeThreatSource]:
 
 
 # ============================================================
-# Display helpers
+# Complete pipeline synergy
 # ============================================================
 
 
-def display_pipeline_result(
-    result: ThreatIntelligencePipelineResult,
+def test_complete_pipeline_synergy_without_fusion(
 ) -> None:
-    """
-    Display a detailed representation of the pipeline output.
-    """
-
-    print(
-        "\n"
-        "=================================================="
-    )
-    print(
-        "       THREAT INTELLIGENCE PIPELINE RESULT"
-    )
-    print(
-        "=================================================="
-    )
-
-    print("\n----- Pipeline metadata -----")
-
-    for key, value in result.metadata.items():
-        if key == "source_summaries":
-            continue
-
-        print(f"{key:<35}: {value}")
-
-    print("\n----- Source executions -----")
-
-    for execution in result.source_executions:
-        print(
-            f"{execution.source_name:<20} "
-            f"success={execution.success} "
-            f"threats={execution.threats_count} "
-            f"duration={execution.duration_seconds:.6f}s"
-        )
-
-        if not execution.success:
-            print(
-                f"  Error: {execution.error_type} - "
-                f"{execution.error_message}"
-            )
-
-    print("\n----- Correlation groups -----")
-
-    for group in result.correlation_result.all_groups():
-        print(
-            f"\nThreat ID    : {group.id}"
-        )
-        print(
-            f"Sources      : {group.sources}"
-        )
-        print(
-            f"Source count : {group.source_count}"
-        )
-        print(
-            f"Records      : {len(group.threats)}"
-        )
-
-        for source_name, threats in (
-            group.threats_by_source.items()
-        ):
-            print(
-                f"\n  [{source_name}] "
-                f"{len(threats)} record(s)"
-            )
-
-            for threat in threats:
-                print(
-                    f"    Title       : "
-                    f"{threat.title or 'N/A'}"
-                )
-                print(
-                    f"    Description : "
-                    f"{threat.description or 'N/A'}"
-                )
-                print(
-                    f"    Severity    : "
-                    f"{threat.severity or 'N/A'}"
-                )
-                print(
-                    f"    CVSS        : "
-                    f"{threat.cvss_score if threat.cvss_score is not None else 'N/A'}"
-                )
-                print(
-                    f"    EPSS        : "
-                    f"{threat.epss_score if threat.epss_score is not None else 'N/A'}"
-                )
-                print(
-                    f"    Products    : "
-                    f"{len(threat.affected_products)}"
-                )
-                print(
-                    f"    Weakness IDs: "
-                    f"{threat.weakness_ids}"
-                )
-                print(
-                    f"    References  : "
-                    f"{len(threat.references)}"
-                )
-
-    print("\n----- EPSS metadata -----")
-
-    if result.epss_enrichment_result is None:
-        print("EPSS enrichment was not executed.")
-    else:
-        for key, value in (
-            result
-            .epss_enrichment_result
-            .metadata
-            .items()
-        ):
-            print(f"{key:<25}: {value}")
-
-    print("\n----- Pipeline errors -----")
-
-    if result.errors:
-        for error in result.errors:
-            print(error)
-    else:
-        print("No errors.")
-
-
-# ============================================================
-# Main synergy test
-# ============================================================
-
-
-def test_complete_pipeline_synergy_without_fusion() -> None:
-    """
-    Validate the complete deterministic pipeline:
-
-    - four sources collect source-specific Threat objects;
-    - one CVE is common to all sources;
-    - correlation groups the four objects;
-    - source-specific information is preserved;
-    - no field-level fusion is performed;
-    - EPSS enriches all four source-specific records.
-    """
-
     sources = build_fake_sources()
-    fake_epss = FakeEPSSEnrichmentService()
 
-    pipeline = ThreatIntelligencePipelineService(
-        sources=sources,
-        correlation_service=(
-            ThreatCorrelationService()
-        ),
-        epss_enrichment_service=fake_epss,
-        fail_fast=False,
+    fake_epss = (
+        FakeEPSSEnrichmentService()
+    )
+
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=sources,
+            correlation_service=(
+                ThreatCorrelationService()
+            ),
+            epss_enrichment_service=(
+                fake_epss
+            ),
+            fail_fast=False,
+        )
     )
 
     result = pipeline.run(
         epss_date="2026-07-11"
-    )
-
-    display_pipeline_result(
-        result
     )
 
     assert isinstance(
@@ -773,7 +724,9 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # Source execution
     # --------------------------------------------------------
 
-    assert len(result.source_executions) == 5
+    assert len(
+        result.source_executions
+    ) == 5
 
     assert result.successful_sources() == [
         "NVD",
@@ -789,27 +742,64 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
         assert source.collect_calls == 1
 
     # --------------------------------------------------------
-    # Global statistics
+    # Global metadata
     # --------------------------------------------------------
 
-    assert result.metadata["status"] == "SUCCESS"
-    assert result.metadata["configured_sources"] == 5
-    assert result.metadata["successful_sources"] == 5
-    assert result.metadata["failed_sources"] == 0
-
-    # Two records from each of four sources.
-    assert result.metadata["total_source_records"] == 9
-
-    # Common CVE + three source-only CVEs + one GHSA-only ID.
-    assert result.metadata["unique_threats"] == 6
+    assert (
+        result.metadata["status"]
+        == "SUCCESS"
+    )
 
     assert (
-        result.metadata["multi_source_threats"]
+        result.metadata[
+            "configured_sources"
+        ]
+        == 5
+    )
+
+    assert (
+        result.metadata[
+            "successful_sources"
+        ]
+        == 5
+    )
+
+    assert (
+        result.metadata[
+            "failed_sources"
+        ]
+        == 0
+    )
+
+    # Four sources return two records.
+    # URLhaus returns one record.
+    assert (
+        result.metadata[
+            "total_source_records"
+        ]
+        == 9
+    )
+
+    # Shared CVE, three source-only CVEs,
+    # one GHSA and one URLhaus identifier.
+    assert (
+        result.metadata[
+            "unique_threats"
+        ]
+        == 6
+    )
+
+    assert (
+        result.metadata[
+            "multi_source_threats"
+        ]
         == 1
     )
 
     assert (
-        result.metadata["fusion_performed"]
+        result.metadata[
+            "fusion_performed"
+        ]
         is False
     )
 
@@ -821,7 +811,7 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     )
 
     # --------------------------------------------------------
-    # Common CVE correlation group
+    # Shared CVE correlation group
     # --------------------------------------------------------
 
     group = result.get_group(
@@ -833,95 +823,124 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     assert group.is_multi_source is True
     assert group.source_count == 4
 
-    assert set(group.sources) == {
+    assert set(
+        group.sources
+    ) == {
         "NVD",
         "CISA",
         "MITRE",
         "GITHUB_ADVISORY",
     }
 
-    assert len(group.threats) == 4
+    assert len(
+        group.threats
+    ) == 4
 
-    assert set(group.threats_by_source) == {
+    assert set(
+        group.threats_by_source
+    ) == {
         "NVD",
         "CISA",
         "MITRE",
         "GITHUB_ADVISORY",
     }
-    
-    
 
     # --------------------------------------------------------
-    # Source-specific information is preserved
+    # Source-specific data preservation
     # --------------------------------------------------------
 
     nvd_threat = (
-        group.threats_by_source["NVD"][0]
+        group.threats_by_source[
+            "NVD"
+        ][0]
     )
 
     cisa_threat = (
-        group.threats_by_source["CISA"][0]
+        group.threats_by_source[
+            "CISA"
+        ][0]
     )
 
     mitre_threat = (
-        group.threats_by_source["MITRE"][0]
+        group.threats_by_source[
+            "MITRE"
+        ][0]
     )
 
     github_threat = (
-        group
-        .threats_by_source["GITHUB_ADVISORY"][0]
+        group.threats_by_source[
+            "GITHUB_ADVISORY"
+        ][0]
     )
 
     assert nvd_threat.description == (
         "NVD description for Log4Shell."
     )
+
     assert nvd_threat.cvss_score == 10.0
     assert nvd_threat.severity == "CRITICAL"
 
     assert cisa_threat.description == (
-        "CISA KEV description for Log4Shell."
+        "CISA KEV description for "
+        "Log4Shell."
     )
+
     assert (
         cisa_threat.known_exploited_date
         == "2021-12-10"
     )
+
     assert (
         cisa_threat.ransomware_campaign_use
         == "Known"
     )
+
     assert cisa_threat.cvss_score is None
 
     assert mitre_threat.description == (
-        "MITRE CNA description for Log4Shell."
+        "MITRE CNA description for "
+        "Log4Shell."
     )
-    assert (
-        mitre_threat.title
-        == "Apache Log4j remote code execution"
+
+    assert mitre_threat.title == (
+        "Apache Log4j remote code "
+        "execution"
     )
 
     assert github_threat.description == (
         "GitHub Advisory description "
         "for Log4Shell."
     )
+
     assert (
-        github_threat.external_ids["GHSA"]
-        == ["GHSA-jfh8-c2jp-5v3q"]
-    )
-    assert (
-        github_threat.affected_products[0][
-            "ecosystem"
+        github_threat.external_ids[
+            "GHSA"
         ]
+        == [
+            "GHSA-jfh8-c2jp-5v3q",
+        ]
+    )
+
+    assert (
+        github_threat.affected_products[
+            0
+        ]["ecosystem"]
         == "MAVEN"
     )
 
-    # The four descriptions are preserved separately.
     assert {
         threat.description
         for threat in group.threats
     } == {
         "NVD description for Log4Shell.",
-        "CISA KEV description for Log4Shell.",
-        "MITRE CNA description for Log4Shell.",
+        (
+            "CISA KEV description for "
+            "Log4Shell."
+        ),
+        (
+            "MITRE CNA description for "
+            "Log4Shell."
+        ),
         (
             "GitHub Advisory description "
             "for Log4Shell."
@@ -932,7 +951,11 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     # EPSS enrichment
     # --------------------------------------------------------
 
-    assert fake_epss.enrichment_calls == 1
+    assert (
+        fake_epss.enrichment_calls
+        == 1
+    )
+
     assert fake_epss.received_dates == [
         "2026-07-11",
     ]
@@ -940,54 +963,70 @@ def test_complete_pipeline_synergy_without_fusion() -> None:
     for threat in group.threats:
         assert threat.epss_score == 0.99999
         assert threat.epss_percentile == 1.0
-        assert threat.epss_date == "2026-07-11"
-
-    assert result.epss_enrichment_result is not None
+        assert (
+            threat.epss_date
+            == "2026-07-11"
+        )
 
     assert (
-        result.epss_enrichment_result.metadata[
-            "enriched_threats"
-        ]
+        result.epss_enrichment_result
+        is not None
+    )
+
+    assert (
+        result
+        .epss_enrichment_result
+        .metadata["enriched_threats"]
         == 4
     )
 
     assert (
-        result.epss_enrichment_result.metadata[
-            "non_cve_threats"
-        ]
+        result
+        .epss_enrichment_result
+        .metadata["non_cve_threats"]
         == 2
     )
 
-    assert result.metadata["epss_status"] == "SUCCESS"
+    assert (
+        result.metadata["epss_status"]
+        == "SUCCESS"
+    )
 
     # --------------------------------------------------------
-    # Pipeline result helper methods
+    # Result helpers
     # --------------------------------------------------------
 
-    assert len(result.all_threats()) == 9
-    assert len(result.unique_ids()) == 6
-    assert len(result.multi_source_groups()) == 1
+    assert len(
+        result.all_threats()
+    ) == 9
+
+    assert len(
+        result.unique_ids()
+    ) == 6
+
+    assert len(
+        result.multi_source_groups()
+    ) == 1
+
     assert result.errors == []
 
 
 # ============================================================
-# Object identity test
+# Object identity
 # ============================================================
 
 
-def test_epss_updates_original_source_objects() -> None:
-    """
-    Verify that EPSS enriches the same Threat instances that are
-    preserved in CollectionResult and correlation groups.
-    """
-
+def test_epss_updates_original_source_objects(
+) -> None:
     sources = build_fake_sources()
 
-    pipeline = ThreatIntelligencePipelineService(
-        sources=sources,
-        epss_enrichment_service=(
-            FakeEPSSEnrichmentService()
-        ),
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=sources,
+            epss_enrichment_service=(
+                FakeEPSSEnrichmentService()
+            ),
+        )
     )
 
     result = pipeline.run()
@@ -999,11 +1038,15 @@ def test_epss_updates_original_source_objects() -> None:
     assert group is not None
 
     correlated_nvd_threat = (
-        group.threats_by_source["NVD"][0]
+        group.threats_by_source[
+            "NVD"
+        ][0]
     )
 
     original_nvd_threat = (
-        result.collection_results[0].threats[0]
+        result.collection_results[
+            0
+        ].threats[0]
     )
 
     assert (
@@ -1018,24 +1061,35 @@ def test_epss_updates_original_source_objects() -> None:
 
 
 # ============================================================
-# EPSS skip test
+# EPSS disabled
 # ============================================================
 
 
-def test_pipeline_can_skip_epss_enrichment() -> None:
+def test_pipeline_can_skip_epss_enrichment(
+) -> None:
     sources = build_fake_sources()
-    fake_epss = FakeEPSSEnrichmentService()
 
-    pipeline = ThreatIntelligencePipelineService(
-        sources=sources,
-        epss_enrichment_service=fake_epss,
+    fake_epss = (
+        FakeEPSSEnrichmentService()
+    )
+
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=sources,
+            epss_enrichment_service=(
+                fake_epss
+            ),
+        )
     )
 
     result = pipeline.run(
         enrich_with_epss=False
     )
 
-    assert fake_epss.enrichment_calls == 0
+    assert (
+        fake_epss.enrichment_calls
+        == 0
+    )
 
     assert (
         result.epss_enrichment_result
@@ -1060,133 +1114,202 @@ def test_pipeline_can_skip_epss_enrichment() -> None:
 
 
 # ============================================================
-# Partial source failure test
+# Partial source failure
 # ============================================================
 
 
-def test_pipeline_continues_when_one_source_fails() -> None:
-    sources: List[ThreatSource] = [
+def test_pipeline_continues_when_one_source_fails(
+) -> None:
+    sources: list[ThreatSource] = [
         *build_fake_sources(),
         FailingThreatSource(
             "BROKEN_SOURCE"
         ),
     ]
 
-    pipeline = ThreatIntelligencePipelineService(
-        sources=sources,
-        epss_enrichment_service=(
-            FakeEPSSEnrichmentService()
-        ),
-        fail_fast=False,
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=sources,
+            epss_enrichment_service=(
+                FakeEPSSEnrichmentService()
+            ),
+            fail_fast=False,
+        )
     )
 
     result = pipeline.run()
 
-    assert result.metadata["status"] == (
-        "PARTIAL_SUCCESS"
+    assert (
+        result.metadata["status"]
+        == "PARTIAL_SUCCESS"
     )
 
-    assert result.metadata["configured_sources"] == 6
-    assert result.metadata["successful_sources"] == 5
-    assert result.metadata["failed_sources"] == 1
+    assert (
+        result.metadata[
+            "configured_sources"
+        ]
+        == 6
+    )
+
+    assert (
+        result.metadata[
+            "successful_sources"
+        ]
+        == 5
+    )
+
+    assert (
+        result.metadata[
+            "failed_sources"
+        ]
+        == 1
+    )
 
     assert result.failed_sources() == [
         "BROKEN_SOURCE",
     ]
 
-    assert len(result.errors) == 1
+    assert len(
+        result.errors
+    ) == 1
 
     error = result.errors[0]
 
-    assert error["stage"] == "COLLECTION"
-    assert error["source"] == "BROKEN_SOURCE"
-    assert error["error_type"] == (
-        "ConnectionError"
+    assert (
+        error["stage"]
+        == "COLLECTION"
     )
 
-    # Successful source records remain available.
-    assert result.get_group(COMMON_CVE) is not None
+    assert (
+        error["source"]
+        == "BROKEN_SOURCE"
+    )
+
+    assert (
+        error["error_type"]
+        == "ConnectionError"
+    )
+
+    assert (
+        result.get_group(
+            COMMON_CVE
+        )
+        is not None
+    )
 
 
 # ============================================================
-# Fail-fast test
+# Source fail-fast
 # ============================================================
 
 
-def test_pipeline_fail_fast_raises_source_error() -> None:
-    pipeline = ThreatIntelligencePipelineService(
-        sources=[
-            FailingThreatSource(),
-        ],
-        epss_enrichment_service=(
-            FakeEPSSEnrichmentService()
-        ),
-        fail_fast=True,
+def test_pipeline_fail_fast_raises_source_error(
+) -> None:
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=[
+                FailingThreatSource(),
+            ],
+            epss_enrichment_service=(
+                FakeEPSSEnrichmentService()
+            ),
+            fail_fast=True,
+        )
     )
 
     with pytest.raises(
         ConnectionError,
-        match="Simulated source connection failure",
+        match=(
+            "Simulated source "
+            "connection failure"
+        ),
     ):
         pipeline.run()
 
 
 # ============================================================
-# Invalid source result test
+# Invalid source result
 # ============================================================
 
 
-def test_invalid_source_result_is_recorded() -> None:
-    pipeline = ThreatIntelligencePipelineService(
-        sources=[
-            InvalidResultThreatSource(),
-        ],
-        epss_enrichment_service=(
-            FakeEPSSEnrichmentService()
-        ),
-        fail_fast=False,
+def test_invalid_source_result_is_recorded(
+) -> None:
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=[
+                InvalidResultThreatSource(),
+            ],
+            epss_enrichment_service=(
+                FakeEPSSEnrichmentService()
+            ),
+            fail_fast=False,
+        )
     )
 
     result = pipeline.run()
 
-    assert result.metadata["status"] == "FAILED"
-    assert result.metadata["successful_sources"] == 0
-    assert result.metadata["failed_sources"] == 1
+    assert (
+        result.metadata["status"]
+        == "FAILED"
+    )
+
+    assert (
+        result.metadata[
+            "successful_sources"
+        ]
+        == 0
+    )
+
+    assert (
+        result.metadata[
+            "failed_sources"
+        ]
+        == 1
+    )
 
     assert result.failed_sources() == [
         "INVALID_SOURCE",
     ]
 
-    assert len(result.errors) == 1
+    assert len(
+        result.errors
+    ) == 1
 
     assert (
-        result.errors[0]["error_type"]
+        result.errors[0][
+            "error_type"
+        ]
         == "TypeError"
     )
 
 
 # ============================================================
-# EPSS failure test
+# EPSS failure
 # ============================================================
 
 
-def test_pipeline_records_epss_failure() -> None:
-    pipeline = ThreatIntelligencePipelineService(
-        sources=build_fake_sources(),
-        epss_enrichment_service=(
-            FailingEPSSEnrichmentService()
-        ),
-        fail_fast=False,
+def test_pipeline_records_epss_failure(
+) -> None:
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=build_fake_sources(),
+            epss_enrichment_service=(
+                FailingEPSSEnrichmentService()
+            ),
+            fail_fast=False,
+        )
     )
 
     result = pipeline.run()
 
-    assert result.metadata["status"] == (
-        "PARTIAL_SUCCESS"
+    assert (
+        result.metadata["status"]
+        == "PARTIAL_SUCCESS"
     )
 
-    assert result.metadata["epss_status"] == (
-        "FAILED"
+    assert (
+        result.metadata["epss_status"]
+        == "FAILED"
     )
 
     assert (
@@ -1194,25 +1317,41 @@ def test_pipeline_records_epss_failure() -> None:
         is None
     )
 
-    assert len(result.errors) == 1
+    assert len(
+        result.errors
+    ) == 1
 
-    assert result.errors[0]["stage"] == "EPSS"
     assert (
-        result.errors[0]["error_type"]
+        result.errors[0]["stage"]
+        == "EPSS"
+    )
+
+    assert (
+        result.errors[0][
+            "error_type"
+        ]
         == "TimeoutError"
     )
 
-    # Collection and correlation still succeeded.
-    assert result.get_group(COMMON_CVE) is not None
+    # Collection and correlation must remain available.
+    assert (
+        result.get_group(
+            COMMON_CVE
+        )
+        is not None
+    )
 
 
-def test_pipeline_fail_fast_raises_epss_error() -> None:
-    pipeline = ThreatIntelligencePipelineService(
-        sources=build_fake_sources(),
-        epss_enrichment_service=(
-            FailingEPSSEnrichmentService()
-        ),
-        fail_fast=True,
+def test_pipeline_fail_fast_raises_epss_error(
+) -> None:
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=build_fake_sources(),
+            epss_enrichment_service=(
+                FailingEPSSEnrichmentService()
+            ),
+            fail_fast=True,
+        )
     )
 
     with pytest.raises(
@@ -1220,3 +1359,250 @@ def test_pipeline_fail_fast_raises_epss_error() -> None:
         match="Simulated EPSS timeout",
     ):
         pipeline.run()
+
+
+# ============================================================
+# Explicit EPSS composition
+# ============================================================
+
+
+def test_run_requires_explicit_epss_service_before_collection(
+) -> None:
+    source = FakeThreatSource(
+        source_name="NVD",
+        threats=[
+            Threat(
+                id=COMMON_CVE,
+            ),
+        ],
+    )
+
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=[
+                source,
+            ],
+        )
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "epss_enrichment_service is required "
+            "when EPSS enrichment is enabled"
+        ),
+    ):
+        pipeline.run()
+
+    # The composition error must happen before source access.
+    assert source.collect_calls == 0
+
+
+def test_run_allows_missing_epss_service_when_disabled(
+) -> None:
+    source = FakeThreatSource(
+        source_name="NVD",
+        threats=[
+            Threat(
+                id=COMMON_CVE,
+            ),
+        ],
+    )
+
+    pipeline = (
+        ThreatIntelligencePipelineService(
+            sources=[
+                source,
+            ],
+        )
+    )
+
+    result = pipeline.run(
+        enrich_with_epss=False,
+    )
+
+    assert source.collect_calls == 1
+
+    assert (
+        result.epss_enrichment_result
+        is None
+    )
+
+    assert (
+        result.metadata["epss_enabled"]
+        is False
+    )
+
+    assert (
+        result.metadata["epss_status"]
+        == "SKIPPED"
+    )
+
+    assert result.errors == []
+    
+class SensitiveFailingThreatSource(
+    ThreatSource
+):
+    """
+    Source simulant une erreur contenant des données sensibles.
+    """
+
+    def __init__(
+        self,
+        message: str,
+    ) -> None:
+        self._message = message
+
+    def name(self) -> str:
+        return "SENSITIVE_SOURCE"
+
+    def collect(self) -> CollectionResult:
+        raise RuntimeError(
+            self._message
+        )
+
+    def fetch_raw(self) -> Any:
+        raise RuntimeError(
+            self._message
+        )
+
+    def parse(
+        self,
+        raw_data: Any,
+    ) -> list[Threat]:
+        return []
+
+
+class SensitiveFailingEPSSEnrichmentService(
+    EPSSEnrichmentService
+):
+    """
+    Service EPSS simulant une erreur sensible.
+    """
+
+    def __init__(
+        self,
+        message: str,
+    ) -> None:
+        self._message = message
+
+    def enrich_correlation_result(
+        self,
+        correlation_result: ThreatCorrelationResult,
+        date: str | None = None,
+    ) -> EPSSEnrichmentResult:
+        raise RuntimeError(
+            self._message
+        )
+        
+def test_pipeline_redacts_sensitive_source_failure(
+) -> None:
+    secret = "super-secret-password"
+    cve_id = "CVE-2021-44228"
+
+    source = SensitiveFailingThreatSource(
+        "DATABASE_URL="
+        "postgresql://user:"
+        f"{secret}@localhost/database "
+        f"while processing {cve_id}"
+    )
+
+    pipeline = ThreatIntelligencePipelineService(
+        sources=[
+            source,
+        ],
+        epss_enrichment_service=(
+            FakeEPSSEnrichmentService()
+        ),
+        fail_fast=False,
+    )
+
+    result = pipeline.run()
+
+    assert len(
+        result.errors
+    ) == 1
+
+    error_message = result.errors[
+        0
+    ]["error_message"]
+
+    assert secret not in error_message
+    assert cve_id not in error_message
+
+    assert "[REDACTED]" in error_message
+    assert "[CVE_REDACTED]" in error_message
+
+    source_execution = (
+        result.source_executions[0]
+    )
+
+    assert (
+        source_execution.error_message
+        == error_message
+    )
+
+    source_summary = (
+        result.metadata[
+            "source_summaries"
+        ][0]
+    )
+
+    assert (
+        source_summary["error_message"]
+        == error_message
+    )
+
+
+def test_pipeline_redacts_sensitive_epss_failure(
+) -> None:
+    secret = "super-secret-password"
+    cve_id = "CVE-2021-44228"
+
+    epss_service = (
+        SensitiveFailingEPSSEnrichmentService(
+            "DATABASE_URL="
+            "postgresql://user:"
+            f"{secret}@localhost/database "
+            f"while enriching {cve_id}"
+        )
+    )
+
+    pipeline = ThreatIntelligencePipelineService(
+        sources=[
+            FakeThreatSource(
+                source_name="NVD",
+                threats=[
+                    Threat(
+                        id=COMMON_CVE,
+                    ),
+                ],
+            ),
+        ],
+        epss_enrichment_service=(
+            epss_service
+        ),
+        fail_fast=False,
+    )
+
+    result = pipeline.run()
+
+    assert len(
+        result.errors
+    ) == 1
+
+    error_message = result.errors[
+        0
+    ]["error_message"]
+
+    assert secret not in error_message
+    assert cve_id not in error_message
+
+    assert "[REDACTED]" in error_message
+    assert "[CVE_REDACTED]" in error_message
+
+    assert (
+        result.metadata["epss_status"]
+        == "FAILED"
+    )
+    

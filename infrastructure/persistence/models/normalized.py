@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import (
     ARRAY,
     UUID,
     JSONB,
+    DOUBLE_PRECISION,
 )
 from sqlalchemy.orm import (
     Mapped,
@@ -576,6 +577,71 @@ class CWEWeaknessModel(Base):
     synchronized_at: Mapped[
         datetime
     ] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    
+class EPSSScoreModel(Base):
+    """
+    Dernier score EPSS connu pour un identifiant CVE.
+
+    Cette table constitue la référence EPSS centrale de la
+    plateforme. Elle est indépendante des sources CISA et
+    GitHub Advisory.
+
+    Une seule ligne est conservée par CVE.
+    """
+
+    __tablename__ = "epss_score"
+
+    __table_args__ = (
+        CheckConstraint(
+            "cve_id ~ "
+            "'^CVE-[0-9]{4}-[0-9]{4,}$'",
+            name="cve_id_valid",
+        ),
+        CheckConstraint(
+            "epss_score >= 0 "
+            "AND epss_score <= 1",
+            name="epss_score_range",
+        ),
+        CheckConstraint(
+            "percentile >= 0 "
+            "AND percentile <= 1",
+            name="percentile_range",
+        ),
+        {
+            "schema": "normalized",
+        },
+    )
+
+    cve_id: Mapped[str] = mapped_column(
+        String(32),
+        primary_key=True,
+    )
+
+    epss_score: Mapped[float] = mapped_column(
+        DOUBLE_PRECISION,
+        nullable=False,
+    )
+
+    percentile: Mapped[float] = mapped_column(
+        DOUBLE_PRECISION,
+        nullable=False,
+    )
+
+    score_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+    )
+
+    api_version: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    synchronized_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),

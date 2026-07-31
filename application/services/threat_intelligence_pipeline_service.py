@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Sequence
 
 from application.ports.inbound.threat_source import (
     ThreatSource,
+)
+from application.security.operational_error_sanitizer import (
+    sanitize_exception_message,
 )
 from application.services.epss_enrichment_service import (
     EPSSEnrichmentResult,
@@ -29,29 +32,30 @@ from domain.threat import Threat
 @dataclass
 class SourceExecutionResult:
     """
-    Describes the execution of one threat intelligence source.
+    Résultat de l'exécution d'une source de renseignement.
 
-    A failed source does not necessarily stop the complete pipeline.
-    The behavior depends on the fail_fast pipeline option.
+    Une source en échec n'arrête pas nécessairement le pipeline.
+    Le comportement dépend de l'option fail_fast.
     """
 
     source_name: str
 
-    collection_result: Optional[CollectionResult] = None
+    collection_result: CollectionResult | None = None
 
     success: bool = False
 
-    error_type: Optional[str] = None
-    error_message: Optional[str] = None
+    error_type: str | None = None
+    error_message: str | None = None
 
     duration_seconds: float = 0.0
 
     @property
-    def threats_count(self) -> int:
+    def threats_count(
+        self,
+    ) -> int:
         """
-        Return the number of Threat objects collected by this source.
+        Retourne le nombre de Threat collectés par la source.
         """
-
         if self.collection_result is None:
             return 0
 
@@ -63,24 +67,21 @@ class SourceExecutionResult:
 @dataclass
 class ThreatIntelligencePipelineResult:
     """
-    Complete result of a threat intelligence pipeline execution.
+    Résultat complet du pipeline de threat intelligence.
 
-    This result preserves:
-
-    - the individual execution status of every source;
-    - the original CollectionResult returned by every successful source;
-    - the correlation groups;
-    - the EPSS enrichment result;
-    - pipeline-level metadata and errors.
-
-    No field-level fusion is performed.
+    Les enregistrements propres à chaque source sont préservés.
+    Aucune fusion destructive des champs n'est effectuée.
     """
 
-    source_executions: List[SourceExecutionResult] = field(
+    source_executions: list[
+        SourceExecutionResult
+    ] = field(
         default_factory=list
     )
 
-    collection_results: List[CollectionResult] = field(
+    collection_results: list[
+        CollectionResult
+    ] = field(
         default_factory=list
     )
 
@@ -88,85 +89,89 @@ class ThreatIntelligencePipelineResult:
         default_factory=ThreatCorrelationResult
     )
 
-    epss_enrichment_result: Optional[
-        EPSSEnrichmentResult
-    ] = None
+    epss_enrichment_result: (
+        EPSSEnrichmentResult | None
+    ) = None
 
-    metadata: Dict[str, Any] = field(
+    metadata: dict[str, Any] = field(
         default_factory=dict
     )
 
-    errors: List[Dict[str, str]] = field(
+    errors: list[
+        dict[str, str]
+    ] = field(
         default_factory=list
     )
 
-    # --------------------------------------------------------
-    # Result helper methods
-    # --------------------------------------------------------
-
-    def all_threats(self) -> List[Threat]:
+    def all_threats(
+        self,
+    ) -> list[Threat]:
         """
-        Return every source-specific Threat object from all groups.
-
-        Several Threat objects may have the same CVE ID because
-        source-specific records are intentionally preserved.
+        Retourne tous les objets Threat préservés dans les groupes.
         """
+        threats: list[Threat] = []
 
-        threats: List[Threat] = []
-
-        for group in self.correlation_result.all_groups():
+        for group in (
+            self.correlation_result.all_groups()
+        ):
             threats.extend(
                 group.threats
             )
 
         return threats
 
-    def unique_ids(self) -> List[str]:
+    def unique_ids(
+        self,
+    ) -> list[str]:
         """
-        Return all unique correlated vulnerability identifiers.
+        Retourne les identifiants uniques corrélés.
         """
-
-        return self.correlation_result.unique_ids()
+        return (
+            self.correlation_result.unique_ids()
+        )
 
     def get_group(
         self,
         threat_id: str,
-    ) -> Optional[CorrelatedThreat]:
+    ) -> CorrelatedThreat | None:
         """
-        Return the correlation group associated with an identifier.
+        Retourne le groupe associé à un identifiant.
         """
-
-        return self.correlation_result.groups.get(
-            threat_id
+        return (
+            self.correlation_result.groups.get(
+                threat_id
+            )
         )
 
     def multi_source_groups(
         self,
-    ) -> List[CorrelatedThreat]:
+    ) -> list[CorrelatedThreat]:
         """
-        Return vulnerabilities reported by more than one source.
+        Retourne les groupes présents dans plusieurs sources.
         """
-
         return (
-            self.correlation_result.multi_source_groups()
+            self.correlation_result
+            .multi_source_groups()
         )
 
-    def successful_sources(self) -> List[str]:
+    def successful_sources(
+        self,
+    ) -> list[str]:
         """
-        Return the names of successfully executed sources.
+        Retourne les noms des sources exécutées avec succès.
         """
-
         return [
             execution.source_name
             for execution in self.source_executions
             if execution.success
         ]
 
-    def failed_sources(self) -> List[str]:
+    def failed_sources(
+        self,
+    ) -> list[str]:
         """
-        Return the names of failed sources.
+        Retourne les noms des sources en échec.
         """
-
         return [
             execution.source_name
             for execution in self.source_executions
@@ -181,92 +186,87 @@ class ThreatIntelligencePipelineResult:
 
 class ThreatIntelligencePipelineService:
     """
-    Application service orchestrating the complete threat
-    intelligence collection pipeline.
+    Orchestre la collecte, la corrélation et l'enrichissement.
 
-    Pipeline stages:
+    Étapes :
 
-    1. Execute all configured ThreatSource implementations.
-    2. Preserve each source's CollectionResult.
-    3. Correlate Threat objects by identifier.
-    4. Preserve all source-specific records without fusion.
-    5. Enrich all CVE-based Threat objects with EPSS.
-    6. Return a detailed pipeline result.
+    1. Exécuter les sources configurées.
+    2. Préserver leurs CollectionResult.
+    3. Corréler les Threat par identifiant.
+    4. Préserver les objets propres à chaque source.
+    5. Enrichir localement les CVE avec EPSS.
+    6. Retourner un résultat structuré.
 
-    This service does not know how individual sources communicate
-    with their providers. It only depends on the ThreatSource port.
+    Le service ne construit aucune dépendance infrastructurelle.
+    Le service EPSS doit être injecté explicitement.
     """
 
     def __init__(
         self,
         sources: Sequence[ThreatSource],
-        correlation_service: Optional[
-            ThreatCorrelationService
-        ] = None,
-        epss_enrichment_service: Optional[
-            EPSSEnrichmentService
-        ] = None,
+        correlation_service: (
+            ThreatCorrelationService | None
+        ) = None,
+        epss_enrichment_service: (
+            EPSSEnrichmentService | None
+        ) = None,
         fail_fast: bool = False,
     ) -> None:
         """
         Args:
             sources:
-                Threat intelligence sources participating in the
-                pipeline.
+                Sources participant au pipeline.
 
             correlation_service:
-                Optional correlation service dependency. A default
-                instance is created when omitted.
+                Service de corrélation optionnel. Une implémentation
+                par défaut est créée lorsqu'il est absent.
 
             epss_enrichment_service:
-                Optional EPSS enrichment dependency. A default
-                instance is created when omitted.
+                Service d'enrichissement EPSS optionnel.
+
+                Il doit être fourni lorsque l'enrichissement EPSS
+                est activé.
+
+                Le pipeline ne construit jamais lui-même une
+                dépendance PostgreSQL.
 
             fail_fast:
-                When True, the first source or EPSS error stops the
-                pipeline and is re-raised.
+                Lorsque True, la première erreur est propagée.
 
-                When False, failed sources are recorded and the
-                pipeline continues with the available sources.
+                Lorsque False, les erreurs sont assainies et
+                enregistrées dans le résultat.
         """
-
         self.sources = list(
             sources
         )
 
         self.correlation_service = (
             correlation_service
-            or ThreatCorrelationService()
+            if correlation_service is not None
+            else ThreatCorrelationService()
         )
 
         self.epss_enrichment_service = (
             epss_enrichment_service
-            or EPSSEnrichmentService()
         )
 
         self.fail_fast = fail_fast
 
     def run(
         self,
-        epss_date: Optional[str] = None,
+        epss_date: str | None = None,
         enrich_with_epss: bool = True,
     ) -> ThreatIntelligencePipelineResult:
         """
-        Execute the complete threat intelligence pipeline.
+        Exécute le pipeline complet.
 
-        Args:
-            epss_date:
-                Optional historical EPSS date in YYYY-MM-DD format.
-
-            enrich_with_epss:
-                When False, collection and correlation are executed
-                but the EPSS stage is skipped.
-
-        Returns:
-            ThreatIntelligencePipelineResult containing all
-            source-specific records, correlation groups, enrichment
-            metadata and pipeline execution information.
+        La dépendance EPSS est validée avant toute collecte externe.
         """
+        epss_service = (
+            self._require_epss_enrichment_service()
+            if enrich_with_epss
+            else None
+        )
 
         pipeline_started_at = datetime.now(
             UTC
@@ -283,7 +283,8 @@ class ThreatIntelligencePipelineService:
             for execution in source_executions
             if (
                 execution.success
-                and execution.collection_result is not None
+                and execution.collection_result
+                is not None
             )
         ]
 
@@ -294,7 +295,8 @@ class ThreatIntelligencePipelineService:
         correlation_started = perf_counter()
 
         correlation_result = (
-            self.correlation_service.correlate_results(
+            self.correlation_service
+            .correlate_results(
                 collection_results
             )
         )
@@ -304,21 +306,26 @@ class ThreatIntelligencePipelineService:
             - correlation_started
         )
 
-        epss_result: Optional[
-            EPSSEnrichmentResult
-        ] = None
+        epss_result: (
+            EPSSEnrichmentResult | None
+        ) = None
+
+        epss_error: (
+            dict[str, str] | None
+        ) = None
 
         epss_duration = 0.0
-        epss_error: Optional[Dict[str, str]] = None
 
-        if enrich_with_epss:
+        if epss_service is not None:
             epss_started = perf_counter()
 
             try:
                 epss_result = (
-                    self.epss_enrichment_service
+                    epss_service
                     .enrich_correlation_result(
-                        correlation_result=correlation_result,
+                        correlation_result=(
+                            correlation_result
+                        ),
                         date=epss_date,
                     )
                 )
@@ -326,8 +333,14 @@ class ThreatIntelligencePipelineService:
             except Exception as error:
                 epss_error = {
                     "stage": "EPSS",
-                    "error_type": type(error).__name__,
-                    "error_message": str(error),
+                    "error_type": (
+                        type(error).__name__
+                    ),
+                    "error_message": (
+                        sanitize_exception_message(
+                            error
+                        )
+                    ),
                 }
 
                 errors.append(
@@ -352,52 +365,97 @@ class ThreatIntelligencePipelineService:
             - pipeline_timer
         )
 
-        metadata = self._build_pipeline_metadata(
-            source_executions=source_executions,
-            collection_results=collection_results,
-            correlation_result=correlation_result,
-            epss_result=epss_result,
-            epss_error=epss_error,
-            enrich_with_epss=enrich_with_epss,
-            epss_date=epss_date,
-            started_at=pipeline_started_at,
-            finished_at=finished_at,
-            total_duration=total_duration,
-            correlation_duration=correlation_duration,
-            epss_duration=epss_duration,
+        metadata = (
+            self._build_pipeline_metadata(
+                source_executions=(
+                    source_executions
+                ),
+                collection_results=(
+                    collection_results
+                ),
+                correlation_result=(
+                    correlation_result
+                ),
+                epss_result=epss_result,
+                epss_error=epss_error,
+                enrich_with_epss=(
+                    enrich_with_epss
+                ),
+                epss_date=epss_date,
+                started_at=(
+                    pipeline_started_at
+                ),
+                finished_at=finished_at,
+                total_duration=(
+                    total_duration
+                ),
+                correlation_duration=(
+                    correlation_duration
+                ),
+                epss_duration=(
+                    epss_duration
+                ),
+            )
         )
 
         return ThreatIntelligencePipelineResult(
-            source_executions=source_executions,
-            collection_results=collection_results,
-            correlation_result=correlation_result,
-            epss_enrichment_result=epss_result,
+            source_executions=(
+                source_executions
+            ),
+            collection_results=(
+                collection_results
+            ),
+            correlation_result=(
+                correlation_result
+            ),
+            epss_enrichment_result=(
+                epss_result
+            ),
             metadata=metadata,
             errors=errors,
         )
 
+    def _require_epss_enrichment_service(
+        self,
+    ) -> EPSSEnrichmentService:
+        """
+        Retourne la dépendance EPSS injectée.
+
+        Cette validation est exécutée avant toute collecte afin
+        d'empêcher un pipeline partiellement exécuté.
+        """
+        if (
+            self.epss_enrichment_service
+            is None
+        ):
+            raise RuntimeError(
+                "epss_enrichment_service is required "
+                "when EPSS enrichment is enabled"
+            )
+
+        return (
+            self.epss_enrichment_service
+        )
+
     # ========================================================
-    # Collection stage
+    # Collection
     # ========================================================
 
     def _collect_sources(
         self,
-    ) -> List[SourceExecutionResult]:
+    ) -> list[SourceExecutionResult]:
         """
-        Execute each configured source independently.
+        Exécute chaque source indépendamment.
         """
-
-        executions: List[
+        executions: list[
             SourceExecutionResult
         ] = []
 
         for source in self.sources:
-            execution = self._collect_source(
-                source
-            )
-
             executions.append(
-                execution
+                self._collect_source(
+                    source
+                )
             )
 
         return executions
@@ -407,17 +465,20 @@ class ThreatIntelligencePipelineService:
         source: ThreatSource,
     ) -> SourceExecutionResult:
         """
-        Execute one ThreatSource and capture its result or error.
+        Exécute une source et capture son résultat ou son erreur.
         """
-
-        source_name = self._safe_source_name(
-            source
+        source_name = (
+            self._safe_source_name(
+                source
+            )
         )
 
         started = perf_counter()
 
         try:
-            collection_result = source.collect()
+            collection_result = (
+                source.collect()
+            )
 
             if not isinstance(
                 collection_result,
@@ -429,8 +490,6 @@ class ThreatIntelligencePipelineService:
                     "CollectionResult was expected."
                 )
 
-            # Guarantee that correlation can identify the source,
-            # even if a source forgot to add its name to metadata.
             collection_result.metadata.setdefault(
                 "source",
                 source_name,
@@ -438,7 +497,9 @@ class ThreatIntelligencePipelineService:
 
             return SourceExecutionResult(
                 source_name=source_name,
-                collection_result=collection_result,
+                collection_result=(
+                    collection_result
+                ),
                 success=True,
                 duration_seconds=(
                     perf_counter()
@@ -450,8 +511,14 @@ class ThreatIntelligencePipelineService:
             execution = SourceExecutionResult(
                 source_name=source_name,
                 success=False,
-                error_type=type(error).__name__,
-                error_message=str(error),
+                error_type=(
+                    type(error).__name__
+                ),
+                error_message=(
+                    sanitize_exception_message(
+                        error
+                    )
+                ),
                 duration_seconds=(
                     perf_counter()
                     - started
@@ -468,14 +535,16 @@ class ThreatIntelligencePipelineService:
         source: ThreatSource,
     ) -> str:
         """
-        Read a source name without allowing a broken name method
-        to prevent error reporting.
+        Lit le nom de la source sans laisser une méthode name()
+        défectueuse empêcher la création du rapport d'erreur.
         """
-
         try:
             name = source.name()
 
-            if isinstance(name, str) and name.strip():
+            if (
+                isinstance(name, str)
+                and name.strip()
+            ):
                 return name.strip()
 
         except Exception:
@@ -484,18 +553,21 @@ class ThreatIntelligencePipelineService:
         return type(source).__name__
 
     # ========================================================
-    # Metadata and error helpers
+    # Metadata and errors
     # ========================================================
 
     def _build_source_errors(
         self,
-        executions: List[SourceExecutionResult],
-    ) -> List[Dict[str, str]]:
+        executions: list[
+            SourceExecutionResult
+        ],
+    ) -> list[dict[str, str]]:
         """
-        Build normalized error entries for failed sources.
+        Construit les erreurs structurées des sources.
         """
-
-        errors: List[Dict[str, str]] = []
+        errors: list[
+            dict[str, str]
+        ] = []
 
         for execution in executions:
             if execution.success:
@@ -504,14 +576,19 @@ class ThreatIntelligencePipelineService:
             errors.append(
                 {
                     "stage": "COLLECTION",
-                    "source": execution.source_name,
+                    "source": (
+                        execution.source_name
+                    ),
                     "error_type": (
                         execution.error_type
                         or "UnknownError"
                     ),
                     "error_message": (
                         execution.error_message
-                        or "Unknown source collection error."
+                        or (
+                            "Unknown source "
+                            "collection error."
+                        )
                     ),
                 }
             )
@@ -521,31 +598,32 @@ class ThreatIntelligencePipelineService:
     def _build_pipeline_metadata(
         self,
         *,
-        source_executions: List[
+        source_executions: list[
             SourceExecutionResult
         ],
-        collection_results: List[
+        collection_results: list[
             CollectionResult
         ],
-        correlation_result: ThreatCorrelationResult,
-        epss_result: Optional[
-            EPSSEnrichmentResult
-        ],
-        epss_error: Optional[
-            Dict[str, str]
-        ],
+        correlation_result: (
+            ThreatCorrelationResult
+        ),
+        epss_result: (
+            EPSSEnrichmentResult | None
+        ),
+        epss_error: (
+            dict[str, str] | None
+        ),
         enrich_with_epss: bool,
-        epss_date: Optional[str],
+        epss_date: str | None,
         started_at: datetime,
         finished_at: datetime,
         total_duration: float,
         correlation_duration: float,
         epss_duration: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
-        Build global pipeline execution metadata.
+        Construit les métadonnées globales du pipeline.
         """
-
         successful_executions = [
             execution
             for execution in source_executions
@@ -560,15 +638,25 @@ class ThreatIntelligencePipelineService:
 
         source_summaries = [
             {
-                "source": execution.source_name,
-                "success": execution.success,
-                "threats": execution.threats_count,
+                "source": (
+                    execution.source_name
+                ),
+                "success": (
+                    execution.success
+                ),
+                "threats": (
+                    execution.threats_count
+                ),
                 "duration_seconds": round(
                     execution.duration_seconds,
                     6,
                 ),
-                "error_type": execution.error_type,
-                "error_message": execution.error_message,
+                "error_type": (
+                    execution.error_type
+                ),
+                "error_message": (
+                    execution.error_message
+                ),
             }
             for execution in source_executions
         ]
@@ -593,26 +681,33 @@ class ThreatIntelligencePipelineService:
         else:
             epss_status = "SUCCESS"
 
-        pipeline_status = self._determine_pipeline_status(
-            successful_sources=len(
-                successful_executions
-            ),
-            failed_sources=len(
-                failed_executions
-            ),
-            epss_status=epss_status,
+        pipeline_status = (
+            self._determine_pipeline_status(
+                successful_sources=len(
+                    successful_executions
+                ),
+                failed_sources=len(
+                    failed_executions
+                ),
+                epss_status=epss_status,
+            )
         )
 
         return {
-            "pipeline": "THREAT_INTELLIGENCE",
+            "pipeline": (
+                "THREAT_INTELLIGENCE"
+            ),
             "status": pipeline_status,
-            "started_at": started_at.isoformat(),
-            "finished_at": finished_at.isoformat(),
+            "started_at": (
+                started_at.isoformat()
+            ),
+            "finished_at": (
+                finished_at.isoformat()
+            ),
             "duration_seconds": round(
                 total_duration,
                 6,
             ),
-
             "configured_sources": len(
                 source_executions
             ),
@@ -622,8 +717,9 @@ class ThreatIntelligencePipelineService:
             "failed_sources": len(
                 failed_executions
             ),
-            "source_summaries": source_summaries,
-
+            "source_summaries": (
+                source_summaries
+            ),
             "total_source_records": (
                 total_source_records
             ),
@@ -639,21 +735,26 @@ class ThreatIntelligencePipelineService:
                     0,
                 )
             ),
-
             "correlation_duration_seconds": round(
                 correlation_duration,
                 6,
             ),
-
-            "epss_enabled": enrich_with_epss,
-            "epss_status": epss_status,
-            "epss_date_requested": epss_date,
+            "epss_enabled": (
+                enrich_with_epss
+            ),
+            "epss_status": (
+                epss_status
+            ),
+            "epss_date_requested": (
+                epss_date
+            ),
             "epss_duration_seconds": round(
                 epss_duration,
                 6,
             ),
-            "epss_metadata": epss_metadata,
-
+            "epss_metadata": (
+                epss_metadata
+            ),
             "fusion_performed": False,
             "source_specific_records_preserved": True,
         }
@@ -666,9 +767,8 @@ class ThreatIntelligencePipelineService:
         epss_status: str,
     ) -> str:
         """
-        Determine the global pipeline status.
+        Détermine le statut global du pipeline.
         """
-
         if successful_sources == 0:
             return "FAILED"
 
