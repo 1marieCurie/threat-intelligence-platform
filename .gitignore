@@ -37,3 +37,6 @@ migration_previews/
 # OS
 .DS_Store
 Thumbs.db
+
+# data
+data/
