@@ -21,18 +21,9 @@ class PhishTankConnector:
     """
     Adaptateur sortant responsable du snapshot PhishTank.
 
-    Responsabilités :
-
-    - construire l'URL de téléchargement ;
-    - récupérer les métadonnées HTTP distantes ;
-    - comparer les ETag ;
-    - télécharger le snapshot BZ2 de manière atomique ;
-    - valider le contenu téléchargé ;
-    - conserver un état local non sensible ;
-    - retourner les enregistrements bruts.
-
-    La transformation en objets métier appartient à la couche
-    applicative.
+    La clé applicative n'est utilisée que pour construire l'URL
+    HTTP réelle. Elle ne doit jamais être persistée ni exposée
+    dans les logs, les métadonnées ou les exceptions publiques.
     """
 
     PUBLIC_DOWNLOAD_URL = (
@@ -40,9 +31,7 @@ class PhishTankConnector:
         "online-valid.json.bz2"
     )
 
-    DEFAULT_DUMP_FILENAME = (
-        "online-valid.json.bz2"
-    )
+    DEFAULT_DUMP_FILENAME = "online-valid.json.bz2"
 
     DEFAULT_STATE_FILENAME = (
         "phishtank_sync_state.json"
@@ -79,20 +68,11 @@ class PhishTankConnector:
         timeout: float = 30.0,
         session: requests.Session | None = None,
     ) -> None:
-        """
-        Initialise le connecteur.
-
-        La clé PhishTank est uniquement utilisée pour construire
-        l'URL HTTP réelle. Elle ne doit jamais être persistée dans
-        l'état de synchronisation.
-        """
-        normalized_timeout = (
-            self._validate_timeout(
-                timeout
-            )
+        self.timeout = self._validate_timeout(
+            timeout
         )
 
-        normalized_user_agent = (
+        self.user_agent = (
             self._validate_user_agent(
                 user_agent
             )
@@ -123,14 +103,6 @@ class PhishTankConnector:
             or None
         )
 
-        self.user_agent = (
-            normalized_user_agent
-        )
-
-        self.timeout = (
-            normalized_timeout
-        )
-
         self.session = (
             session
             if session is not None
@@ -146,7 +118,7 @@ class PhishTankConnector:
         self,
     ) -> str:
         """
-        Retourne une représentation ne contenant aucun secret.
+        Retourne une représentation sans secret.
         """
         return (
             f"{type(self).__name__}("
@@ -167,10 +139,9 @@ class PhishTankConnector:
         self,
     ) -> str | None:
         """
-        Retourne la clé configurée pour compatibilité.
+        Propriété conservée pour compatibilité.
 
-        Cette propriété ne doit jamais être journalisée ou copiée
-        dans des métadonnées persistées.
+        Sa valeur ne doit jamais être journalisée ou persistée.
         """
         return self._app_key
 
@@ -181,8 +152,7 @@ class PhishTankConnector:
         """
         Retourne l'URL HTTP réellement utilisée.
 
-        Cette URL peut contenir la clé PhishTank. Elle ne doit pas
-        être utilisée comme URL de traçabilité.
+        Cette URL peut contenir la clé PhishTank.
         """
         if self._app_key is None:
             return self.PUBLIC_DOWNLOAD_URL
@@ -198,8 +168,7 @@ class PhishTankConnector:
         self,
     ) -> str:
         """
-        Retourne l'URL publique utilisable dans les logs,
-        métadonnées et enregistrements PostgreSQL.
+        Retourne l'URL publique utilisable pour la traçabilité.
         """
         return self.PUBLIC_DOWNLOAD_URL
 
@@ -214,15 +183,15 @@ class PhishTankConnector:
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Garantit la présence d'un snapshot local, puis retourne
+        Garantit la présence d'un snapshot local puis retourne
         ses enregistrements bruts.
         """
         self.download_if_updated(
-            force=force_download
+            force=force_download,
         )
 
         return self.read_local_records(
-            limit=limit
+            limit=limit,
         )
 
     def download_if_updated(
@@ -231,17 +200,12 @@ class PhishTankConnector:
         force: bool = False,
     ) -> dict[str, Any]:
         """
-        Télécharge le snapshot uniquement lorsqu'une actualisation
-        est nécessaire.
+        Télécharge le snapshot uniquement lorsqu'une
+        actualisation est nécessaire.
 
         L'état retourné ne contient jamais la clé PhishTank.
         """
         local_state = self._load_state()
-
-        remote_metadata: dict[
-            str,
-            Any,
-        ] = {}
 
         try:
             remote_metadata = (
@@ -272,7 +236,10 @@ class PhishTankConnector:
                     }
                 )
 
-            remote_metadata = {}
+            remote_metadata: dict[
+                str,
+                Any,
+            ] = {}
 
         remote_etag = (
             remote_metadata.get(
@@ -381,8 +348,8 @@ class PhishTankConnector:
         self,
     ) -> dict[str, Any]:
         """
-        Exécute une requête HTTP HEAD et retourne les métadonnées
-        du snapshot distant.
+        Effectue la requête HEAD sans conserver une exception
+        requests susceptible d'inclure l'URL authentifiée.
         """
         try:
             response = self.session.head(
@@ -394,31 +361,34 @@ class PhishTankConnector:
 
             response.raise_for_status()
 
-        except requests.RequestException as error:
-            raise PhishTankConnectorError(
-                "Unable to retrieve PhishTank "
-                "remote metadata."
-            ) from error
+        except requests.RequestException:
+            # La levée publique est effectuée après le bloc
+            # except. __cause__ et __context__ restent à None.
+            pass
 
-        return {
-            "etag": (
-                response.headers.get(
+        else:
+            return {
+                "etag": response.headers.get(
                     "ETag"
-                )
-            ),
-            "last_modified": (
-                response.headers.get(
-                    "Last-Modified"
-                )
-            ),
-            "content_length": (
-                self._parse_content_length(
+                ),
+                "last_modified": (
                     response.headers.get(
-                        "Content-Length"
+                        "Last-Modified"
                     )
-                )
-            ),
-        }
+                ),
+                "content_length": (
+                    self._parse_content_length(
+                        response.headers.get(
+                            "Content-Length"
+                        )
+                    )
+                ),
+            }
+
+        raise PhishTankConnectorError(
+            "Unable to retrieve PhishTank "
+            "remote metadata."
+        )
 
     def read_local_records(
         self,
@@ -513,10 +483,10 @@ class PhishTankConnector:
         self,
     ) -> dict[str, Any]:
         """
-        Télécharge le snapshot vers un fichier temporaire.
+        Télécharge le snapshot dans un fichier temporaire.
 
-        Le fichier final est remplacé uniquement après validation
-        complète du contenu.
+        Les erreurs réseau sont converties sans conserver
+        l'exception requests ni l'URL authentifiée.
         """
         temporary_path = (
             self.dump_path.with_suffix(
@@ -538,12 +508,8 @@ class PhishTankConnector:
                 with temporary_path.open(
                     "wb"
                 ) as file:
-                    for chunk in (
-                        response.iter_content(
-                            chunk_size=(
-                                64 * 1024
-                            )
-                        )
+                    for chunk in response.iter_content(
+                        chunk_size=64 * 1024
                     ):
                         if chunk:
                             file.write(
@@ -580,15 +546,13 @@ class PhishTankConnector:
 
             return response_metadata
 
-        except requests.RequestException as error:
+        except requests.RequestException:
             self._remove_file_safely(
                 temporary_path
             )
 
-            raise PhishTankConnectorError(
-                "Unable to download the "
-                "PhishTank snapshot."
-            ) from error
+            # La levée publique est effectuée hors du bloc
+            # except afin de ne conserver aucun contexte.
 
         except OSError as error:
             self._remove_file_safely(
@@ -605,6 +569,11 @@ class PhishTankConnector:
                 temporary_path
             )
             raise
+
+        raise PhishTankConnectorError(
+            "Unable to download the "
+            "PhishTank snapshot."
+        )
 
     @staticmethod
     def _validate_downloaded_file(
@@ -754,10 +723,8 @@ class PhishTankConnector:
         state: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        Retire les secrets et canonicalise les URLs sensibles.
-
-        Cette méthode assainit également les anciens fichiers
-        d'état qui auraient contenu une URL avec clé.
+        Retire les secrets, assainit les valeurs imbriquées et
+        canonicalise les URL destinées à la persistance.
         """
         return self._sanitize_mapping(
             state
@@ -773,10 +740,16 @@ class PhishTankConnector:
         ] = {}
 
         for key, item in value.items():
-            normalized_key = (
-                key.strip().lower()
+            output_key = (
+                key
                 if isinstance(key, str)
-                else str(key).lower()
+                else str(key)
+            )
+
+            normalized_key = (
+                output_key
+                .strip()
+                .lower()
             )
 
             if self._is_sensitive_state_key(
@@ -788,15 +761,16 @@ class PhishTankConnector:
                 normalized_key
                 in self._URL_STATE_KEYS
             ):
-                sanitized[key] = (
-                    self.canonical_source_url
-                )
+                sanitized[
+                    output_key
+                ] = self.canonical_source_url
+
                 continue
 
-            sanitized[key] = (
-                self._sanitize_state_value(
-                    item
-                )
+            sanitized[
+                output_key
+            ] = self._sanitize_state_value(
+                item
             )
 
         return sanitized
@@ -872,9 +846,7 @@ class PhishTankConnector:
         self,
     ) -> dict[str, str]:
         return {
-            "User-Agent": (
-                self.user_agent
-            ),
+            "User-Agent": self.user_agent,
             "Accept": (
                 "application/json, "
                 "application/octet-stream"
@@ -899,10 +871,11 @@ class PhishTankConnector:
         ):
             return None
 
-        if parsed_value < 0:
-            return None
-
-        return parsed_value
+        return (
+            parsed_value
+            if parsed_value >= 0
+            else None
+        )
 
     @staticmethod
     def _validate_timeout(
