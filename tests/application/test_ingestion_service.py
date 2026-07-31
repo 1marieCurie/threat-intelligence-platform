@@ -665,6 +665,21 @@ def test_ingest_marks_run_failed_when_batch_persistence_fails() -> None:
 
     # Création du run puis statut failed.
     assert unit_of_work.commit.call_count == 2
+    
+    assert (
+    failed_call["records_received"]
+    == 1
+    )
+
+    assert (
+        failed_call["records_succeeded"]
+        == 0
+    )
+
+    assert (
+        failed_call["records_failed"]
+        == 1
+    )
 
 
 def test_ingest_marks_run_failed_when_link_persistence_fails() -> None:
@@ -883,6 +898,21 @@ def test_ingest_marks_run_failed_when_completion_update_fails() -> None:
     # 2. persistance batch
     # 3. statut failed
     assert unit_of_work.commit.call_count == 3
+    
+    assert (
+    failed_call["records_received"]
+    == 1
+    )
+
+    assert (
+        failed_call["records_succeeded"]
+        == 1
+    )
+
+    assert (
+        failed_call["records_failed"]
+        == 0
+)
 
 
 def test_ingest_raises_critical_error_when_mark_failed_fails() -> None:

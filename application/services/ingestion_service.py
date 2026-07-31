@@ -47,6 +47,35 @@ class IngestionResult:
     pagination_complete: bool = True
 
 
+@dataclass(
+    slots=True,
+)
+class _IngestionProgress:
+    """
+    État interne de progression d'un run.
+
+    Ces compteurs permettent de conserver une observabilité
+    exacte lorsqu'une défaillance survient entre deux lots.
+    """
+
+    records_received: int = 0
+    records_persisted: int = 0
+    records_skipped: int = 0
+
+    @property
+    def records_failed(self) -> int:
+        """
+        Retourne les enregistrements qui n'ont été ni persistés
+        ni identifiés comme déjà existants.
+        """
+        return max(
+            self.records_received
+            - self.records_persisted
+            - self.records_skipped,
+            0,
+        )
+
+
 class IngestionService:
     """
     Orchestre une ingestion brute générique.
@@ -122,6 +151,8 @@ class IngestionService:
             source_id=source_id,
         )
 
+        progress = _IngestionProgress()
+
         try:
             # Aucun appel fournisseur dans une transaction SQL.
             fetch_result = self._connector.fetch(
@@ -129,16 +160,22 @@ class IngestionService:
                 state_metadata=state_metadata,
             )
 
+            progress.records_received = len(
+                fetch_result.records
+            )
+
             return self._persist_fetch_result(
                 source_id=source_id,
                 run_id=run_id,
                 fetch_result=fetch_result,
+                progress=progress,
             )
 
         except Exception as error:
             self._mark_run_failed(
                 run_id=run_id,
                 error=error,
+                progress=progress,
             )
             raise
 
@@ -181,6 +218,7 @@ class IngestionService:
         source_id: UUID,
         run_id: UUID,
         fetch_result: FetchResult,
+        progress: _IngestionProgress,
     ) -> IngestionResult:
         if not isinstance(
             fetch_result,
@@ -190,14 +228,8 @@ class IngestionService:
                 "connector result must be a FetchResult"
             )
 
-        records = fetch_result.records
-        records_received = len(records)
-
-        records_persisted = 0
-        records_skipped = 0
-
         for record_batch in self._iter_batches(
-            records
+            fetch_result.records
         ):
             # Le calcul des hash reste hors transaction SQL.
             prepared_payloads = self._prepare_batch(
@@ -214,8 +246,14 @@ class IngestionService:
                 payloads=prepared_payloads,
             )
 
-            records_persisted += batch_persisted
-            records_skipped += batch_skipped
+            # Mise à jour uniquement après le commit du lot.
+            progress.records_persisted += (
+                batch_persisted
+            )
+
+            progress.records_skipped += (
+                batch_skipped
+            )
 
         completed_at = datetime.now(
             UTC
@@ -226,16 +264,20 @@ class IngestionService:
             run_id=run_id,
             fetch_result=fetch_result,
             completed_at=completed_at,
-            records_received=records_received,
-            records_persisted=records_persisted,
-            records_skipped=records_skipped,
+            progress=progress,
         )
 
         return IngestionResult(
             run_id=run_id,
-            records_received=records_received,
-            records_persisted=records_persisted,
-            records_skipped=records_skipped,
+            records_received=(
+                progress.records_received
+            ),
+            records_persisted=(
+                progress.records_persisted
+            ),
+            records_skipped=(
+                progress.records_skipped
+            ),
             status="completed",
             pagination_complete=(
                 fetch_result.next_cursor is None
@@ -261,8 +303,10 @@ class IngestionService:
                     "a FetchedRecord"
                 )
 
-            payload_hash = self._payload_hasher.hash(
-                record.payload
+            payload_hash = (
+                self._payload_hasher.hash(
+                    record.payload
+                )
             )
 
             payloads.append(
@@ -337,7 +381,9 @@ class IngestionService:
 
             if (
                 link_result.unique_count
-                != len(batch_result.references)
+                != len(
+                    batch_result.references
+                )
             ):
                 raise RuntimeError(
                     "Unable to link all raw payload "
@@ -358,9 +404,7 @@ class IngestionService:
         run_id: UUID,
         fetch_result: FetchResult,
         completed_at: datetime,
-        records_received: int,
-        records_persisted: int,
-        records_skipped: int,
+        progress: _IngestionProgress,
     ) -> None:
         metadata = dict(
             fetch_result.metadata
@@ -369,10 +413,10 @@ class IngestionService:
         metadata.update(
             {
                 "records_persisted": (
-                    records_persisted
+                    progress.records_persisted
                 ),
                 "records_skipped": (
-                    records_skipped
+                    progress.records_skipped
                 ),
                 "batch_size": self._batch_size,
             }
@@ -394,9 +438,11 @@ class IngestionService:
                 .mark_completed(
                     run_id=run_id,
                     finished_at=completed_at,
-                    records_received=records_received,
+                    records_received=(
+                        progress.records_received
+                    ),
                     records_succeeded=(
-                        records_persisted
+                        progress.records_persisted
                     ),
                     records_failed=0,
                     connector_version=(
@@ -418,6 +464,7 @@ class IngestionService:
         *,
         run_id: UUID,
         error: Exception,
+        progress: _IngestionProgress,
     ) -> None:
         failed_at = datetime.now(
             UTC
@@ -436,6 +483,15 @@ class IngestionService:
                     run_id=run_id,
                     finished_at=failed_at,
                     error_summary=error_summary,
+                    records_received=(
+                        progress.records_received
+                    ),
+                    records_succeeded=(
+                        progress.records_persisted
+                    ),
+                    records_failed=(
+                        progress.records_failed
+                    ),
                 )
             )
 
@@ -450,7 +506,9 @@ class IngestionService:
     def _iter_batches(
         self,
         records: Sequence[FetchedRecord],
-    ) -> Iterator[Sequence[FetchedRecord]]:
+    ) -> Iterator[
+        Sequence[FetchedRecord]
+    ]:
         for start in range(
             0,
             len(records),
