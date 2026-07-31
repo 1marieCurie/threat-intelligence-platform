@@ -3,7 +3,10 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Self
 
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import (
+    Session,
+    sessionmaker,
+)
 
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
@@ -19,6 +22,9 @@ from application.ports.outbound.epss_score_repository import (
 )
 from application.ports.outbound.github_advisory_vulnerability_repository import (
     GitHubAdvisoryVulnerabilityRepository,
+)
+from application.ports.outbound.ingestion_run_payload_repository import (
+    IngestionRunPayloadRepository,
 )
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunRepository,
@@ -44,6 +50,9 @@ from infrastructure.persistence.sqlalchemy.repositories.epss_score_repository im
 from infrastructure.persistence.sqlalchemy.repositories.github_advisory_vulnerability_repository import (
     SqlAlchemyGitHubAdvisoryVulnerabilityRepository,
 )
+from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_payload_repository import (
+    SqlAlchemyIngestionRunPayloadRepository,
+)
 from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import (
     SqlAlchemyIngestionRunRepository,
 )
@@ -66,7 +75,9 @@ class SqlAlchemyUnitOfWork:
 
     def __init__(
         self,
-        session_factory: sessionmaker[Session],
+        session_factory: sessionmaker[
+            Session
+        ],
     ) -> None:
         if session_factory is None:
             raise ValueError(
@@ -85,6 +96,10 @@ class SqlAlchemyUnitOfWork:
 
         self.raw_payloads: (
             RawPayloadRepository
+        )
+
+        self.ingestion_run_payloads: (
+            IngestionRunPayloadRepository
         )
 
         self.sync_states: (
@@ -111,7 +126,9 @@ class SqlAlchemyUnitOfWork:
             WritableEPSSScoreRepository
         )
 
-    def __enter__(self) -> Self:
+    def __enter__(
+        self,
+    ) -> Self:
         if self._session is not None:
             raise RuntimeError(
                 "Unit of Work is already active"
@@ -129,6 +146,12 @@ class SqlAlchemyUnitOfWork:
 
         self.raw_payloads = (
             SqlAlchemyRawPayloadRepository(
+                session=self._session,
+            )
+        )
+
+        self.ingestion_run_payloads = (
+            SqlAlchemyIngestionRunPayloadRepository(
                 session=self._session,
             )
         )
@@ -173,7 +196,9 @@ class SqlAlchemyUnitOfWork:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
+        exc_type: type[
+            BaseException
+        ] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
@@ -191,15 +216,21 @@ class SqlAlchemyUnitOfWork:
                 self._session.close()
                 self._session = None
 
-    def commit(self) -> None:
+    def commit(
+        self,
+    ) -> None:
         session = self._require_session()
         session.commit()
 
-    def rollback(self) -> None:
+    def rollback(
+        self,
+    ) -> None:
         session = self._require_session()
         session.rollback()
 
-    def _require_session(self) -> Session:
+    def _require_session(
+        self,
+    ) -> Session:
         if self._session is None:
             raise RuntimeError(
                 "Unit of Work is not active"
