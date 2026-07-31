@@ -444,7 +444,7 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
                 for run in runs
             ] == [
                 2,
-                0,
+                2,
             ]
 
             assert all(

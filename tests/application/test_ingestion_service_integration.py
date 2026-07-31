@@ -244,6 +244,7 @@ def test_ingestion_service_persists_complete_flow() -> None:
             assert persisted_state.cursor == "cursor-001"
             assert persisted_state.metadata_ == {
                 "page": 1,
+                "pagination_complete": False,
             }
 
     finally:
