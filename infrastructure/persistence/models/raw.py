@@ -158,3 +158,63 @@ class SourcePayloadModel(Base):
         Text,
         nullable=True,
     )
+    
+class IngestionRunPayloadModel(Base):
+    """
+    Association entre un snapshot d'ingestion et un payload brut.
+
+    Un même payload immuable peut être observé dans plusieurs
+    snapshots sans être dupliqué dans raw.source_payload.
+    """
+
+    __tablename__ = (
+        "ingestion_run_payload"
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_ingestion_run_payload_raw_payload_id",
+            "raw_payload_id",
+        ),
+        {
+            "schema": "raw",
+        },
+    )
+
+    ingestion_run_id: Mapped[
+        uuid.UUID
+    ] = mapped_column(
+        UUID(
+            as_uuid=True
+        ),
+        ForeignKey(
+            "ops.ingestion_run.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+        nullable=False,
+    )
+
+    raw_payload_id: Mapped[
+        uuid.UUID
+    ] = mapped_column(
+        UUID(
+            as_uuid=True
+        ),
+        ForeignKey(
+            "raw.source_payload.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+        nullable=False,
+    )
+
+    observed_at: Mapped[
+        datetime
+    ] = mapped_column(
+        DateTime(
+            timezone=True
+        ),
+        nullable=False,
+        server_default=func.now(),
+    )
