@@ -12,7 +12,9 @@ from infrastructure.persistence.sqlalchemy.repositories.epss_score_repository im
 from infrastructure.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
 )
-
+from infrastructure.persistence.sqlalchemy.repositories.phishtank_phishing_repository import (
+    SqlAlchemyPhishTankPhishingRepository,
+)
 
 def test_commit_delegates_to_session() -> None:
     session = Mock(
@@ -199,6 +201,29 @@ def test_unit_of_work_rejects_nested_context() -> None:
             ),
         ):
             unit_of_work.__enter__()
+
+    session.rollback.assert_called_once_with()
+    session.close.assert_called_once_with()
+    
+def test_context_initializes_phishtank_repository() -> None:
+    session = Mock(
+        spec=Session,
+    )
+
+    session_factory = Mock(
+        spec=sessionmaker,
+        return_value=session,
+    )
+
+    unit_of_work = SqlAlchemyUnitOfWork(
+        session_factory=session_factory,
+    )
+
+    with unit_of_work:
+        assert isinstance(
+            unit_of_work.phishtank_phishing,
+            SqlAlchemyPhishTankPhishingRepository,
+        )
 
     session.rollback.assert_called_once_with()
     session.close.assert_called_once_with()

@@ -6,6 +6,9 @@ from infrastructure.persistence.models.normalized import (
     EPSSScoreModel,
     GitHubAdvisoryVulnerabilityModel,
 )
+from infrastructure.persistence.models.normalized_phishtank import (
+    PhishTankPhishingModel,
+)
 from infrastructure.persistence.models.ops import (
     IngestionRunModel,
     SourceModel,
@@ -24,5 +27,6 @@ __all__ = [
     "SyncStateModel",
     "CisaKevVulnerabilityModel",
     "GitHubAdvisoryVulnerabilityModel",
+    "PhishTankPhishingModel",
     "EPSSScoreModel",
 ]
