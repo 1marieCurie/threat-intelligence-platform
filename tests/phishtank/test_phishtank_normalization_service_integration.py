@@ -485,7 +485,7 @@ def test_process_pending_persists_normalized_phishing(
 
             assert (
                 normalized.normalizer_version
-                == "1.0.0"
+                == "1.0.1"
             )
 
             assert normalized.network_details == [
