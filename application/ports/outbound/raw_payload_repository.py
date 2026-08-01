@@ -204,8 +204,18 @@ class RawPayloadRepository(
         """
         Réserve atomiquement un lot de payloads en attente.
 
-        Les lignes sont immédiatement marquées processing dans
-        la transaction courante.
+        Seuls les payloads observés pendant au moins un run
+        d'ingestion terminé avec le statut completed sont
+        éligibles.
+
+        L'éligibilité repose sur les associations enregistrées
+        dans raw.ingestion_run_payload. Elle ne repose pas
+        uniquement sur le run ayant créé physiquement le payload,
+        car un payload dédupliqué peut être réobservé pendant
+        plusieurs runs.
+
+        Les lignes sélectionnées sont immédiatement marquées
+        processing dans la transaction courante.
         """
         ...
 

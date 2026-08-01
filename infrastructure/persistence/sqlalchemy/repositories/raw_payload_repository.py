@@ -23,7 +23,11 @@ from application.ports.outbound.raw_payload_repository import (
     RawPayloadIdentity,
     RawPayloadRecoveryResult,
 )
+from infrastructure.persistence.models.ops import (
+    IngestionRunModel,
+)
 from infrastructure.persistence.models.raw import (
+    IngestionRunPayloadModel,
     SourcePayloadModel,
 )
 
@@ -428,18 +432,57 @@ class SqlAlchemyRawPayloadRepository:
             limit
         )
 
+        completed_observation_exists = (
+            select(1)
+            .select_from(
+                IngestionRunPayloadModel
+            )
+            .join(
+                IngestionRunModel,
+                (
+                    IngestionRunModel.id
+                    == (
+                        IngestionRunPayloadModel
+                        .ingestion_run_id
+                    )
+                ),
+            )
+            .where(
+                (
+                    IngestionRunPayloadModel
+                    .raw_payload_id
+                    == SourcePayloadModel.id
+                ),
+                (
+                    IngestionRunModel.source_id
+                    == SourcePayloadModel.source_id
+                ),
+                (
+                    IngestionRunModel.status
+                    == "completed"
+                ),
+            )
+            .correlate(
+                SourcePayloadModel
+            )
+            .exists()
+        )
+
         statement = (
             select(
                 SourcePayloadModel
             )
             .where(
-                SourcePayloadModel.source_id
-                == source_id,
+                (
+                    SourcePayloadModel.source_id
+                    == source_id
+                ),
                 (
                     SourcePayloadModel
                     .processing_status
                     == "pending"
                 ),
+                completed_observation_exists,
             )
             .order_by(
                 (
@@ -452,6 +495,7 @@ class SqlAlchemyRawPayloadRepository:
                 limit
             )
             .with_for_update(
+                of=SourcePayloadModel,
                 skip_locked=True,
             )
         )

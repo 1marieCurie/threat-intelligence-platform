@@ -62,6 +62,12 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
 from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
     SqlAlchemySyncStateRepository,
 )
+from application.ports.outbound.phishtank_phishing_repository import (
+    PhishTankPhishingRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.phishtank_phishing_repository import (
+    SqlAlchemyPhishTankPhishingRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -125,6 +131,10 @@ class SqlAlchemyUnitOfWork:
         self.epss_scores: (
             WritableEPSSScoreRepository
         )
+        
+        self.phishtank_phishing: (
+            PhishTankPhishingRepository
+        )
 
     def __enter__(
         self,
@@ -170,6 +180,12 @@ class SqlAlchemyUnitOfWork:
 
         self.github_advisory_vulnerabilities = (
             SqlAlchemyGitHubAdvisoryVulnerabilityRepository(
+                session=self._session,
+            )
+        )
+        
+        self.phishtank_phishing = (
+            SqlAlchemyPhishTankPhishingRepository(
                 session=self._session,
             )
         )

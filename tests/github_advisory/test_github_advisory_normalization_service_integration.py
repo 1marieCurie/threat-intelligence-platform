@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pytest
 from sqlalchemy import (
@@ -25,6 +25,9 @@ from sqlalchemy.orm import (
 
 from application.ports.outbound.github_advisory_vulnerability_repository import (
     GitHubAdvisoryVulnerabilityData,
+)
+from application.ports.outbound.ingestion_run_payload_repository import (
+    IngestionRunPayloadLink,
 )
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadData,
@@ -301,6 +304,30 @@ def _save_pending_payload(
             )
         )
 
+        link_result = (
+            unit_of_work
+            .ingestion_run_payloads
+            .link_many_ignore_existing(
+                (
+                    IngestionRunPayloadLink(
+                        ingestion_run_id=(
+                            ingestion_run_id
+                        ),
+                        raw_payload_id=payload_id,
+                    ),
+                )
+            )
+        )
+
+        if (
+            link_result.unique_count != 1
+            or link_result.inserted_count != 1
+        ):
+            raise RuntimeError(
+                "Unable to link the raw payload "
+                "to its ingestion run"
+            )
+
         unit_of_work.commit()
 
     return payload_id
@@ -340,7 +367,9 @@ def _force_processing_lease(
         )
 
         updated_payload_id = (
-            session.execute(statement)
+            session.execute(
+                statement
+            )
             .scalar_one_or_none()
         )
 
@@ -379,7 +408,9 @@ def _reset_payload_to_pending(
         )
 
         updated_payload_id = (
-            session.execute(statement)
+            session.execute(
+                statement
+            )
             .scalar_one_or_none()
         )
 
@@ -637,9 +668,6 @@ def test_process_pending_persists_and_repairs_idempotently(
                 == "1.0.0"
             )
 
-        # Simulation d’un état incohérent :
-        # la ligne normalisée existe, mais le payload
-        # brut est de nouveau marqué pending.
         _reset_payload_to_pending(
             ingestion_session_factory=(
                 ingestion_session_factory
@@ -697,9 +725,9 @@ def test_process_pending_persists_and_repairs_idempotently(
                 == 2
             )
 
-            # L’idempotence interdit une
-            # deuxième ligne normalisée.
-            assert len(normalized_rows) == 1
+            assert len(
+                normalized_rows
+            ) == 1
 
         empty_result = service.process_pending(
             source_id=source_id,
@@ -879,6 +907,7 @@ def test_stale_processing_payloads_are_recovered(
     retry_cve_id = _build_cve_id()
 
     exhausted_ghsa_id = _build_ghsa_id()
+
     exhausted_cve_id = _build_cve_id(
         year=2098
     )
@@ -1011,7 +1040,6 @@ def test_stale_processing_payloads_are_recovered(
 
         assert result.requeued == 1
         assert result.stale_failed == 1
-
         assert result.claimed == 1
         assert result.normalized == 1
         assert result.already_normalized == 0
@@ -1096,7 +1124,9 @@ def test_stale_processing_payloads_are_recovered(
                 )
             )
 
-            assert len(normalized_rows) == 1
+            assert len(
+                normalized_rows
+            ) == 1
 
             normalized_row = normalized_rows[0]
 

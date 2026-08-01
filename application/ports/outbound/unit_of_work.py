@@ -24,6 +24,9 @@ from application.ports.outbound.ingestion_run_payload_repository import (
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunRepository,
 )
+from application.ports.outbound.phishtank_phishing_repository import (
+    PhishTankPhishingRepository,
+)
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadRepository,
 )
@@ -42,13 +45,23 @@ class UnitOfWork(Protocol):
 
     ingestion_runs: IngestionRunRepository
     raw_payloads: RawPayloadRepository
-    ingestion_run_payloads: IngestionRunPayloadRepository
+
+    ingestion_run_payloads: (
+        IngestionRunPayloadRepository
+    )
+
     sync_states: SyncStateRepository
 
-    cisa_kev_vulnerabilities: CisaKevVulnerabilityRepository
+    cisa_kev_vulnerabilities: (
+        CisaKevVulnerabilityRepository
+    )
 
     github_advisory_vulnerabilities: (
         GitHubAdvisoryVulnerabilityRepository
+    )
+
+    phishtank_phishing: (
+        PhishTankPhishingRepository
     )
 
     cwe_weaknesses: WritableCWERepository
@@ -59,7 +72,9 @@ class UnitOfWork(Protocol):
 
     epss_scores: WritableEPSSScoreRepository
 
-    def __enter__(self) -> Self:
+    def __enter__(
+        self,
+    ) -> Self:
         ...
 
     def __exit__(
@@ -70,8 +85,12 @@ class UnitOfWork(Protocol):
     ) -> None:
         ...
 
-    def commit(self) -> None:
+    def commit(
+        self,
+    ) -> None:
         ...
 
-    def rollback(self) -> None:
+    def rollback(
+        self,
+    ) -> None:
         ...

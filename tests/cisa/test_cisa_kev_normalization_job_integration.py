@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import os
 from collections import Counter
 from uuid import UUID, uuid4
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pytest
 from sqlalchemy import (
@@ -18,6 +18,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
+from application.ports.outbound.ingestion_run_payload_repository import (
+    IngestionRunPayloadLink,
+)
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadData,
 )
@@ -165,6 +168,30 @@ def _save_pending_payload(
             )
         )
 
+        link_result = (
+            unit_of_work
+            .ingestion_run_payloads
+            .link_many_ignore_existing(
+                (
+                    IngestionRunPayloadLink(
+                        ingestion_run_id=(
+                            ingestion_run_id
+                        ),
+                        raw_payload_id=payload_id,
+                    ),
+                )
+            )
+        )
+
+        if (
+            link_result.unique_count != 1
+            or link_result.inserted_count != 1
+        ):
+            raise RuntimeError(
+                "Unable to link the raw payload "
+                "to its ingestion run"
+            )
+
         unit_of_work.commit()
 
     return payload_id
@@ -265,7 +292,9 @@ def _delete_test_data(
             .where(
                 SourcePayloadModel
                 .ingestion_run_id
-                .in_(ingestion_run_ids)
+                .in_(
+                    ingestion_run_ids
+                )
             )
         )
 
@@ -285,7 +314,9 @@ def _delete_test_data(
             ).where(
                 SourcePayloadModel
                 .ingestion_run_id
-                .in_(ingestion_run_ids)
+                .in_(
+                    ingestion_run_ids
+                )
             )
         )
 
@@ -310,7 +341,8 @@ def _delete_test_data(
         session.commit()
 
 
-def test_job_processes_multiple_batches_and_is_idempotent() -> None:
+def test_job_processes_multiple_batches_and_is_idempotent(
+) -> None:
     """
     Vérifie le runner complet avec PostgreSQL :
 
@@ -359,10 +391,12 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
             "CVE-2099-"
             f"{uuid4().int % 1_000_000_000:09d}"
         )
+
         second_cve_id = (
             "CVE-2099-"
             f"{uuid4().int % 1_000_000_000:09d}"
         )
+
         invalid_cve_id = (
             "CVE-2099-"
             f"{uuid4().int % 1_000_000_000:09d}"
@@ -466,7 +500,9 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
                     ).where(
                         CisaKevVulnerabilityModel
                         .raw_payload_id
-                        .in_(raw_payload_ids)
+                        .in_(
+                            raw_payload_ids
+                        )
                     )
                 )
                 .scalars()
@@ -478,14 +514,18 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
                 for payload in raw_payloads
             )
 
-            assert len(raw_payloads) == 3
+            assert len(
+                raw_payloads
+            ) == 3
 
             assert status_counts == {
                 "processed": 2,
                 "failed": 1,
             }
 
-            assert len(normalized_rows) == 2
+            assert len(
+                normalized_rows
+            ) == 2
 
             processed_payload_ids = {
                 payload.id
@@ -498,7 +538,8 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
 
             normalized_payload_ids = {
                 vulnerability.raw_payload_id
-                for vulnerability in normalized_rows
+                for vulnerability
+                in normalized_rows
             }
 
             assert (
@@ -507,7 +548,8 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
             )
 
             assert all(
-                payload.processing_attempts == 1
+                payload.processing_attempts
+                == 1
                 for payload in raw_payloads
             )
 
@@ -521,10 +563,12 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
             )
 
             assert failed_payload.error_message
+
             assert (
                 "super-secret-value"
                 not in failed_payload.error_message
             )
+
             assert (
                 "[REDACTED]"
                 in failed_payload.error_message
@@ -552,7 +596,9 @@ def test_job_processes_multiple_batches_and_is_idempotent() -> None:
                     ).where(
                         CisaKevVulnerabilityModel
                         .raw_payload_id
-                        .in_(raw_payload_ids)
+                        .in_(
+                            raw_payload_ids
+                        )
                     )
                 )
                 .scalars()
