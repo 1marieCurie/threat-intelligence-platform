@@ -25,7 +25,7 @@ class PhishTankNormalizationError(
 
 
 class PhishTankNormalizer:
-    NORMALIZER_VERSION = "1.0.0"
+    NORMALIZER_VERSION = "1.0.1"
 
     _MAX_URL_LENGTH = 4_096
     _MAX_TARGET_LENGTH = 255
@@ -126,10 +126,8 @@ class PhishTankNormalizer:
         if (
             submission_time is not None
             and verification_time is not None
-            and (
-                verification_time
-                < submission_time
-            )
+            and verification_time
+            < submission_time
         ):
             raise PhishTankNormalizationError(
                 "verification_time must not "
@@ -373,8 +371,7 @@ class PhishTankNormalizer:
                 parsed.hostname
             )
 
-            # Accéder à port déclenche une ValueError
-            # lorsqu'il contient une valeur invalide.
+            # Accessing port raises ValueError when malformed.
             parsed.port
 
         except ValueError as error:
@@ -585,12 +582,12 @@ class PhishTankNormalizer:
                 "details must be a list"
             )
 
-        if len(
-            value
-        ) > cls._MAX_NETWORK_DETAILS:
-            raise PhishTankNormalizationError(
-                "details contains too many values"
-            )
+        # Les détails réseau sont auxiliaires.
+        # On borne le travail avant la boucle pour éviter
+        # une consommation mémoire/CPU non maîtrisée.
+        bounded_items = value[
+            :cls._MAX_NETWORK_DETAILS
+        ]
 
         result: list[
             PhishTankNetworkDetailData
@@ -600,7 +597,7 @@ class PhishTankNormalizer:
             PhishTankNetworkDetailData
         ] = set()
 
-        for item in value:
+        for item in bounded_items:
             if not isinstance(
                 item,
                 Mapping,

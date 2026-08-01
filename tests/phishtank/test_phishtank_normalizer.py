@@ -158,7 +158,7 @@ def test_normalize_maps_complete_record(
 
     assert (
         result.normalizer_version
-        == "1.0.0"
+        == "1.0.1"
     )
 
 
@@ -449,28 +449,60 @@ def test_invalid_network_values_are_ignored(
 def test_network_details_are_bounded(
     raw_payload_id: UUID,
 ) -> None:
-    with pytest.raises(
-        PhishTankNormalizationError,
-        match="too many",
-    ):
-        PhishTankNormalizer().normalize(
-            raw_payload_id=raw_payload_id,
-            payload={
-                "phish_id": 8,
-                "url": (
-                    "https://example.invalid/login"
-                ),
-                "details": [
-                    {
-                        "ip_address": (
-                            "192.0.2.10"
-                        ),
-                    }
-                    for _ in range(101)
-                ],
-            },
-        )
+    maximum_details = 100
 
+    payload: dict[str, object] = {
+        "phish_id": "9477391",
+        "url": (
+            "https://example.invalid/"
+            "login"
+        ),
+        "details": [
+            {
+                "ip_address": (
+                    f"192.0.2.{index}"
+                ),
+            }
+            for index in range(
+                1,
+                maximum_details + 1,
+            )
+        ],
+    }
+
+    details = payload["details"]
+
+    assert isinstance(
+        details,
+        list,
+    )
+
+    details.append(
+        {
+            "ip_address": (
+                "198.51.100.10"
+            ),
+        }
+    )
+
+    result = (
+        PhishTankNormalizer()
+        .normalize(
+            raw_payload_id=raw_payload_id,
+            payload=payload,
+        )
+    )
+
+    assert len(
+        result.network_details
+    ) == maximum_details
+
+    assert all(
+        detail.ip_address
+        != "198.51.100.10"
+        for detail
+        in result.network_details
+    )
 
 def test_invalid_details_type_is_rejected(
     raw_payload_id: UUID,
