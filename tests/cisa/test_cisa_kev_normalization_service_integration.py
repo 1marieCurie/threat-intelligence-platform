@@ -18,6 +18,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
+from application.ports.outbound.ingestion_run_payload_repository import (
+    IngestionRunPayloadLink,
+)
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadData,
 )
@@ -143,8 +146,6 @@ def _delete_test_data(
             )
         )
 
-        # Respect de l’ordre des clés étrangères :
-        # normalized -> raw -> ingestion_run -> source.
         session.execute(
             delete(
                 CisaKevVulnerabilityModel
@@ -213,6 +214,30 @@ def _save_pending_payload(
             )
         )
 
+        link_result = (
+            unit_of_work
+            .ingestion_run_payloads
+            .link_many_ignore_existing(
+                (
+                    IngestionRunPayloadLink(
+                        ingestion_run_id=(
+                            ingestion_run_id
+                        ),
+                        raw_payload_id=payload_id,
+                    ),
+                )
+            )
+        )
+
+        if (
+            link_result.unique_count != 1
+            or link_result.inserted_count != 1
+        ):
+            raise RuntimeError(
+                "Unable to link the raw payload "
+                "to its ingestion run"
+            )
+
         unit_of_work.commit()
 
     return payload_id
@@ -250,16 +275,22 @@ def _force_processing_lease(
         )
 
         updated_payload_id = (
-            session.execute(statement)
+            session.execute(
+                statement
+            )
             .scalar_one_or_none()
         )
 
-        assert updated_payload_id == payload_id
+        assert (
+            updated_payload_id
+            == payload_id
+        )
 
         session.commit()
 
 
-def test_process_pending_persists_normalized_vulnerability() -> None:
+def test_process_pending_persists_normalized_vulnerability(
+) -> None:
     source_id = uuid4()
     ingestion_run_id = uuid4()
 
@@ -377,16 +408,18 @@ def test_process_pending_persists_normalized_vulnerability() -> None:
                 raw_payload.processing_status
                 == "processed"
             )
+
             assert (
                 raw_payload.processing_started_at
                 is None
             )
+
             assert (
                 raw_payload.processing_attempts
                 == 1
             )
-            assert raw_payload.error_message is None
 
+            assert raw_payload.error_message is None
             assert vulnerability is not None
             assert vulnerability.cve_id == cve_id
 
@@ -426,7 +459,8 @@ def test_process_pending_persists_normalized_vulnerability() -> None:
         ingestion_engine.dispose()
 
 
-def test_invalid_payload_is_marked_failed_and_redacted() -> None:
+def test_invalid_payload_is_marked_failed_and_redacted(
+) -> None:
     source_id = uuid4()
     ingestion_run_id = uuid4()
 
@@ -541,20 +575,24 @@ def test_invalid_payload_is_marked_failed_and_redacted() -> None:
                 raw_payload.processing_status
                 == "failed"
             )
+
             assert (
                 raw_payload.processing_started_at
                 is None
             )
+
             assert (
                 raw_payload.processing_attempts
                 == 1
             )
+
             assert raw_payload.error_message is not None
 
             assert (
                 "super-secret-value"
                 not in raw_payload.error_message
             )
+
             assert (
                 "[REDACTED]"
                 in raw_payload.error_message
@@ -573,7 +611,8 @@ def test_invalid_payload_is_marked_failed_and_redacted() -> None:
         ingestion_engine.dispose()
 
 
-def test_stale_processing_payloads_are_recovered() -> None:
+def test_stale_processing_payloads_are_recovered(
+) -> None:
     source_id = uuid4()
     ingestion_run_id = uuid4()
 
@@ -688,8 +727,6 @@ def test_stale_processing_payloads_are_recovered() -> None:
             - timedelta(hours=1)
         )
 
-        # Lease expirée, mais le payload peut
-        # encore être repris.
         _force_processing_lease(
             ingestion_session_factory=(
                 ingestion_session_factory
@@ -701,8 +738,6 @@ def test_stale_processing_payloads_are_recovered() -> None:
             processing_attempts=1,
         )
 
-        # Lease expirée avec le nombre maximal
-        # de tentatives déjà atteint.
         _force_processing_lease(
             ingestion_session_factory=(
                 ingestion_session_factory
@@ -734,7 +769,6 @@ def test_stale_processing_payloads_are_recovered() -> None:
 
         assert result.requeued == 1
         assert result.stale_failed == 1
-
         assert result.claimed == 1
         assert result.normalized == 1
         assert result.already_normalized == 0
@@ -776,31 +810,30 @@ def test_stale_processing_payloads_are_recovered() -> None:
                 retry_payload.processing_status
                 == "processed"
             )
+
             assert (
                 retry_payload.processing_started_at
                 is None
             )
 
-            # Première réservation simulée :
-            # attempts=1.
-            # Nouvelle réservation après récupération :
-            # attempts=2.
             assert (
                 retry_payload.processing_attempts
                 == 2
             )
-            assert retry_payload.error_message is None
 
+            assert retry_payload.error_message is None
             assert exhausted_payload is not None
 
             assert (
                 exhausted_payload.processing_status
                 == "failed"
             )
+
             assert (
                 exhausted_payload.processing_started_at
                 is None
             )
+
             assert (
                 exhausted_payload.processing_attempts
                 == 3
@@ -814,9 +847,9 @@ def test_stale_processing_payloads_are_recovered() -> None:
                 )
             )
 
-            # Seul le payload récupérable doit
-            # être normalisé.
-            assert len(normalized_rows) == 1
+            assert len(
+                normalized_rows
+            ) == 1
 
             normalized_row = normalized_rows[0]
 
@@ -824,6 +857,7 @@ def test_stale_processing_payloads_are_recovered() -> None:
                 normalized_row.raw_payload_id
                 == retry_payload_id
             )
+
             assert (
                 normalized_row.cve_id
                 == retry_cve_id
@@ -838,4 +872,3 @@ def test_stale_processing_payloads_are_recovered() -> None:
         )
 
         ingestion_engine.dispose()
-        

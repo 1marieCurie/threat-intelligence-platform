@@ -1,9 +1,12 @@
 from __future__ import annotations
-from dotenv import load_dotenv
 
 import os
-from uuid import UUID, uuid4
 from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pytest
 from sqlalchemy import (
@@ -22,6 +25,7 @@ from infrastructure.persistence.models.ops import (
     SourceModel,
 )
 from infrastructure.persistence.models.raw import (
+    IngestionRunPayloadModel,
     SourcePayloadModel,
 )
 from infrastructure.persistence.sqlalchemy import (
@@ -32,13 +36,14 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
     SqlAlchemyRawPayloadRepository,
 )
 
-load_dotenv()
 
 pytestmark = pytest.mark.integration
 
 
 def _create_owner_session_factory() -> sessionmaker[Session]:
-    database_url = os.environ.get("MIGRATION_DATABASE_URL")
+    database_url = os.environ.get(
+        "MIGRATION_DATABASE_URL"
+    )
 
     if not database_url:
         raise RuntimeError(
@@ -65,109 +70,6 @@ def test_save_and_exists_with_real_postgresql() -> None:
     payload_hash = "a" * 64
     source_code = f"TEST_RAW_{uuid4().hex}"
 
-    owner_session_factory = _create_owner_session_factory()
-
-    ingestion_engine = create_ingestion_engine()
-    ingestion_session_factory = create_session_factory(
-        ingestion_engine
-    )
-
-    # Le compte migrator prend temporairement le rôle owner
-    # pour créer la donnée de référence ops.source.
-    with owner_session_factory() as owner_session:
-        owner_session.execute(
-            text("SET ROLE threat_intel_owner")
-        )
-
-        owner_session.add(
-            SourceModel(
-                id=source_id,
-                code=source_code,
-                name="Raw repository integration test",
-            )
-        )
-
-        owner_session.commit()
-
-    try:
-        with ingestion_session_factory() as session:
-            session.add(
-                IngestionRunModel(
-                    id=ingestion_run_id,
-                    source_id=source_id,
-                    status="running",
-                )
-            )
-            session.flush()
-
-            repository = SqlAlchemyRawPayloadRepository(
-                session=session,
-            )
-
-            payload_id = repository.save(
-                RawPayloadData(
-                    source_id=source_id,
-                    ingestion_run_id=ingestion_run_id,
-                    external_record_id=external_record_id,
-                    payload={
-                        "id": external_record_id,
-                    },
-                    payload_hash=payload_hash,
-                    http_status=200,
-                )
-            )
-
-            assert payload_id is not None
-
-            assert repository.exists_by_identity(
-                source_id=source_id,
-                external_record_id=external_record_id,
-                payload_hash=payload_hash,
-            )
-
-            session.rollback()
-
-        # Le rollback doit supprimer le run et le payload.
-        with ingestion_session_factory() as verification_session:
-            assert (
-                verification_session.get(
-                    SourcePayloadModel,
-                    payload_id,
-                )
-                is None
-            )
-
-            assert (
-                verification_session.get(
-                    IngestionRunModel,
-                    ingestion_run_id,
-                )
-                is None
-            )
-
-    finally:
-        # Nettoyage de la source créée pour le test.
-        with owner_session_factory() as owner_session:
-            owner_session.execute(
-                text("SET ROLE threat_intel_owner")
-            )
-
-            owner_session.execute(
-                delete(SourceModel).where(
-                    SourceModel.id == source_id
-                )
-            )
-
-            owner_session.commit()
-
-
-def test_claim_and_transition_with_real_postgresql() -> None:
-    source_id = uuid4()
-    ingestion_run_id = uuid4()
-    source_code = (
-        f"TEST_RAW_CLAIM_{uuid4().hex}"
-    )
-
     owner_session_factory = (
         _create_owner_session_factory()
     )
@@ -179,16 +81,11 @@ def test_claim_and_transition_with_real_postgresql() -> None:
         )
     )
 
-    retrieved_at = (
-        datetime.now(UTC)
-        - timedelta(minutes=10)
-    )
-
-    payload_ids = []
-
     with owner_session_factory() as owner_session:
         owner_session.execute(
-            text("SET ROLE threat_intel_owner")
+            text(
+                "SET ROLE threat_intel_owner"
+            )
         )
 
         owner_session.add(
@@ -196,7 +93,7 @@ def test_claim_and_transition_with_real_postgresql() -> None:
                 id=source_id,
                 code=source_code,
                 name=(
-                    "Raw payload claiming integration test"
+                    "Raw repository integration test"
                 ),
             )
         )
@@ -204,9 +101,6 @@ def test_claim_and_transition_with_real_postgresql() -> None:
         owner_session.commit()
 
     try:
-        # ---------------------------------------------------------
-        # Arrange: persister trois payloads pending
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             session.add(
                 IngestionRunModel(
@@ -224,9 +118,147 @@ def test_claim_and_transition_with_real_postgresql() -> None:
                 )
             )
 
+            payload_id = repository.save(
+                RawPayloadData(
+                    source_id=source_id,
+                    ingestion_run_id=(
+                        ingestion_run_id
+                    ),
+                    external_record_id=(
+                        external_record_id
+                    ),
+                    payload={
+                        "id": external_record_id,
+                    },
+                    payload_hash=payload_hash,
+                    http_status=200,
+                )
+            )
+
+            assert payload_id is not None
+
+            assert repository.exists_by_identity(
+                source_id=source_id,
+                external_record_id=(
+                    external_record_id
+                ),
+                payload_hash=payload_hash,
+            )
+
+            session.rollback()
+
+        with ingestion_session_factory() as session:
+            assert (
+                session.get(
+                    SourcePayloadModel,
+                    payload_id,
+                )
+                is None
+            )
+
+            assert (
+                session.get(
+                    IngestionRunModel,
+                    ingestion_run_id,
+                )
+                is None
+            )
+
+    finally:
+        with owner_session_factory() as session:
+            session.execute(
+                text(
+                    "SET ROLE threat_intel_owner"
+                )
+            )
+
+            session.execute(
+                delete(
+                    SourceModel
+                ).where(
+                    SourceModel.id
+                    == source_id
+                )
+            )
+
+            session.commit()
+
+
+def test_claim_and_transition_with_real_postgresql() -> None:
+    source_id = uuid4()
+    ingestion_run_id = uuid4()
+
+    source_code = (
+        f"TEST_RAW_CLAIM_{uuid4().hex}"
+    )
+
+    owner_session_factory = (
+        _create_owner_session_factory()
+    )
+
+    ingestion_engine = create_ingestion_engine()
+
+    ingestion_session_factory = (
+        create_session_factory(
+            ingestion_engine
+        )
+    )
+
+    retrieved_at = (
+        datetime.now(UTC)
+        - timedelta(minutes=10)
+    )
+
+    payload_ids: list[UUID] = []
+
+    with owner_session_factory() as session:
+        session.execute(
+            text(
+                "SET ROLE threat_intel_owner"
+            )
+        )
+
+        session.add(
+            SourceModel(
+                id=source_id,
+                code=source_code,
+                name=(
+                    "Raw payload claiming "
+                    "integration test"
+                ),
+            )
+        )
+
+        session.commit()
+
+    try:
+        with ingestion_session_factory() as session:
+            session.add(
+                IngestionRunModel(
+                    id=ingestion_run_id,
+                    source_id=source_id,
+                    status="completed",
+                )
+            )
+
+            session.flush()
+
+            repository = (
+                SqlAlchemyRawPayloadRepository(
+                    session=session,
+                )
+            )
+
             for index in range(3):
                 external_record_id = (
                     f"TEST-{uuid4()}"
+                )
+
+                observed_at = (
+                    retrieved_at
+                    + timedelta(
+                        seconds=index
+                    )
                 )
 
                 payload_id = repository.save(
@@ -238,12 +270,7 @@ def test_claim_and_transition_with_real_postgresql() -> None:
                         external_record_id=(
                             external_record_id
                         ),
-                        retrieved_at=(
-                            retrieved_at
-                            + timedelta(
-                                seconds=index
-                            )
-                        ),
+                        retrieved_at=observed_at,
                         payload={
                             "id": external_record_id,
                             "position": index,
@@ -255,13 +282,22 @@ def test_claim_and_transition_with_real_postgresql() -> None:
                     )
                 )
 
-                payload_ids.append(payload_id)
+                session.add(
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            ingestion_run_id
+                        ),
+                        raw_payload_id=payload_id,
+                        observed_at=observed_at,
+                    )
+                )
+
+                payload_ids.append(
+                    payload_id
+                )
 
             session.commit()
 
-        # ---------------------------------------------------------
-        # Act: réserver les deux plus anciens payloads
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             repository = (
                 SqlAlchemyRawPayloadRepository(
@@ -289,9 +325,6 @@ def test_claim_and_transition_with_real_postgresql() -> None:
 
             session.commit()
 
-        # ---------------------------------------------------------
-        # Act: finaliser un succès et un échec
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             repository = (
                 SqlAlchemyRawPayloadRepository(
@@ -310,20 +343,17 @@ def test_claim_and_transition_with_real_postgresql() -> None:
                 ),
             )
 
-            # Le troisième payload est encore pending.
-            # La transition pending -> processed est interdite.
             assert not repository.mark_processed(
                 payload_id=payload_ids[2],
             )
 
             session.commit()
 
-        # ---------------------------------------------------------
-        # Assert: vérifier l'état réellement persisté
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             statement = (
-                select(SourcePayloadModel)
+                select(
+                    SourcePayloadModel
+                )
                 .where(
                     SourcePayloadModel.source_id
                     == source_id
@@ -337,12 +367,16 @@ def test_claim_and_transition_with_real_postgresql() -> None:
             )
 
             stored_payloads = list(
-                session.execute(statement)
+                session.execute(
+                    statement
+                )
                 .scalars()
                 .all()
             )
 
-            assert len(stored_payloads) == 3
+            assert len(
+                stored_payloads
+            ) == 3
 
             assert [
                 payload.processing_status
@@ -354,54 +388,66 @@ def test_claim_and_transition_with_real_postgresql() -> None:
             ]
 
             assert (
-                stored_payloads[0].error_message
+                stored_payloads[0]
+                .error_message
                 is None
             )
 
             assert (
-                stored_payloads[1].error_message
+                stored_payloads[1]
+                .error_message
                 == "Normalization failed"
             )
 
             assert (
-                stored_payloads[2].error_message
+                stored_payloads[2]
+                .error_message
                 is None
             )
 
     finally:
-        # Nettoyage dans l'ordre des clés étrangères :
-        # payloads -> runs -> source.
-        with owner_session_factory() as owner_session:
-            owner_session.execute(
-                text("SET ROLE threat_intel_owner")
+        with owner_session_factory() as session:
+            session.execute(
+                text(
+                    "SET ROLE threat_intel_owner"
+                )
             )
 
-            owner_session.execute(
-                delete(SourcePayloadModel).where(
+            session.execute(
+                delete(
+                    SourcePayloadModel
+                ).where(
                     SourcePayloadModel.source_id
                     == source_id
                 )
             )
 
-            owner_session.execute(
-                delete(IngestionRunModel).where(
+            session.execute(
+                delete(
+                    IngestionRunModel
+                ).where(
                     IngestionRunModel.source_id
                     == source_id
                 )
             )
 
-            owner_session.execute(
-                delete(SourceModel).where(
-                    SourceModel.id == source_id
+            session.execute(
+                delete(
+                    SourceModel
+                ).where(
+                    SourceModel.id
+                    == source_id
                 )
             )
 
-            owner_session.commit()
-            
-            
-def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
+            session.commit()
+
+
+def test_claim_pending_skips_payloads_locked_by_another_worker(
+) -> None:
     source_id = uuid4()
     ingestion_run_id = uuid4()
+
     source_code = (
         f"TEST_RAW_CONC_{uuid4().hex[:20]}"
     )
@@ -411,6 +457,7 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
     )
 
     ingestion_engine = create_ingestion_engine()
+
     ingestion_session_factory = (
         create_session_factory(
             ingestion_engine
@@ -424,33 +471,33 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
 
     payload_ids: list[UUID] = []
 
-    with owner_session_factory() as owner_session:
-        owner_session.execute(
-            text("SET ROLE threat_intel_owner")
+    with owner_session_factory() as session:
+        session.execute(
+            text(
+                "SET ROLE threat_intel_owner"
+            )
         )
 
-        owner_session.add(
+        session.add(
             SourceModel(
                 id=source_id,
                 code=source_code,
                 name=(
-                    "Raw payload concurrency integration test"
+                    "Raw payload concurrency "
+                    "integration test"
                 ),
             )
         )
 
-        owner_session.commit()
+        session.commit()
 
     try:
-        # ---------------------------------------------------------
-        # Arrange : créer trois payloads en attente
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             session.add(
                 IngestionRunModel(
                     id=ingestion_run_id,
                     source_id=source_id,
-                    status="running",
+                    status="completed",
                 )
             )
 
@@ -467,6 +514,13 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                     f"CONCURRENT-{uuid4()}"
                 )
 
+                observed_at = (
+                    retrieved_at
+                    + timedelta(
+                        seconds=index
+                    )
+                )
+
                 payload_id = repository.save(
                     RawPayloadData(
                         source_id=source_id,
@@ -476,10 +530,7 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                         external_record_id=(
                             external_record_id
                         ),
-                        retrieved_at=(
-                            retrieved_at
-                            + timedelta(seconds=index)
-                        ),
+                        retrieved_at=observed_at,
                         payload={
                             "id": external_record_id,
                             "position": index,
@@ -491,13 +542,22 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                     )
                 )
 
-                payload_ids.append(payload_id)
+                session.add(
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            ingestion_run_id
+                        ),
+                        raw_payload_id=payload_id,
+                        observed_at=observed_at,
+                    )
+                )
+
+                payload_ids.append(
+                    payload_id
+                )
 
             session.commit()
 
-        # ---------------------------------------------------------
-        # Act : deux workers utilisent deux transactions distinctes
-        # ---------------------------------------------------------
         with ingestion_session_factory() as first_session:
             first_repository = (
                 SqlAlchemyRawPayloadRepository(
@@ -512,8 +572,6 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                 )
             )
 
-            # Ne pas commiter : le premier worker conserve
-            # les verrous PostgreSQL sur les deux lignes.
             assert [
                 payload.id
                 for payload in first_claim
@@ -533,12 +591,12 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                     )
                 )
 
-                # SKIP LOCKED ignore les deux lignes réservées
-                # par le premier worker.
                 assert [
                     payload.id
                     for payload in second_claim
-                ] == [payload_ids[2]]
+                ] == [
+                    payload_ids[2]
+                ]
 
                 first_claim_ids = {
                     payload.id
@@ -550,20 +608,22 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
                     for payload in second_claim
                 }
 
-                assert first_claim_ids.isdisjoint(
-                    second_claim_ids
+                assert (
+                    first_claim_ids
+                    .isdisjoint(
+                        second_claim_ids
+                    )
                 )
 
                 second_session.commit()
 
             first_session.commit()
 
-        # ---------------------------------------------------------
-        # Assert : les trois lignes ont été réservées une seule fois
-        # ---------------------------------------------------------
         with ingestion_session_factory() as session:
             statement = (
-                select(SourcePayloadModel)
+                select(
+                    SourcePayloadModel
+                )
                 .where(
                     SourcePayloadModel.source_id
                     == source_id
@@ -577,12 +637,16 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
             )
 
             stored_payloads = list(
-                session.execute(statement)
+                session.execute(
+                    statement
+                )
                 .scalars()
                 .all()
             )
 
-            assert len(stored_payloads) == 3
+            assert len(
+                stored_payloads
+            ) == 3
 
             assert all(
                 payload.processing_status
@@ -591,29 +655,396 @@ def test_claim_pending_skips_payloads_locked_by_another_worker() -> None:
             )
 
     finally:
-        with owner_session_factory() as owner_session:
-            owner_session.execute(
-                text("SET ROLE threat_intel_owner")
+        with owner_session_factory() as session:
+            session.execute(
+                text(
+                    "SET ROLE threat_intel_owner"
+                )
             )
 
-            owner_session.execute(
-                delete(SourcePayloadModel).where(
+            session.execute(
+                delete(
+                    SourcePayloadModel
+                ).where(
                     SourcePayloadModel.source_id
                     == source_id
                 )
             )
 
-            owner_session.execute(
-                delete(IngestionRunModel).where(
+            session.execute(
+                delete(
+                    IngestionRunModel
+                ).where(
                     IngestionRunModel.source_id
                     == source_id
                 )
             )
 
-            owner_session.execute(
-                delete(SourceModel).where(
-                    SourceModel.id == source_id
+            session.execute(
+                delete(
+                    SourceModel
+                ).where(
+                    SourceModel.id
+                    == source_id
                 )
             )
 
-            owner_session.commit()
+            session.commit()
+
+
+def test_claim_pending_requires_completed_observation(
+) -> None:
+    source_id = uuid4()
+    foreign_source_id = uuid4()
+
+    running_run_id = uuid4()
+    failed_run_id = uuid4()
+    completed_run_id = uuid4()
+    failed_creator_run_id = uuid4()
+    completed_reobservation_run_id = uuid4()
+    foreign_completed_run_id = uuid4()
+
+    source_code = (
+        f"TEST_RAW_STATUS_{uuid4().hex[:18]}"
+    )
+
+    foreign_source_code = (
+        f"TEST_RAW_FOREIGN_{uuid4().hex[:17]}"
+    )
+
+    owner_session_factory = (
+        _create_owner_session_factory()
+    )
+
+    ingestion_engine = create_ingestion_engine()
+
+    ingestion_session_factory = (
+        create_session_factory(
+            ingestion_engine
+        )
+    )
+
+    retrieved_at = (
+        datetime.now(UTC)
+        - timedelta(minutes=10)
+    )
+
+    payload_ids: dict[str, UUID] = {}
+
+    with owner_session_factory() as session:
+        session.execute(
+            text(
+                "SET ROLE threat_intel_owner"
+            )
+        )
+
+        session.add_all(
+            [
+                SourceModel(
+                    id=source_id,
+                    code=source_code,
+                    name=(
+                        "Raw payload completed "
+                        "observation test"
+                    ),
+                ),
+                SourceModel(
+                    id=foreign_source_id,
+                    code=foreign_source_code,
+                    name=(
+                        "Foreign source completed "
+                        "observation test"
+                    ),
+                ),
+            ]
+        )
+
+        session.commit()
+
+    try:
+        with ingestion_session_factory() as session:
+            session.add_all(
+                [
+                    IngestionRunModel(
+                        id=running_run_id,
+                        source_id=source_id,
+                        status="running",
+                    ),
+                    IngestionRunModel(
+                        id=failed_run_id,
+                        source_id=source_id,
+                        status="failed",
+                    ),
+                    IngestionRunModel(
+                        id=completed_run_id,
+                        source_id=source_id,
+                        status="completed",
+                    ),
+                    IngestionRunModel(
+                        id=failed_creator_run_id,
+                        source_id=source_id,
+                        status="failed",
+                    ),
+                    IngestionRunModel(
+                        id=(
+                            completed_reobservation_run_id
+                        ),
+                        source_id=source_id,
+                        status="completed",
+                    ),
+                    IngestionRunModel(
+                        id=foreign_completed_run_id,
+                        source_id=foreign_source_id,
+                        status="completed",
+                    ),
+                ]
+            )
+
+            session.flush()
+
+            repository = (
+                SqlAlchemyRawPayloadRepository(
+                    session=session,
+                )
+            )
+
+            payload_definitions = (
+                (
+                    "running_only",
+                    running_run_id,
+                ),
+                (
+                    "failed_only",
+                    failed_run_id,
+                ),
+                (
+                    "completed",
+                    completed_run_id,
+                ),
+                (
+                    "reobserved",
+                    failed_creator_run_id,
+                ),
+                (
+                    "foreign_completed",
+                    failed_run_id,
+                ),
+            )
+
+            for index, (
+                payload_name,
+                creator_run_id,
+            ) in enumerate(
+                payload_definitions
+            ):
+                payload_id = repository.save(
+                    RawPayloadData(
+                        source_id=source_id,
+                        ingestion_run_id=(
+                            creator_run_id
+                        ),
+                        external_record_id=(
+                            f"{payload_name}-"
+                            f"{uuid4()}"
+                        ),
+                        retrieved_at=(
+                            retrieved_at
+                            + timedelta(
+                                seconds=index
+                            )
+                        ),
+                        payload={
+                            "name": payload_name,
+                        },
+                        payload_hash=(
+                            f"{index + 100:064x}"
+                        ),
+                        http_status=200,
+                    )
+                )
+
+                payload_ids[
+                    payload_name
+                ] = payload_id
+
+            session.add_all(
+                [
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            running_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "running_only"
+                            ]
+                        ),
+                    ),
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            failed_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "failed_only"
+                            ]
+                        ),
+                    ),
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            completed_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "completed"
+                            ]
+                        ),
+                    ),
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            failed_creator_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "reobserved"
+                            ]
+                        ),
+                    ),
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            completed_reobservation_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "reobserved"
+                            ]
+                        ),
+                    ),
+                    IngestionRunPayloadModel(
+                        ingestion_run_id=(
+                            foreign_completed_run_id
+                        ),
+                        raw_payload_id=(
+                            payload_ids[
+                                "foreign_completed"
+                            ]
+                        ),
+                    ),
+                ]
+            )
+
+            session.commit()
+
+        with ingestion_session_factory() as session:
+            repository = (
+                SqlAlchemyRawPayloadRepository(
+                    session=session,
+                )
+            )
+
+            claimed_payloads = (
+                repository.claim_pending(
+                    source_id=source_id,
+                    limit=10,
+                )
+            )
+
+            assert [
+                payload.id
+                for payload in claimed_payloads
+            ] == [
+                payload_ids["completed"],
+                payload_ids["reobserved"],
+            ]
+
+            session.commit()
+
+        with ingestion_session_factory() as session:
+            rows = (
+                session.execute(
+                    select(
+                        SourcePayloadModel.id,
+                        (
+                            SourcePayloadModel
+                            .processing_status
+                        ),
+                    )
+                    .where(
+                        SourcePayloadModel.id.in_(
+                            tuple(
+                                payload_ids.values()
+                            )
+                        )
+                    )
+                )
+                .all()
+            )
+
+            statuses = {
+                row.id: row.processing_status
+                for row in rows
+            }
+
+            assert statuses[
+                payload_ids["running_only"]
+            ] == "pending"
+
+            assert statuses[
+                payload_ids["failed_only"]
+            ] == "pending"
+
+            assert statuses[
+                payload_ids["completed"]
+            ] == "processing"
+
+            assert statuses[
+                payload_ids["reobserved"]
+            ] == "processing"
+
+            assert statuses[
+                payload_ids["foreign_completed"]
+            ] == "pending"
+
+    finally:
+        with owner_session_factory() as session:
+            session.execute(
+                text(
+                    "SET ROLE threat_intel_owner"
+                )
+            )
+
+            session.execute(
+                delete(
+                    SourcePayloadModel
+                ).where(
+                    SourcePayloadModel.source_id
+                    == source_id
+                )
+            )
+
+            session.execute(
+                delete(
+                    IngestionRunModel
+                ).where(
+                    IngestionRunModel.source_id.in_(
+                        (
+                            source_id,
+                            foreign_source_id,
+                        )
+                    )
+                )
+            )
+
+            session.execute(
+                delete(
+                    SourceModel
+                ).where(
+                    SourceModel.id.in_(
+                        (
+                            source_id,
+                            foreign_source_id,
+                        )
+                    )
+                )
+            )
+
+            session.commit()
