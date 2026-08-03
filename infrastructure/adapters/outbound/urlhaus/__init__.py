@@ -1,0 +1,3 @@
+"""
+URLhaus outbound ingestion adapters.
+"""
