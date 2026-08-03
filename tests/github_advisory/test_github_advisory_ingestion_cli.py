@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import logging
 from argparse import Namespace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, call, patch
@@ -7,6 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+import infrastructure.cli.github_advisory_ingestion as github_advisory_cli
 from infrastructure.cli.github_advisory_ingestion import (
     MAX_ALLOWED_PAGES,
     _parse_source_id,
@@ -47,6 +51,26 @@ def _find_log_record(
     )
 
 
+def test_env_file_uses_project_root() -> None:
+    expected_project_root = (
+        Path(
+            github_advisory_cli.__file__
+        )
+        .resolve()
+        .parents[2]
+    )
+
+    assert (
+        github_advisory_cli.PROJECT_ROOT
+        == expected_project_root
+    )
+
+    assert (
+        github_advisory_cli.ENV_FILE
+        == expected_project_root / ".env"
+    )
+
+
 def test_parse_source_id_returns_uuid() -> None:
     source_id = uuid4()
 
@@ -58,10 +82,14 @@ def test_parse_source_id_returns_uuid() -> None:
     assert result == source_id
 
 
-def test_parse_source_id_rejects_invalid_value() -> None:
+def test_parse_source_id_rejects_invalid_value(
+) -> None:
     with pytest.raises(
         ValueError,
-        match="source-id must be a valid UUID",
+        match=(
+            "source-id must be "
+            "a valid UUID"
+        ),
     ):
         _parse_source_id(
             "invalid-source-id"
@@ -79,11 +107,17 @@ def test_parse_source_id_rejects_invalid_value() -> None:
 def test_validate_max_pages_accepts_valid_values(
     value: int,
 ) -> None:
-    assert _validate_max_pages(value) == value
+    assert (
+        _validate_max_pages(value)
+        == value
+    )
 
 
 @pytest.mark.parametrize(
-    ("value", "expected_message"),
+    (
+        "value",
+        "expected_message",
+    ),
     [
         (
             0,
@@ -116,7 +150,9 @@ def test_validate_max_pages_rejects_out_of_range_values(
         ValueError,
         match=expected_message,
     ):
-        _validate_max_pages(value)
+        _validate_max_pages(
+            value
+        )
 
 
 @pytest.mark.parametrize(
@@ -134,9 +170,14 @@ def test_validate_max_pages_rejects_non_integer_values(
 ) -> None:
     with pytest.raises(
         TypeError,
-        match="max-pages must be an integer",
+        match=(
+            "max-pages must be "
+            "an integer"
+        ),
     ):
-        _validate_max_pages(value)
+        _validate_max_pages(
+            value
+        )
 
 
 @patch(
@@ -149,15 +190,7 @@ def test_validate_max_pages_rejects_non_integer_values(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_processes_requested_number_of_pages(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
@@ -166,16 +199,13 @@ def test_main_processes_requested_number_of_pages(
 ) -> None:
     source_id = uuid4()
 
-    find_dotenv.return_value = (
-        "C:/project/.env"
-    )
-
     parse_arguments.return_value = Namespace(
         source_id=str(source_id),
         max_pages=3,
     )
 
     job = Mock()
+
     job.run.side_effect = [
         _build_ingestion_result(
             received=100,
@@ -199,21 +229,14 @@ def test_main_processes_requested_number_of_pages(
 
     build_job.return_value = job
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(
+        logging.INFO
+    ):
         exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
-
-    find_dotenv.assert_called_once_with(
-        usecwd=True
-    )
-
-    load_dotenv.assert_called_once_with(
-        dotenv_path="C:/project/.env",
-        override=False,
-    )
 
     configure_logging.assert_called_once_with()
 
@@ -222,6 +245,7 @@ def test_main_processes_requested_number_of_pages(
     )
 
     assert job.run.call_count == 3
+
     assert job.run.call_args_list == [
         call(),
         call(),
@@ -237,6 +261,7 @@ def test_main_processes_requested_number_of_pages(
         "pagination_complete=False"
         in captured.out
     )
+
     assert (
         "stop_reason=max_pages_reached"
         in captured.out
@@ -253,11 +278,14 @@ def test_main_processes_requested_number_of_pages(
     )
 
     assert (
-        started_record.__dict__["source_id"]
+        started_record
+        .__dict__["source_id"]
         == str(source_id)
     )
+
     assert (
-        started_record.__dict__["max_pages"]
+        started_record
+        .__dict__["max_pages"]
         == 3
     )
 
@@ -273,46 +301,46 @@ def test_main_processes_requested_number_of_pages(
         completed_record.levelno
         == logging.WARNING
     )
+
     assert (
-        completed_record.__dict__[
-            "pages_processed"
-        ]
+        completed_record
+        .__dict__["pages_processed"]
         == 3
     )
+
     assert (
-        completed_record.__dict__[
-            "stop_reason"
-        ]
+        completed_record
+        .__dict__["stop_reason"]
         == "max_pages_reached"
     )
+
     assert (
-        completed_record.__dict__[
-            "records_received"
-        ]
+        completed_record
+        .__dict__["records_received"]
         == 250
     )
+
     assert (
-        completed_record.__dict__[
-            "records_persisted"
-        ]
+        completed_record
+        .__dict__["records_persisted"]
         == 230
     )
+
     assert (
-        completed_record.__dict__[
-            "records_skipped"
-        ]
+        completed_record
+        .__dict__["records_skipped"]
         == 20
     )
+
     assert (
-        completed_record.__dict__[
-            "pagination_complete"
-        ]
+        completed_record
+        .__dict__["pagination_complete"]
         is False
     )
+
     assert isinstance(
-        completed_record.__dict__[
-            "duration_seconds"
-        ],
+        completed_record
+        .__dict__["duration_seconds"],
         float,
     )
 
@@ -327,15 +355,7 @@ def test_main_processes_requested_number_of_pages(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_stops_when_pagination_is_complete(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
@@ -344,14 +364,13 @@ def test_main_stops_when_pagination_is_complete(
 ) -> None:
     source_id = uuid4()
 
-    find_dotenv.return_value = ".env"
-
     parse_arguments.return_value = Namespace(
         source_id=str(source_id),
         max_pages=10,
     )
 
     job = Mock()
+
     job.run.side_effect = [
         _build_ingestion_result(
             received=100,
@@ -369,13 +388,27 @@ def test_main_stops_when_pagination_is_complete(
 
     build_job.return_value = job
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(
+        logging.INFO
+    ):
         exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
+
+    configure_logging.assert_called_once_with()
+
+    build_job.assert_called_once_with(
+        source_id=source_id,
+    )
+
     assert job.run.call_count == 2
+
+    assert job.run.call_args_list == [
+        call(),
+        call(),
+    ]
 
     assert "pages=2" in captured.out
     assert "received=125" in captured.out
@@ -386,19 +419,13 @@ def test_main_stops_when_pagination_is_complete(
         "pagination_complete=True"
         in captured.out
     )
+
     assert (
         "stop_reason=pagination_complete"
         in captured.out
     )
 
     assert captured.err == ""
-
-    load_dotenv.assert_called_once_with(
-        dotenv_path=".env",
-        override=False,
-    )
-
-    configure_logging.assert_called_once_with()
 
     completed_record = _find_log_record(
         caplog,
@@ -412,40 +439,40 @@ def test_main_stops_when_pagination_is_complete(
         completed_record.levelno
         == logging.INFO
     )
+
     assert (
-        completed_record.__dict__[
-            "pages_processed"
-        ]
+        completed_record
+        .__dict__["pages_processed"]
         == 2
     )
+
     assert (
-        completed_record.__dict__[
-            "stop_reason"
-        ]
+        completed_record
+        .__dict__["stop_reason"]
         == "pagination_complete"
     )
+
     assert (
-        completed_record.__dict__[
-            "records_received"
-        ]
+        completed_record
+        .__dict__["records_received"]
         == 125
     )
+
     assert (
-        completed_record.__dict__[
-            "records_persisted"
-        ]
+        completed_record
+        .__dict__["records_persisted"]
         == 120
     )
+
     assert (
-        completed_record.__dict__[
-            "records_skipped"
-        ]
+        completed_record
+        .__dict__["records_skipped"]
         == 5
     )
+
     assert (
-        completed_record.__dict__[
-            "pagination_complete"
-        ]
+        completed_record
+        .__dict__["pagination_complete"]
         is True
     )
 
@@ -460,22 +487,12 @@ def test_main_stops_when_pagination_is_complete(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_uses_single_page_by_default(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
 ) -> None:
     source_id = uuid4()
-
-    find_dotenv.return_value = ".env"
 
     parse_arguments.return_value = Namespace(
         source_id=str(source_id),
@@ -483,6 +500,7 @@ def test_main_uses_single_page_by_default(
     )
 
     job = Mock()
+
     job.run.return_value = (
         _build_ingestion_result(
             received=100,
@@ -499,6 +517,11 @@ def test_main_uses_single_page_by_default(
     assert exit_code == 0
 
     configure_logging.assert_called_once_with()
+
+    build_job.assert_called_once_with(
+        source_id=source_id,
+    )
+
     job.run.assert_called_once_with()
 
 
@@ -512,15 +535,7 @@ def test_main_uses_single_page_by_default(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_returns_error_code_when_job_fails(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
@@ -529,16 +544,16 @@ def test_main_returns_error_code_when_job_fails(
 ) -> None:
     source_id = uuid4()
 
-    find_dotenv.return_value = ".env"
-
     parse_arguments.return_value = Namespace(
         source_id=str(source_id),
         max_pages=5,
     )
 
     job = Mock()
+
     job.run.side_effect = RuntimeError(
-        "Authorization: Bearer ghp_secret_value "
+        "Authorization: Bearer "
+        "ghp_secret_value "
         "GITHUB_TOKEN=another_secret "
         "postgresql://app:"
         "db_password@localhost/database"
@@ -546,15 +561,22 @@ def test_main_returns_error_code_when_job_fails(
 
     build_job.return_value = job
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(
+        logging.ERROR
+    ):
         exit_code = main()
 
     captured = capsys.readouterr()
 
     assert exit_code == 1
-    job.run.assert_called_once_with()
 
     configure_logging.assert_called_once_with()
+
+    build_job.assert_called_once_with(
+        source_id=source_id,
+    )
+
+    job.run.assert_called_once_with()
 
     assert captured.out == ""
 
@@ -562,10 +584,12 @@ def test_main_returns_error_code_when_job_fails(
         "ghp_secret_value"
         not in captured.err
     )
+
     assert (
         "another_secret"
         not in captured.err
     )
+
     assert (
         "db_password"
         not in captured.err
@@ -575,10 +599,12 @@ def test_main_returns_error_code_when_job_fails(
         "Authorization: [REDACTED]"
         in captured.err
     )
+
     assert (
         "GITHUB_TOKEN=[REDACTED]"
         in captured.err
     )
+
     assert (
         "postgresql://app:"
         "[REDACTED]@localhost/database"
@@ -602,30 +628,36 @@ def test_main_returns_error_code_when_job_fails(
         failure_record.levelno
         == logging.ERROR
     )
+
     assert (
-        failure_record.__dict__["error_type"]
+        failure_record
+        .__dict__["error_type"]
         == "RuntimeError"
     )
 
     error_message = (
-        failure_record.__dict__[
-            "error_message"
-        ]
+        failure_record
+        .__dict__["error_message"]
     )
 
     assert (
         "ghp_secret_value"
         not in error_message
     )
+
     assert (
         "another_secret"
         not in error_message
     )
+
     assert (
         "db_password"
         not in error_message
     )
+
     assert "[REDACTED]" in error_message
+
+    assert failure_record.exc_info is None
 
 
 @patch(
@@ -638,29 +670,21 @@ def test_main_returns_error_code_when_job_fails(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_rejects_invalid_source_id(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    find_dotenv.return_value = ".env"
-
     parse_arguments.return_value = Namespace(
         source_id="invalid-source-id",
         max_pages=1,
     )
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(
+        logging.ERROR
+    ):
         exit_code = main()
 
     captured = capsys.readouterr()
@@ -668,7 +692,10 @@ def test_main_rejects_invalid_source_id(
     assert exit_code == 1
 
     configure_logging.assert_called_once_with()
+
     build_job.assert_not_called()
+
+    assert captured.out == ""
 
     assert (
         "source-id must be a valid UUID"
@@ -684,9 +711,12 @@ def test_main_rejects_invalid_source_id(
     )
 
     assert (
-        failure_record.__dict__["error_type"]
+        failure_record
+        .__dict__["error_type"]
         == "ValueError"
     )
+
+    assert failure_record.exc_info is None
 
 
 @patch(
@@ -699,29 +729,21 @@ def test_main_rejects_invalid_source_id(
 @patch(
     f"{CLI_MODULE}._parse_arguments"
 )
-@patch(
-    f"{CLI_MODULE}.load_dotenv"
-)
-@patch(
-    f"{CLI_MODULE}.find_dotenv"
-)
 def test_main_rejects_invalid_max_pages(
-    find_dotenv: Mock,
-    load_dotenv: Mock,
     parse_arguments: Mock,
     build_job: Mock,
     configure_logging: Mock,
     capsys: pytest.CaptureFixture[str],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    find_dotenv.return_value = ".env"
-
     parse_arguments.return_value = Namespace(
         source_id=str(uuid4()),
         max_pages=0,
     )
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(
+        logging.ERROR
+    ):
         exit_code = main()
 
     captured = capsys.readouterr()
@@ -729,7 +751,10 @@ def test_main_rejects_invalid_max_pages(
     assert exit_code == 1
 
     configure_logging.assert_called_once_with()
+
     build_job.assert_not_called()
+
+    assert captured.out == ""
 
     assert (
         "max-pages must be greater than "
@@ -746,7 +771,9 @@ def test_main_rejects_invalid_max_pages(
     )
 
     assert (
-        failure_record.__dict__["error_type"]
+        failure_record
+        .__dict__["error_type"]
         == "ValueError"
     )
 
+    assert failure_record.exc_info is None

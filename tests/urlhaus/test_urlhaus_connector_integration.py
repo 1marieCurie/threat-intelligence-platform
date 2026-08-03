@@ -1,26 +1,33 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
 from infrastructure.adapters.outbound.urlhaus_connector import (
     URLhausConnector,
+    URLhausHTTPError,
 )
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.external,
+]
 
 
 def _get_auth_key() -> str:
     """
-    Retrieve the real URLhaus Auth-Key for integration tests.
+    Récupère la clé URLhaus utilisée exclusivement
+    par les tests d'intégration externes.
 
-    The test is skipped rather than failed when the environment
-    variable is not configured.
+    La valeur ne doit jamais être affichée, journalisée
+    ou incluse dans un message de skip.
     """
-    auth_key = os.getenv(
+
+    auth_key = os.environ.get(
         "URLHAUS_AUTH_KEY",
         "",
     ).strip()
@@ -33,47 +40,108 @@ def _get_auth_key() -> str:
     return auth_key
 
 
-def test_integration_fetch_recent_urls() -> None:
+def _call_urlhaus_or_skip(
+    operation: Callable[
+        [],
+        dict[str, Any],
+    ],
+) -> dict[str, Any]:
     """
-    Perform a real request against the URLhaus recent URLs API.
+    Exécute une opération HTTP réelle URLhaus.
+
+    Une erreur HTTP ou réseau entraîne un skip, car elle
+    dépend de l'environnement externe.
+
+    Les erreurs d'authentification, de réponse JSON ou
+    de contrat fonctionnel restent des échecs réels.
     """
-    connector = URLhausConnector(
+
+    try:
+        return operation()
+
+    except URLhausHTTPError:
+        pytest.skip(
+            "URLhaus live API is currently "
+            "unavailable or unreachable."
+        )
+
+
+def _build_connector() -> URLhausConnector:
+    """
+    Construit le connecteur live sans exposer
+    la clé d'authentification.
+    """
+
+    return URLhausConnector(
         auth_key=_get_auth_key(),
         timeout=30,
     )
 
-    result = connector.fetch_recent_urls(limit=5)
 
-    print(
-        "\n[URLHAUS INTEGRATION] Recent URLs"
-    )
-    print(
-        f"Query status : {result.get('query_status')}"
+def _fetch_recent_urls_or_skip(
+    connector: URLhausConnector,
+    *,
+    limit: int,
+) -> dict[str, Any]:
+    return _call_urlhaus_or_skip(
+        lambda: connector.fetch_recent_urls(
+            limit=limit
+        )
     )
 
-    assert isinstance(result, dict)
-    assert result.get("query_status") in {
+
+def test_integration_fetch_recent_urls(
+) -> None:
+    """
+    Effectue une requête réelle sur l'API
+    URLhaus des URLs récentes.
+    """
+
+    connector = _build_connector()
+
+    result = _fetch_recent_urls_or_skip(
+        connector,
+        limit=5,
+    )
+
+    assert isinstance(
+        result,
+        dict,
+    )
+
+    assert result.get(
+        "query_status"
+    ) in {
         "ok",
         "no_results",
     }
 
-    if result["query_status"] == "no_results":
-        print("No recent URLhaus result available.")
+    if (
+        result["query_status"]
+        == "no_results"
+    ):
         return
 
-    urls = result.get("urls")
+    urls = result.get(
+        "urls"
+    )
 
-    assert isinstance(urls, list)
+    assert isinstance(
+        urls,
+        list,
+    )
+
     assert len(urls) <= 5
-
-    print(f"URLs received : {len(urls)}")
 
     if not urls:
         return
 
     first = urls[0]
 
-    assert isinstance(first, dict)
+    assert isinstance(
+        first,
+        dict,
+    )
 
     required_fields = {
         "id",
@@ -89,199 +157,336 @@ def test_integration_fetch_recent_urls() -> None:
         "tags",
     }
 
-    missing_fields = required_fields - first.keys()
+    missing_fields = (
+        required_fields
+        - first.keys()
+    )
 
     assert not missing_fields, (
-        "The first URLhaus record is missing fields: "
+        "The first URLhaus record is "
+        "missing fields: "
         f"{sorted(missing_fields)}"
     )
 
-    assert isinstance(first["id"], (int, str))
-    assert isinstance(first["urlhaus_reference"], str)
-    assert isinstance(first["url"], str)
-    assert isinstance(first["url_status"], str)
-    assert isinstance(first["host"], str)
-    assert isinstance(first["date_added"], str)
-    assert isinstance(first["threat"], str)
-    assert isinstance(first["blacklists"], dict)
-    assert isinstance(first["reporter"], str)
-    assert isinstance(first["tags"], list)
-
-    print(f"First ID      : {first['id']}")
-    print(f"URL status    : {first['url_status']}")
-    print(f"Host          : {first['host']}")
-    print(f"Threat type   : {first['threat']}")
-    print(f"Date added    : {first['date_added']}")
-    print(f"Tags          : {first['tags']}")
-    print(
-        f"Reference     : "
-        f"{first['urlhaus_reference']}"
+    assert isinstance(
+        first["id"],
+        (int, str),
     )
 
-    # Do not print or open the malicious URL itself.
+    assert isinstance(
+        first["urlhaus_reference"],
+        str,
+    )
 
-def test_integration_fetch_url_information_by_id() -> None:
+    assert isinstance(
+        first["url"],
+        str,
+    )
+
+    assert isinstance(
+        first["url_status"],
+        str,
+    )
+
+    assert isinstance(
+        first["host"],
+        str,
+    )
+
+    assert isinstance(
+        first["date_added"],
+        str,
+    )
+
+    assert isinstance(
+        first["threat"],
+        str,
+    )
+
+    assert isinstance(
+        first["blacklists"],
+        dict,
+    )
+
+    assert isinstance(
+        first["reporter"],
+        str,
+    )
+
+    assert isinstance(
+        first["larted"],
+        (bool, str),
+    )
+
+    assert isinstance(
+        first["tags"],
+        list,
+    )
+
+    # Ne jamais afficher ni ouvrir l'URL malveillante.
+    assert first["url"].strip()
+
+
+def test_integration_fetch_url_information_by_id(
+) -> None:
     """
-    Fetch recent URLs, then query the first entry using its
-    URLhaus identifier.
+    Récupère une URL récente puis interroge
+    son identifiant URLhaus.
     """
-    connector = URLhausConnector(
-        auth_key=_get_auth_key(),
-        timeout=30,
+
+    connector = _build_connector()
+
+    recent_result = (
+        _fetch_recent_urls_or_skip(
+            connector,
+            limit=1,
+        )
     )
 
-    recent_result = connector.fetch_recent_urls(
-        limit=1
-    )
-
-    if recent_result.get("query_status") != "ok":
+    if (
+        recent_result.get(
+            "query_status"
+        )
+        != "ok"
+    ):
         pytest.skip(
-            "No recent URLhaus URL available."
+            "No recent URLhaus URL "
+            "is currently available."
         )
 
-    recent_urls = recent_result.get("urls", [])
+    recent_urls = recent_result.get(
+        "urls",
+        [],
+    )
+
+    if not isinstance(
+        recent_urls,
+        list,
+    ):
+        pytest.fail(
+            "URLhaus recent URLs field "
+            "must be a list."
+        )
 
     if not recent_urls:
         pytest.skip(
-            "URLhaus returned an empty URL list."
+            "URLhaus returned an empty "
+            "recent URL list."
         )
 
     recent_entry = recent_urls[0]
-    urlhaus_id = recent_entry["id"]
 
-    details = connector.fetch_url_information_by_id(
-        urlhaus_id
-    )
-
-    print(
-        "\n[URLHAUS INTEGRATION] URL details"
-    )
-    print(f"URLhaus ID    : {urlhaus_id}")
-    print(
-        f"Query status  : "
-        f"{details.get('query_status')}"
-    )
-
-    assert isinstance(details, dict)
-    assert details.get("query_status") == "ok"
-
-    assert str(details.get("id")) == str(
-        urlhaus_id
-    )
-
-    assert isinstance(details.get("url"), str)
     assert isinstance(
-        details.get("urlhaus_reference"),
+        recent_entry,
+        dict,
+    )
+
+    urlhaus_id = recent_entry.get(
+        "id"
+    )
+
+    assert isinstance(
+        urlhaus_id,
+        (int, str),
+    )
+
+    details = _call_urlhaus_or_skip(
+        lambda: (
+            connector
+            .fetch_url_information_by_id(
+                urlhaus_id
+            )
+        )
+    )
+
+    assert isinstance(
+        details,
+        dict,
+    )
+
+    assert (
+        details.get("query_status")
+        == "ok"
+    )
+
+    assert str(
+        details.get("id")
+    ) == str(
+        urlhaus_id
+    )
+
+    assert isinstance(
+        details.get("url"),
         str,
     )
+
+    assert isinstance(
+        details.get(
+            "urlhaus_reference"
+        ),
+        str,
+    )
+
     assert isinstance(
         details.get("url_status"),
         str,
     )
-    assert isinstance(details.get("host"), str)
-    assert isinstance(details.get("threat"), str)
 
-    payloads = details.get("payloads", [])
-
-    assert payloads is None or isinstance(
-        payloads,
-        list,
+    assert isinstance(
+        details.get("host"),
+        str,
     )
 
-    print(
-        f"URL status    : "
-        f"{details.get('url_status')}"
+    assert isinstance(
+        details.get("threat"),
+        str,
     )
-    print(
-        f"Host          : {details.get('host')}"
+
+    payloads = details.get(
+        "payloads",
+        [],
     )
-    print(
-        f"Threat type   : "
-        f"{details.get('threat')}"
-    )
-    print(
-        f"Last online   : "
-        f"{details.get('last_online')}"
-    )
-    print(
-        f"Payload count : "
-        f"{len(payloads or [])}"
+
+    assert (
+        payloads is None
+        or isinstance(
+            payloads,
+            list,
+        )
     )
 
     if payloads:
         first_payload = payloads[0]
 
-        assert isinstance(first_payload, dict)
-
-        print(
-            f"Payload type  : "
-            f"{first_payload.get('file_type')}"
-        )
-        print(
-            f"Signature     : "
-            f"{first_payload.get('signature')}"
-        )
-        print(
-            f"SHA-256 found : "
-            f"{bool(first_payload.get('response_sha256'))}"
+        assert isinstance(
+            first_payload,
+            dict,
         )
 
-def test_integration_fetch_host_information() -> None:
+        response_sha256 = (
+            first_payload.get(
+                "response_sha256"
+            )
+        )
+
+        if response_sha256 is not None:
+            assert isinstance(
+                response_sha256,
+                str,
+            )
+
+            assert len(
+                response_sha256
+            ) == 64
+
+
+def test_integration_fetch_host_information(
+) -> None:
     """
-    Retrieve one recent URL, then query URLhaus using its host.
+    Récupère une URL récente puis interroge
+    URLhaus à partir de son hôte.
     """
-    connector = URLhausConnector(
-        auth_key=_get_auth_key(),
-        timeout=30,
+
+    connector = _build_connector()
+
+    recent_result = (
+        _fetch_recent_urls_or_skip(
+            connector,
+            limit=1,
+        )
     )
 
-    recent_result = connector.fetch_recent_urls(
-        limit=1
-    )
-
-    if recent_result.get("query_status") != "ok":
+    if (
+        recent_result.get(
+            "query_status"
+        )
+        != "ok"
+    ):
         pytest.skip(
-            "No recent URLhaus URL available."
+            "No recent URLhaus URL "
+            "is currently available."
         )
 
-    recent_urls = recent_result.get("urls", [])
+    recent_urls = recent_result.get(
+        "urls",
+        [],
+    )
+
+    if not isinstance(
+        recent_urls,
+        list,
+    ):
+        pytest.fail(
+            "URLhaus recent URLs field "
+            "must be a list."
+        )
 
     if not recent_urls:
         pytest.skip(
-            "URLhaus returned an empty URL list."
+            "URLhaus returned an empty "
+            "recent URL list."
         )
 
-    host = recent_urls[0].get("host")
+    recent_entry = recent_urls[0]
 
-    if not isinstance(host, str) or not host.strip():
+    assert isinstance(
+        recent_entry,
+        dict,
+    )
+
+    host = recent_entry.get(
+        "host"
+    )
+
+    if (
+        not isinstance(host, str)
+        or not host.strip()
+    ):
         pytest.skip(
-            "The recent URLhaus entry has no host."
+            "The recent URLhaus entry "
+            "has no usable host."
         )
 
-    result = connector.fetch_host_information(host)
+    normalized_host = host.strip()
 
-    print(
-        "\n[URLHAUS INTEGRATION] Host lookup"
-    )
-    print(f"Host          : {host}")
-    print(
-        f"Query status  : "
-        f"{result.get('query_status')}"
+    result = _call_urlhaus_or_skip(
+        lambda: (
+            connector
+            .fetch_host_information(
+                normalized_host
+            )
+        )
     )
 
-    assert isinstance(result, dict)
-    assert result.get("query_status") in {
+    assert isinstance(
+        result,
+        dict,
+    )
+
+    assert result.get(
+        "query_status"
+    ) in {
         "ok",
         "no_results",
     }
 
-    if result["query_status"] == "no_results":
+    if (
+        result["query_status"]
+        == "no_results"
+    ):
         return
 
-    assert result.get("host") == host
+    assert (
+        result.get("host")
+        == normalized_host
+    )
 
-    urls = result.get("urls", [])
+    urls = result.get(
+        "urls",
+        [],
+    )
 
-    assert isinstance(urls, list)
-
-    print(f"Related URLs  : {len(urls)}")
+    assert isinstance(
+        urls,
+        list,
+    )

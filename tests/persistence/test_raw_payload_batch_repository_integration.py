@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
+import os
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
 
 load_dotenv(
-    dotenv_path=find_dotenv(usecwd=True),
+    dotenv_path=ENV_FILE,
     override=False,
 )
 
-
-import os
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import (
@@ -19,6 +29,7 @@ from sqlalchemy import (
     select,
     text,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
     Session,
     sessionmaker,
@@ -46,8 +57,10 @@ from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository i
 pytestmark = pytest.mark.integration
 
 
-def _create_owner_session_factory(
-) -> sessionmaker[Session]:
+def _create_owner_resources() -> tuple[
+    Engine,
+    sessionmaker[Session],
+]:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
     )
@@ -62,38 +75,22 @@ def _create_owner_session_factory(
         pool_pre_ping=True,
     )
 
-    return sessionmaker(
+    session_factory = sessionmaker(
         bind=engine,
         class_=Session,
         autoflush=False,
         expire_on_commit=False,
     )
 
+    return engine, session_factory
 
-def test_batch_insert_resolves_new_and_existing_payloads(
+
+def _create_source(
+    *,
+    owner_session_factory: sessionmaker[Session],
+    source_id: UUID,
+    source_code: str,
 ) -> None:
-    source_id = uuid4()
-    first_run_id = uuid4()
-    second_run_id = uuid4()
-
-    source_code = (
-        f"TEST_RAW_BATCH_{uuid4().hex[:16]}"
-    )
-
-    owner_session_factory = (
-        _create_owner_session_factory()
-    )
-
-    ingestion_engine = (
-        create_ingestion_engine()
-    )
-
-    ingestion_session_factory = (
-        create_session_factory(
-            ingestion_engine
-        )
-    )
-
     with owner_session_factory() as session:
         session.execute(
             text(
@@ -114,8 +111,89 @@ def test_batch_insert_resolves_new_and_existing_payloads(
 
         session.commit()
 
+
+def _delete_test_data(
+    *,
+    owner_session_factory: sessionmaker[Session],
+    source_id: UUID,
+) -> None:
+    with owner_session_factory() as session:
+        session.execute(
+            text(
+                "SET ROLE threat_intel_owner"
+            )
+        )
+
+        session.execute(
+            delete(
+                SourcePayloadModel
+            ).where(
+                SourcePayloadModel.source_id
+                == source_id
+            )
+        )
+
+        session.execute(
+            delete(
+                IngestionRunModel
+            ).where(
+                IngestionRunModel.source_id
+                == source_id
+            )
+        )
+
+        session.execute(
+            delete(
+                SourceModel
+            ).where(
+                SourceModel.id
+                == source_id
+            )
+        )
+
+        session.commit()
+
+
+def test_batch_insert_resolves_new_and_existing_payloads(
+) -> None:
+    source_id = uuid4()
+    first_run_id = uuid4()
+    second_run_id = uuid4()
+
+    source_code = (
+        "TEST_RAW_BATCH_"
+        f"{uuid4().hex[:16]}"
+    )
+
+    owner_engine, owner_session_factory = (
+        _create_owner_resources()
+    )
+
+    ingestion_engine: Engine | None = None
+
     try:
-        with ingestion_session_factory() as session:
+        ingestion_engine = (
+            create_ingestion_engine()
+        )
+
+        ingestion_session_factory = (
+            create_session_factory(
+                ingestion_engine
+            )
+        )
+
+        _create_source(
+            owner_session_factory=(
+                owner_session_factory
+            ),
+            source_id=source_id,
+            source_code=source_code,
+        )
+
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             session.add_all(
                 [
                     IngestionRunModel(
@@ -143,7 +221,8 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 payload={
                     "phish_id": 1001,
                     "url": (
-                        "https://one.example.invalid"
+                        "https://one."
+                        "example.invalid"
                     ),
                 },
                 payload_hash="a" * 64,
@@ -157,14 +236,18 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 payload={
                     "phish_id": 1002,
                     "url": (
-                        "https://two.example.invalid"
+                        "https://two."
+                        "example.invalid"
                     ),
                 },
                 payload_hash="b" * 64,
             ),
         ]
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             repository = (
                 SqlAlchemyRawPayloadRepository(
                     session=session
@@ -221,7 +304,8 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 payload={
                     "phish_id": 1001,
                     "url": (
-                        "https://one.example.invalid"
+                        "https://one."
+                        "example.invalid"
                     ),
                 },
                 payload_hash="a" * 64,
@@ -235,7 +319,8 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 payload={
                     "phish_id": 1002,
                     "url": (
-                        "https://two.example.invalid"
+                        "https://two."
+                        "example.invalid"
                     ),
                 },
                 payload_hash="b" * 64,
@@ -249,14 +334,18 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 payload={
                     "phish_id": 1001,
                     "url": (
-                        "https://changed.example.invalid"
+                        "https://changed."
+                        "example.invalid"
                     ),
                 },
                 payload_hash="c" * 64,
             ),
         ]
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             repository = (
                 SqlAlchemyRawPayloadRepository(
                     session=session
@@ -338,7 +427,10 @@ def test_batch_insert_resolves_new_and_existing_payloads(
             ]
         )
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             stored_count = (
                 session.execute(
                     select(
@@ -355,41 +447,18 @@ def test_batch_insert_resolves_new_and_existing_payloads(
                 .scalar_one()
             )
 
-            assert stored_count == 3
+        assert stored_count == 3
 
     finally:
-        with owner_session_factory() as session:
-            session.execute(
-                text(
-                    "SET ROLE threat_intel_owner"
-                )
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
             )
+        finally:
+            if ingestion_engine is not None:
+                ingestion_engine.dispose()
 
-            session.execute(
-                delete(
-                    SourcePayloadModel
-                ).where(
-                    SourcePayloadModel.source_id
-                    == source_id
-                )
-            )
-
-            session.execute(
-                delete(
-                    IngestionRunModel
-                ).where(
-                    IngestionRunModel.source_id
-                    == source_id
-                )
-            )
-
-            session.execute(
-                delete(
-                    SourceModel
-                ).where(
-                    SourceModel.id
-                    == source_id
-                )
-            )
-
-            session.commit()
+            owner_engine.dispose()

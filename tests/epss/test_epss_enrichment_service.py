@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from datetime import date
 from types import TracebackType
 from typing import Any
-
-from datetime import date
 from unittest.mock import Mock
 
 import pytest
@@ -23,8 +23,8 @@ class FakeEPSSRepository:
     """
     Repository EPSS déterministe sans accès PostgreSQL.
 
-    Le résultat reste typé comme object afin de pouvoir tester
-    les réponses invalides provenant d'un adapter défectueux.
+    Le résultat reste volontairement typé comme object
+    afin de simuler un adaptateur défectueux.
     """
 
     def __init__(
@@ -40,7 +40,10 @@ class FakeEPSSRepository:
         )
 
         self.error = error
-        self.calls: list[list[str]] = []
+
+        self.calls: list[
+            list[str]
+        ] = []
 
     def find_many_by_cve_ids(
         self,
@@ -55,23 +58,23 @@ class FakeEPSSRepository:
 
         return self.result
 
+
 class FakeUnitOfWork:
     """
-    Unit of Work de test conforme au protocole applicatif.
+    Unit of Work déterministe utilisé par les tests.
 
-    Les repositories non concernés par ces tests sont représentés
-    par des mocks génériques. Seul epss_scores possède un
-    comportement fonctionnel.
+    Seul epss_scores fournit un comportement réel.
+    Les autres repositories sont des mocks car ils ne
+    participent pas au cas d'usage testé.
     """
 
     def __init__(
         self,
         repository: FakeEPSSRepository,
     ) -> None:
-        # Repositories imposés par UnitOfWork mais non utilisés
-        # par les tests d'enrichissement EPSS.
         self.ingestion_runs: Any = Mock()
         self.raw_payloads: Any = Mock()
+        self.ingestion_run_payloads: Any = Mock()
         self.sync_states: Any = Mock()
 
         self.cisa_kev_vulnerabilities: Any = (
@@ -88,7 +91,6 @@ class FakeUnitOfWork:
             Mock()
         )
 
-        # Repository réellement utilisé par le service testé.
         self.epss_scores: Any = repository
 
         self.enter_count = 0
@@ -107,6 +109,7 @@ class FakeUnitOfWork:
     ) -> FakeUnitOfWork:
         self.enter_count += 1
         self.exited = False
+        self.exit_exception_type = None
 
         return self
 
@@ -116,6 +119,9 @@ class FakeUnitOfWork:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        del exc_value
+        del traceback
+
         self.exit_count += 1
         self.exited = True
         self.exit_exception_type = exc_type
@@ -168,7 +174,7 @@ def _build_service(
     )
 
     service = EPSSEnrichmentService(
-        unit_of_work=unit_of_work,
+        unit_of_work=unit_of_work,  # type: ignore[arg-type]
         max_cve_ids=max_cve_ids,
     )
 
@@ -203,16 +209,19 @@ def test_constructor_rejects_invalid_limit_type(
     invalid_limit: object,
 ) -> None:
     repository = FakeEPSSRepository()
+
     unit_of_work = FakeUnitOfWork(
         repository
     )
 
     with pytest.raises(
         TypeError,
-        match="max_cve_ids must be an integer",
+        match=(
+            "max_cve_ids must be an integer"
+        ),
     ):
         EPSSEnrichmentService(
-            unit_of_work=unit_of_work,
+            unit_of_work=unit_of_work,  # type: ignore[arg-type]
             max_cve_ids=invalid_limit,  # type: ignore[arg-type]
         )
 
@@ -228,6 +237,7 @@ def test_constructor_rejects_non_positive_limit(
     invalid_limit: int,
 ) -> None:
     repository = FakeEPSSRepository()
+
     unit_of_work = FakeUnitOfWork(
         repository
     )
@@ -240,7 +250,7 @@ def test_constructor_rejects_non_positive_limit(
         ),
     ):
         EPSSEnrichmentService(
-            unit_of_work=unit_of_work,
+            unit_of_work=unit_of_work,  # type: ignore[arg-type]
             max_cve_ids=invalid_limit,
         )
 
@@ -261,10 +271,12 @@ def test_fetch_returns_empty_without_transaction(
     )
 
     assert result == {}
-
     assert repository.calls == []
+
     assert unit_of_work.enter_count == 0
     assert unit_of_work.exit_count == 0
+    assert unit_of_work.commit_count == 0
+    assert unit_of_work.rollback_count == 0
 
 
 def test_fetch_normalizes_and_deduplicates_cves(
@@ -300,7 +312,15 @@ def test_fetch_normalizes_and_deduplicates_cves(
 
     assert unit_of_work.enter_count == 1
     assert unit_of_work.exit_count == 1
+    assert unit_of_work.exited is True
+
+    assert (
+        unit_of_work.exit_exception_type
+        is None
+    )
+
     assert unit_of_work.commit_count == 0
+    assert unit_of_work.rollback_count == 0
 
 
 def test_fetch_preserves_requested_order(
@@ -313,15 +333,17 @@ def test_fetch_preserves_requested_order(
         score=0.82,
     )
 
-    service, _, _ = _build_service(
-        repository_result={
-            "CVE-2024-3094": (
-                second_snapshot
-            ),
-            "CVE-2021-44228": (
-                first_snapshot
-            ),
-        },
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2024-3094": (
+                    second_snapshot
+                ),
+                "CVE-2021-44228": (
+                    first_snapshot
+                ),
+            },
+        )
     )
 
     result = service.fetch_epss_by_cve_ids(
@@ -334,6 +356,13 @@ def test_fetch_preserves_requested_order(
     assert list(result) == [
         "CVE-2021-44228",
         "CVE-2024-3094",
+    ]
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+            "CVE-2024-3094",
+        ]
     ]
 
 
@@ -370,7 +399,7 @@ def test_fetch_omits_missing_cves(
 
 def test_fetch_rejects_string_collection(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -385,12 +414,13 @@ def test_fetch_rejects_string_collection(
             "CVE-2021-44228"  # type: ignore[arg-type]
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
 def test_fetch_rejects_non_iterable_collection(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -402,12 +432,13 @@ def test_fetch_rejects_non_iterable_collection(
             123  # type: ignore[arg-type]
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
 def test_fetch_enforces_configured_limit(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service(
             max_cve_ids=1,
         )
@@ -427,12 +458,13 @@ def test_fetch_enforces_configured_limit(
             ]
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
 def test_fetch_rejects_historical_date_before_transaction(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -450,12 +482,13 @@ def test_fetch_rejects_historical_date_before_transaction(
             date="2026-07-29",
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
 def test_fetch_rejects_non_mapping_repository_result(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service(
             repository_result=[
                 _snapshot(),
@@ -476,7 +509,20 @@ def test_fetch_rejects_non_mapping_repository_result(
             ]
         )
 
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
+    ]
+
     assert unit_of_work.exited is True
+
+    # La validation du résultat est volontairement
+    # effectuée après la fermeture de la transaction.
+    assert (
+        unit_of_work.exit_exception_type
+        is None
+    )
 
 
 def test_fetch_rejects_unexpected_repository_cve(
@@ -503,6 +549,11 @@ def test_fetch_rejects_unexpected_repository_cve(
         )
 
     assert unit_of_work.exited is True
+
+    assert (
+        unit_of_work.exit_exception_type
+        is None
+    )
 
 
 def test_fetch_rejects_invalid_repository_value(
@@ -532,6 +583,11 @@ def test_fetch_rejects_invalid_repository_value(
 
     assert unit_of_work.exited is True
 
+    assert (
+        unit_of_work.exit_exception_type
+        is None
+    )
+
 
 def test_repository_failure_closes_transaction(
 ) -> None:
@@ -539,7 +595,7 @@ def test_repository_failure_closes_transaction(
         "PostgreSQL read failure"
     )
 
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service(
             repository_error=expected_error,
         )
@@ -556,6 +612,12 @@ def test_repository_failure_closes_transaction(
         )
 
     assert raised_error.value is expected_error
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
+    ]
 
     assert unit_of_work.enter_count == 1
     assert unit_of_work.exit_count == 1
@@ -581,7 +643,7 @@ def test_enriches_single_threat_from_local_snapshot(
         ),
     )
 
-    service, _, repository = (
+    service, unit_of_work, repository = (
         _build_service(
             repository_result={
                 "CVE-2021-44228": snapshot,
@@ -631,6 +693,9 @@ def test_enriches_single_threat_from_local_snapshot(
             "CVE-2021-44228",
         ]
     ]
+
+    assert unit_of_work.exited is True
+    assert unit_of_work.commit_count == 0
 
 
 def test_duplicate_cves_are_loaded_once_and_all_threats_enriched(
@@ -701,10 +766,12 @@ def test_non_cve_threat_is_preserved_without_enrichment(
 ) -> None:
     snapshot = _snapshot()
 
-    service, _, _ = _build_service(
-        repository_result={
-            "CVE-2021-44228": snapshot,
-        },
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
     )
 
     non_cve_threat = Threat(
@@ -723,9 +790,13 @@ def test_non_cve_threat_is_preserved_without_enrichment(
     )
 
     assert non_cve_threat.epss_score is None
-    assert non_cve_threat.epss_percentile is None
-    assert non_cve_threat.epss_date is None
 
+    assert (
+        non_cve_threat.epss_percentile
+        is None
+    )
+
+    assert non_cve_threat.epss_date is None
     assert cve_threat.epss_score == 0.99999
 
     assert (
@@ -734,6 +805,12 @@ def test_non_cve_threat_is_preserved_without_enrichment(
         ]
         == 1
     )
+
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+        ]
+    ]
 
 
 def test_external_cve_identifier_is_supported(
@@ -785,10 +862,12 @@ def test_missing_cve_is_reported_in_metadata(
 ) -> None:
     snapshot = _snapshot()
 
-    service, _, _ = _build_service(
-        repository_result={
-            "CVE-2021-44228": snapshot,
-        },
+    service, _, repository = (
+        _build_service(
+            repository_result={
+                "CVE-2021-44228": snapshot,
+            },
+        )
     )
 
     known_threat = Threat(
@@ -832,6 +911,13 @@ def test_missing_cve_is_reported_in_metadata(
         ]
     )
 
+    assert repository.calls == [
+        [
+            "CVE-2021-44228",
+            "CVE-2099-0001",
+        ]
+    ]
+
 
 def test_empty_threat_list_skips_transaction(
 ) -> None:
@@ -858,11 +944,12 @@ def test_empty_threat_list_skips_transaction(
 
     assert repository.calls == []
     assert unit_of_work.enter_count == 0
+    assert unit_of_work.exit_count == 0
 
 
 def test_enrich_threats_rejects_non_list(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -878,12 +965,13 @@ def test_enrich_threats_rejects_non_list(
             )
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
 def test_enrich_threats_rejects_invalid_element(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -903,6 +991,7 @@ def test_enrich_threats_rejects_invalid_element(
             ]
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0
 
 
@@ -959,7 +1048,7 @@ def test_transaction_closes_before_threat_mutation(
     def guarded_apply(
         *,
         threats: list[Threat],
-        epss_lookup: dict[
+        epss_lookup: Mapping[
             str,
             EPSSSnapshot,
         ],
@@ -987,98 +1076,9 @@ def test_transaction_closes_before_threat_mutation(
     assert unit_of_work.commit_count == 0
 
 
-def test_enriches_correlation_result(
-) -> None:
-    snapshot = _snapshot()
-
-    service, _, repository = (
-        _build_service(
-            repository_result={
-                "CVE-2021-44228": snapshot,
-            },
-        )
-    )
-
-    nvd_threat = Threat(
-        id="CVE-2021-44228",
-        source="NVD",
-    )
-
-    cisa_threat = Threat(
-        id="CVE-2021-44228",
-        source="CISA",
-    )
-
-    first_group = Mock()
-    first_group.threats = [
-        nvd_threat,
-    ]
-
-    second_group = Mock()
-    second_group.threats = [
-        cisa_threat,
-    ]
-
-    correlation_result = Mock()
-
-    correlation_result.all_groups.return_value = [
-        first_group,
-        second_group,
-    ]
-
-    result = (
-        service.enrich_correlation_result(
-            correlation_result
-        )
-    )
-
-    assert (
-        result.metadata[
-            "requested_cves"
-        ]
-        == 1
-    )
-
-    assert (
-        result.metadata[
-            "enriched_threats"
-        ]
-        == 2
-    )
-
-    assert nvd_threat.epss_score == 0.99999
-    assert cisa_threat.epss_score == 0.99999
-
-    assert repository.calls == [
-        [
-            "CVE-2021-44228",
-        ]
-    ]
-
-
-def test_enrich_correlation_result_rejects_none(
-) -> None:
-    service, unit_of_work, _ = (
-        _build_service()
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "correlation_result "
-            "must not be None"
-        ),
-    ):
-        service.enrich_correlation_result(
-            None  # type: ignore[arg-type]
-        )
-
-    assert unit_of_work.enter_count == 0
-
-
 def test_enrich_threats_rejects_historical_date(
 ) -> None:
-    service, unit_of_work, _ = (
+    service, unit_of_work, repository = (
         _build_service()
     )
 
@@ -1098,4 +1098,5 @@ def test_enrich_threats_rejects_historical_date(
             date="2026-07-29",
         )
 
+    assert repository.calls == []
     assert unit_of_work.enter_count == 0

@@ -4,13 +4,29 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from time import perf_counter
 from uuid import UUID
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 
-from application.security.sensitive_data_redactor import (
-    redact_sensitive_data,
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
+
+from application.security.operational_error_sanitizer import (
+    build_sanitized_error_summary,
 )
 from infrastructure.bootstrap.cisa_kev_normalization import (
     build_cisa_kev_normalization_job,
@@ -22,6 +38,8 @@ from infrastructure.logging.configuration import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_ERROR_SUMMARY_LENGTH = 500
+
 
 def _parse_arguments(
     argv: Sequence[str] | None = None,
@@ -29,8 +47,8 @@ def _parse_arguments(
     """
     Analyse les arguments de la commande.
 
-    argv est injectable pour faciliter les tests unitaires.
-    Lorsque argv vaut None, argparse utilise sys.argv.
+    argv est injectable afin de permettre les tests
+    sans modifier sys.argv.
     """
 
     parser = argparse.ArgumentParser(
@@ -46,19 +64,27 @@ def _parse_arguments(
         help="UUID of the CISA KEV source.",
     )
 
-    return parser.parse_args(argv)
+    return parser.parse_args(
+        argv
+    )
 
 
 def _parse_source_id(
     value: str,
 ) -> UUID:
     """
-    Convertit l'identifiant de source reçu par la CLI en UUID.
+    Convertit l'identifiant de source en UUID.
     """
 
     try:
-        return UUID(value)
-    except (TypeError, ValueError) as error:
+        return UUID(
+            value
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
         raise ValueError(
             "source-id must be a valid UUID"
         ) from error
@@ -73,29 +99,26 @@ def main(
     Codes de sortie :
 
     - 0 : exécution réussie ;
-    - 1 : erreur de configuration, de persistance
-          ou de traitement ;
-    - 2 : arguments CLI invalides, gérés par argparse.
+    - 1 : erreur de configuration, persistance
+          ou traitement ;
+    - 2 : arguments invalides gérés par argparse.
     """
 
+    configure_logging()
+
     try:
-        load_dotenv(
-            dotenv_path=find_dotenv(
-                usecwd=True
-            ),
-            override=False,
+        arguments = _parse_arguments(
+            argv
         )
-
-        configure_logging()
-
-        arguments = _parse_arguments(argv)
 
         source_id = _parse_source_id(
             arguments.source_id
         )
 
-        job = build_cisa_kev_normalization_job(
-            source_id=source_id,
+        job = (
+            build_cisa_kev_normalization_job(
+                source_id=source_id,
+            )
         )
 
         started_at = perf_counter()
@@ -113,10 +136,14 @@ def main(
                 "execution completed"
             ),
             extra={
-                "source_id": str(source_id),
+                "source_id": str(
+                    source_id
+                ),
                 "batches": result.batches,
                 "claimed": result.claimed,
-                "normalized": result.normalized,
+                "normalized": (
+                    result.normalized
+                ),
                 "already_normalized": (
                     result.already_normalized
                 ),
@@ -149,19 +176,12 @@ def main(
         return 0
 
     except Exception as error:
-        error_type = type(error).__name__
-        error_message = str(error).strip()
-
-        raw_summary = (
-            f"{error_type}: {error_message}"
-            if error_message
-            else error_type
-        )
-
         sanitized_summary = (
-            redact_sensitive_data(
-                raw_summary,
-                max_length=500,
+            build_sanitized_error_summary(
+                error,
+                max_length=(
+                    _MAX_ERROR_SUMMARY_LENGTH
+                ),
             )
         )
 
@@ -171,7 +191,9 @@ def main(
                 "execution failed"
             ),
             extra={
-                "error_type": error_type,
+                "error_type": (
+                    type(error).__name__
+                ),
                 "error_summary": (
                     sanitized_summary
                 ),
@@ -188,4 +210,6 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(
+        main()
+    )

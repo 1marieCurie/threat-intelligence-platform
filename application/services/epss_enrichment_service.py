@@ -10,9 +10,6 @@ from application.models.epss_snapshot import (
 from application.ports.outbound.unit_of_work import (
     UnitOfWork,
 )
-from application.services.threat_correlation_service import (
-    ThreatCorrelationResult,
-)
 from domain.threat import Threat
 
 
@@ -24,7 +21,8 @@ _CVE_PATTERN = re.compile(
 @dataclass(slots=True)
 class EPSSEnrichmentResult:
     """
-    Résultat de l'enrichissement local de menaces avec EPSS.
+    Résultat de l'enrichissement local
+    d'une liste de menaces avec EPSS.
     """
 
     threats: list[Threat] = field(
@@ -38,17 +36,22 @@ class EPSSEnrichmentResult:
 
 class EPSSEnrichmentService:
     """
-    Enrichit des objets Threat depuis les scores EPSS locaux.
+    Enrichit des objets Threat avec les scores
+    EPSS persistés localement.
 
     Ce service ne contacte jamais directement FIRST.
 
-    Flux :
+    Flux actuel :
 
     Threat
-        -> extraction et déduplication des CVE
+        -> extraction des identifiants CVE
         -> lecture groupée depuis PostgreSQL
-        -> fermeture immédiate de la transaction
+        -> fermeture de la transaction
         -> application des scores aux objets Threat
+
+    Ce service est transitoire : la future couche
+    canonique devra consommer directement le lookup
+    EPSS sans dépendre du modèle historique Threat.
     """
 
     DEFAULT_MAX_CVE_IDS = 50_000
@@ -78,14 +81,17 @@ class EPSSEnrichmentService:
         date: str | None = None,
     ) -> dict[str, EPSSSnapshot]:
         """
-        Relit les derniers scores EPSS persistés pour des CVE.
+        Relit les derniers scores EPSS persistés
+        pour une collection d'identifiants CVE.
 
-        Une seule requête SQL groupée est utilisée.
+        Une seule lecture groupée est effectuée.
 
-        La table normalized.epss_score conserve actuellement
-        uniquement le dernier snapshot connu par CVE. Une date
-        historique ne peut donc pas être honorée localement.
+        La table normalized.epss_score conserve
+        actuellement uniquement le dernier snapshot
+        connu par CVE. Une date historique ne peut
+        donc pas être honorée localement.
         """
+
         self._reject_historical_date(
             date
         )
@@ -108,8 +114,8 @@ class EPSSEnrichmentService:
                 f"limit of {self._max_cve_ids}"
             )
 
-        # La transaction ne contient que la lecture SQL.
-        # La mutation des objets Threat est effectuée après
+        # La transaction reste limitée à la lecture SQL.
+        # Toute mutation métier est réalisée après
         # la fermeture de la session.
         with self._unit_of_work as unit_of_work:
             snapshots = (
@@ -134,19 +140,28 @@ class EPSSEnrichmentService:
         """
         Enrichit localement une liste de menaces.
 
-        Les menaces sans CVE sont conservées telles quelles.
+        Les menaces sans identifiant CVE sont
+        conservées sans modification.
         """
-        if not isinstance(threats, list):
+
+        if not isinstance(
+            threats,
+            list,
+        ):
             raise TypeError(
                 "threats must be a list"
             )
 
         if any(
-            not isinstance(threat, Threat)
+            not isinstance(
+                threat,
+                Threat,
+            )
             for threat in threats
         ):
             raise TypeError(
-                "threats must contain only Threat objects"
+                "threats must contain only "
+                "Threat objects"
             )
 
         self._reject_historical_date(
@@ -154,7 +169,8 @@ class EPSSEnrichmentService:
         )
 
         cve_ids = (
-            self._extract_unique_cve_ids_from_threats(
+            self
+            ._extract_unique_cve_ids_from_threats(
                 threats
             )
         )
@@ -215,38 +231,6 @@ class EPSSEnrichmentService:
                     non_cve_threats
                 ),
             ),
-        )
-
-    def enrich_correlation_result(
-        self,
-        correlation_result: (
-            ThreatCorrelationResult
-        ),
-        date: str | None = None,
-    ) -> EPSSEnrichmentResult:
-        """
-        Enrichit toutes les menaces d'un résultat corrélé.
-        """
-        if correlation_result is None:
-            raise ValueError(
-                "correlation_result must not be None"
-            )
-
-        self._reject_historical_date(
-            date
-        )
-
-        threats: list[Threat] = []
-
-        for group in (
-            correlation_result.all_groups()
-        ):
-            threats.extend(
-                group.threats
-            )
-
-        return self.enrich_threats(
-            threats
         )
 
     @staticmethod
@@ -331,7 +315,7 @@ class EPSSEnrichmentService:
         return self._normalize_cve_ids(
             candidates
         )
-        
+
     def _apply_epss_to_threats(
         self,
         *,
@@ -344,7 +328,7 @@ class EPSSEnrichmentService:
         enriched_count = 0
 
         for threat in threats:
-            snapshot = None
+            snapshot: EPSSSnapshot | None = None
 
             for cve_id in (
                 self._get_candidate_cve_ids(
@@ -426,7 +410,9 @@ class EPSSEnrichmentService:
                 continue
 
             normalized_cve_id = (
-                cve_id.strip().upper()
+                cve_id
+                .strip()
+                .upper()
             )
 
             if not _CVE_PATTERN.fullmatch(

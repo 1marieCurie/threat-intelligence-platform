@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import logging
 from argparse import Namespace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
+from infrastructure.cli import (
+    github_advisory_normalization
+    as github_advisory_normalization_cli,
+)
 from infrastructure.cli.github_advisory_normalization import (
     _parse_arguments,
     _parse_source_id,
@@ -41,6 +46,29 @@ def _build_job_result() -> SimpleNamespace:
         failed=5,
         requeued=2,
         stale_failed=1,
+    )
+
+
+def test_env_file_uses_project_root() -> None:
+    expected_project_root = (
+        Path(
+            github_advisory_normalization_cli
+            .__file__
+        )
+        .resolve()
+        .parents[2]
+    )
+
+    assert (
+        github_advisory_normalization_cli
+        .PROJECT_ROOT
+        == expected_project_root
+    )
+
+    assert (
+        github_advisory_normalization_cli
+        .ENV_FILE
+        == expected_project_root / ".env"
     )
 
 
@@ -111,17 +139,12 @@ def test_main_runs_normalization_and_prints_summary(
 
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value="C:/project/.env",
-        ) as find_dotenv,
-        patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ) as load_dotenv,
-        patch(
-            f"{CLI_MODULE}.configure_logging",
+            f"{CLI_MODULE}."
+            "configure_logging",
         ) as configure_logging,
         patch(
-            f"{CLI_MODULE}._parse_arguments",
+            f"{CLI_MODULE}."
+            "_parse_arguments",
             return_value=Namespace(
                 source_id=str(source_id),
             ),
@@ -147,15 +170,7 @@ def test_main_runs_normalization_and_prints_summary(
     captured = capsys.readouterr()
 
     assert exit_code == 0
-
-    find_dotenv.assert_called_once_with(
-        usecwd=True
-    )
-
-    load_dotenv.assert_called_once_with(
-        dotenv_path="C:/project/.env",
-        override=False,
-    )
+    assert captured.err == ""
 
     configure_logging.assert_called_once_with()
 
@@ -191,8 +206,6 @@ def test_main_runs_normalization_and_prints_summary(
         in captured.out
     )
 
-    assert captured.err == ""
-
     completed_record = _find_log_record(
         caplog,
         (
@@ -206,6 +219,13 @@ def test_main_runs_normalization_and_prints_summary(
             "source_id"
         ]
         == str(source_id)
+    )
+
+    assert (
+        completed_record.__dict__[
+            "batches"
+        ]
+        == 12
     )
 
     assert (
@@ -224,9 +244,30 @@ def test_main_runs_normalization_and_prints_summary(
 
     assert (
         completed_record.__dict__[
+            "already_normalized"
+        ]
+        == 5
+    )
+
+    assert (
+        completed_record.__dict__[
             "failed"
         ]
         == 5
+    )
+
+    assert (
+        completed_record.__dict__[
+            "requeued"
+        ]
+        == 2
+    )
+
+    assert (
+        completed_record.__dict__[
+            "stale_failed"
+        ]
+        == 1
     )
 
     assert (
@@ -236,6 +277,8 @@ def test_main_runs_normalization_and_prints_summary(
         == 2.345
     )
 
+    assert completed_record.exc_info is None
+
 
 def test_main_returns_error_for_invalid_source_id(
     capsys: pytest.CaptureFixture[str],
@@ -243,21 +286,16 @@ def test_main_returns_error_for_invalid_source_id(
 ) -> None:
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value=".env",
-        ),
+            f"{CLI_MODULE}."
+            "configure_logging",
+        ) as configure_logging,
         patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ),
-        patch(
-            f"{CLI_MODULE}.configure_logging",
-        ),
-        patch(
-            f"{CLI_MODULE}._parse_arguments",
+            f"{CLI_MODULE}."
+            "_parse_arguments",
             return_value=Namespace(
                 source_id="invalid",
             ),
-        ),
+        ) as parse_arguments,
         patch(
             f"{CLI_MODULE}."
             "build_github_advisory_normalization_job",
@@ -273,12 +311,18 @@ def test_main_returns_error_for_invalid_source_id(
     assert exit_code == 1
     assert captured.out == ""
 
+    configure_logging.assert_called_once_with()
+
+    parse_arguments.assert_called_once_with(
+        []
+    )
+
+    build_job.assert_not_called()
+
     assert (
         "source-id must be a valid UUID"
         in captured.err
     )
-
-    build_job.assert_not_called()
 
     failure_record = _find_log_record(
         caplog,
@@ -313,26 +357,21 @@ def test_main_redacts_job_failure(
 
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value=".env",
-        ),
+            f"{CLI_MODULE}."
+            "configure_logging",
+        ) as configure_logging,
         patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ),
-        patch(
-            f"{CLI_MODULE}.configure_logging",
-        ),
-        patch(
-            f"{CLI_MODULE}._parse_arguments",
+            f"{CLI_MODULE}."
+            "_parse_arguments",
             return_value=Namespace(
                 source_id=str(source_id),
             ),
-        ),
+        ) as parse_arguments,
         patch(
             f"{CLI_MODULE}."
             "build_github_advisory_normalization_job",
             return_value=job,
-        ),
+        ) as build_job,
     ):
         with caplog.at_level(
             logging.ERROR
@@ -343,6 +382,18 @@ def test_main_redacts_job_failure(
 
     assert exit_code == 1
     assert captured.out == ""
+
+    configure_logging.assert_called_once_with()
+
+    parse_arguments.assert_called_once_with(
+        []
+    )
+
+    build_job.assert_called_once_with(
+        source_id=source_id,
+    )
+
+    job.run.assert_called_once_with()
 
     assert (
         "super-secret-github-token"
@@ -357,6 +408,13 @@ def test_main_redacts_job_failure(
             "GitHub Advisory normalization "
             "execution failed"
         ),
+    )
+
+    assert (
+        failure_record.__dict__[
+            "error_type"
+        ]
+        == "RuntimeError"
     )
 
     error_summary = (

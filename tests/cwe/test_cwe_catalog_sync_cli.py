@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 from application.services.cwe_catalog_sync_service import (
     CWECatalogSyncResult,
+)
+from infrastructure.cli import (
+    cwe_catalog_sync as cwe_catalog_sync_cli,
 )
 from infrastructure.cli.cwe_catalog_sync import (
     _parse_arguments,
@@ -49,6 +53,37 @@ def _result(
     )
 
 
+def _find_log_record(
+    caplog: pytest.LogCaptureFixture,
+    message: str,
+) -> logging.LogRecord:
+    return next(
+        record
+        for record in caplog.records
+        if record.getMessage() == message
+    )
+
+
+def test_env_file_uses_project_root() -> None:
+    expected_project_root = (
+        Path(
+            cwe_catalog_sync_cli.__file__
+        )
+        .resolve()
+        .parents[2]
+    )
+
+    assert (
+        cwe_catalog_sync_cli.PROJECT_ROOT
+        == expected_project_root
+    )
+
+    assert (
+        cwe_catalog_sync_cli.ENV_FILE
+        == expected_project_root / ".env"
+    )
+
+
 def test_parse_arguments_accepts_empty_input(
 ) -> None:
     arguments = _parse_arguments(
@@ -76,6 +111,7 @@ def test_parse_arguments_rejects_unknown_argument(
 
 def test_main_runs_job_and_prints_summary(
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     job = Mock()
 
@@ -109,9 +145,12 @@ def test_main_runs_job_and_prints_summary(
             ],
         ),
     ):
-        exit_code = main(
-            []
-        )
+        with caplog.at_level(
+            logging.INFO
+        ):
+            exit_code = main(
+                []
+            )
 
     captured = capsys.readouterr()
 
@@ -127,6 +166,13 @@ def test_main_runs_job_and_prints_summary(
         in captured.out
     )
 
+    assert "catalog_version=4.20" in captured.out
+
+    assert (
+        "catalog_date=2026-04-30"
+        in captured.out
+    )
+
     assert "requested_ids=5" in captured.out
 
     assert (
@@ -138,11 +184,11 @@ def test_main_runs_job_and_prints_summary(
         "persisted_weaknesses=4"
         in captured.out
     )
-    
+
     assert (
-    "up_to_date_weaknesses=1"
-    in captured.out
-)
+        "up_to_date_weaknesses=1"
+        in captured.out
+    )
 
     assert "batches=2" in captured.out
 
@@ -157,7 +203,79 @@ def test_main_runs_job_and_prints_summary(
     )
 
     assert captured.err == ""
-    
+
+    completed_record = _find_log_record(
+        caplog,
+        (
+            "CWE catalog synchronization "
+            "execution completed"
+        ),
+    )
+
+    assert (
+        completed_record.__dict__[
+            "catalog_version"
+        ]
+        == "4.20"
+    )
+
+    assert (
+        completed_record.__dict__[
+            "catalog_date"
+        ]
+        == "2026-04-30"
+    )
+
+    assert (
+        completed_record.__dict__[
+            "requested_ids"
+        ]
+        == 5
+    )
+
+    assert (
+        completed_record.__dict__[
+            "fetched_weaknesses"
+        ]
+        == 4
+    )
+
+    assert (
+        completed_record.__dict__[
+            "persisted_weaknesses"
+        ]
+        == 4
+    )
+
+    assert (
+        completed_record.__dict__[
+            "up_to_date_weaknesses"
+        ]
+        == 1
+    )
+
+    assert (
+        completed_record.__dict__[
+            "batches"
+        ]
+        == 2
+    )
+
+    assert (
+        completed_record.__dict__[
+            "missing_ids_count"
+        ]
+        == 1
+    )
+
+    assert (
+        completed_record.__dict__[
+            "duration_seconds"
+        ]
+        == 2.345
+    )
+
+    assert completed_record.exc_info is None
 
 
 def test_main_does_not_print_missing_ids(
@@ -194,19 +312,22 @@ def test_main_does_not_print_missing_ids(
                 11.0,
             ],
         ),
-        caplog.at_level(
-            logging.INFO
-        ),
     ):
-        exit_code = main(
-            []
-        )
+        with caplog.at_level(
+            logging.INFO
+        ):
+            exit_code = main(
+                []
+            )
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
 
-    assert "missing_ids_count=2" in captured.out
+    assert (
+        "missing_ids_count=2"
+        in captured.out
+    )
 
     assert "CWE-999" not in captured.out
     assert "CWE-1000" not in captured.out
@@ -255,9 +376,38 @@ def test_main_handles_empty_catalog(
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "requested_ids=0" in captured.out
+
+    assert (
+        "catalog_version=None"
+        in captured.out
+    )
+
+    assert (
+        "catalog_date=None"
+        in captured.out
+    )
+
+    assert (
+        "requested_ids=0"
+        in captured.out
+    )
+
+    assert (
+        "fetched_weaknesses=0"
+        in captured.out
+    )
+
+    assert (
+        "persisted_weaknesses=0"
+        in captured.out
+    )
+
+    assert (
+        "up_to_date_weaknesses=0"
+        in captured.out
+    )
+
     assert "batches=0" in captured.out
-    assert "catalog_version=None" in captured.out
 
 
 def test_main_redacts_failure(
@@ -269,7 +419,8 @@ def test_main_redacts_failure(
     job.run.side_effect = RuntimeError(
         "DATABASE_URL="
         "postgresql://user:"
-        "super-secret-password@localhost/db"
+        "super-secret-password@"
+        "localhost/db"
     )
 
     with (
@@ -282,13 +433,13 @@ def test_main_redacts_failure(
             "build_cwe_catalog_sync_job",
             return_value=job,
         ),
-        caplog.at_level(
-            logging.ERROR
-        ),
     ):
-        exit_code = main(
-            []
-        )
+        with caplog.at_level(
+            logging.ERROR
+        ):
+            exit_code = main(
+                []
+            )
 
     captured = capsys.readouterr()
 
@@ -313,21 +464,39 @@ def test_main_redacts_failure(
 
     assert "[REDACTED]" in captured.err
 
-    failure_record = next(
-        record
-        for record in caplog.records
-        if record.getMessage()
-        == (
+    failure_record = _find_log_record(
+        caplog,
+        (
             "CWE catalog synchronization "
             "execution failed"
-        )
+        ),
     )
 
+    assert (
+        failure_record.__dict__[
+            "error_type"
+        ]
+        == "RuntimeError"
+    )
+
+    error_summary = (
+        failure_record.__dict__[
+            "error_summary"
+        ]
+    )
+
+    assert (
+        "super-secret-password"
+        not in error_summary
+    )
+
+    assert "[REDACTED]" in error_summary
     assert failure_record.exc_info is None
 
 
 def test_main_returns_failure_when_build_fails(
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     with (
         patch(
@@ -342,11 +511,36 @@ def test_main_returns_failure_when_build_fails(
             ),
         ),
     ):
-        exit_code = main(
-            []
-        )
+        with caplog.at_level(
+            logging.ERROR
+        ):
+            exit_code = main(
+                []
+            )
 
     captured = capsys.readouterr()
 
     assert exit_code == 1
-    assert "invalid configuration" in captured.err
+    assert captured.out == ""
+
+    assert (
+        "invalid configuration"
+        in captured.err
+    )
+
+    failure_record = _find_log_record(
+        caplog,
+        (
+            "CWE catalog synchronization "
+            "execution failed"
+        ),
+    )
+
+    assert (
+        failure_record.__dict__[
+            "error_type"
+        ]
+        == "RuntimeError"
+    )
+
+    assert failure_record.exc_info is None

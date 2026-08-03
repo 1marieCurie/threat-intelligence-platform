@@ -1,13 +1,31 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
+
 import pytest
 import requests
-from dotenv import load_dotenv
 from sqlalchemy import (
+    Engine,
     create_engine,
     delete,
     select,
@@ -24,11 +42,11 @@ from application.services.ingestion_service import (
 from infrastructure.adapters.inbound.raw_ingestion_job import (
     RawIngestionJob,
 )
-from infrastructure.adapters.outbound.cisa_connector import (
-    CISAConnector,
-)
 from infrastructure.adapters.outbound.cisa.cisa_kev_ingestion_connector import (
     CisaKevIngestionConnector,
+)
+from infrastructure.adapters.outbound.cisa_connector import (
+    CISAConnector,
 )
 from infrastructure.persistence.models.ops import (
     IngestionRunModel,
@@ -46,9 +64,6 @@ from infrastructure.persistence.sqlalchemy import (
 from infrastructure.security.sha256_payload_hasher import (
     Sha256PayloadHasher,
 )
-
-
-load_dotenv()
 
 
 pytestmark = pytest.mark.integration
@@ -90,8 +105,13 @@ class FakeSession(requests.Session):
     ) -> None:
         super().__init__()
 
-        self._responses = list(responses)
-        self.calls: list[dict[str, Any]] = []
+        self._responses = list(
+            responses
+        )
+
+        self.calls: list[
+            dict[str, Any]
+        ] = []
 
     def get(
         self,
@@ -101,27 +121,41 @@ class FakeSession(requests.Session):
         self.calls.append(
             {
                 "url": url,
-                "timeout": kwargs.get("timeout"),
+                "timeout": kwargs.get(
+                    "timeout"
+                ),
             }
         )
 
         if not self._responses:
             raise AssertionError(
-                "FakeSession has no configured response."
+                "FakeSession has no "
+                "configured response."
             )
 
         return self._responses.pop(0)
 
 
-def _create_owner_session_factory(
-) -> sessionmaker[Session]:
+def _create_owner_resources() -> tuple[
+    Engine,
+    sessionmaker[Session],
+]:
+    """
+    Crée les ressources SQLAlchemy disposant
+    des droits de préparation et nettoyage.
+
+    MIGRATION_DATABASE_URL doit cibler
+    exclusivement une base de test.
+    """
+
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
     )
 
     if not database_url:
         raise RuntimeError(
-            "MIGRATION_DATABASE_URL is not defined"
+            "MIGRATION_DATABASE_URL "
+            "is not defined"
         )
 
     engine = create_engine(
@@ -129,23 +163,29 @@ def _create_owner_session_factory(
         pool_pre_ping=True,
     )
 
-    return sessionmaker(
+    session_factory = sessionmaker(
         bind=engine,
         class_=Session,
         autoflush=False,
         expire_on_commit=False,
     )
 
+    return engine, session_factory
+
 
 def _create_source(
     *,
-    owner_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
     source_code: str,
 ) -> None:
     with owner_session_factory() as session:
         session.execute(
-            text("SET ROLE threat_intel_owner")
+            text(
+                "SET ROLE threat_intel_owner"
+            )
         )
 
         session.add(
@@ -153,9 +193,12 @@ def _create_source(
                 id=source_id,
                 code=source_code,
                 name=(
-                    "CISA KEV pipeline integration test"
+                    "CISA KEV pipeline "
+                    "integration test"
                 ),
-                base_url=CISAConnector.KEV_URL,
+                base_url=(
+                    CISAConnector.KEV_URL
+                ),
                 enabled=True,
             )
         )
@@ -165,16 +208,27 @@ def _create_source(
 
 def _delete_test_data(
     *,
-    owner_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
 ) -> None:
+    """
+    Supprime les données de test dans
+    l'ordre des dépendances.
+    """
+
     with owner_session_factory() as session:
         session.execute(
-            text("SET ROLE threat_intel_owner")
+            text(
+                "SET ROLE threat_intel_owner"
+            )
         )
 
         run_ids = (
-            select(IngestionRunModel.id)
+            select(
+                IngestionRunModel.id
+            )
             .where(
                 IngestionRunModel.source_id
                 == source_id
@@ -182,7 +236,9 @@ def _delete_test_data(
         )
 
         session.execute(
-            delete(SourcePayloadModel).where(
+            delete(
+                SourcePayloadModel
+            ).where(
                 SourcePayloadModel
                 .ingestion_run_id
                 .in_(run_ids)
@@ -190,22 +246,29 @@ def _delete_test_data(
         )
 
         session.execute(
-            delete(SyncStateModel).where(
+            delete(
+                SyncStateModel
+            ).where(
                 SyncStateModel.source_id
                 == source_id
             )
         )
 
         session.execute(
-            delete(IngestionRunModel).where(
+            delete(
+                IngestionRunModel
+            ).where(
                 IngestionRunModel.source_id
                 == source_id
             )
         )
 
         session.execute(
-            delete(SourceModel).where(
-                SourceModel.id == source_id
+            delete(
+                SourceModel
+            ).where(
+                SourceModel.id
+                == source_id
             )
         )
 
@@ -229,7 +292,8 @@ def _build_catalog() -> dict[str, Any]:
                 "vendorProject": "Vendor A",
                 "product": "Product A",
                 "vulnerabilityName": (
-                    "Integration vulnerability A"
+                    "Integration "
+                    "vulnerability A"
                 ),
                 "dateAdded": "2026-07-27",
                 "shortDescription": (
@@ -248,7 +312,8 @@ def _build_catalog() -> dict[str, Any]:
                 "vendorProject": "Vendor B",
                 "product": "Product B",
                 "vulnerabilityName": (
-                    "Integration vulnerability B"
+                    "Integration "
+                    "vulnerability B"
                 ),
                 "dateAdded": "2026-07-28",
                 "shortDescription": (
@@ -266,8 +331,10 @@ def _build_catalog() -> dict[str, Any]:
     }
 
 
-def test_cisa_pipeline_persists_and_deduplicates() -> None:
+def test_cisa_pipeline_persists_and_deduplicates(
+) -> None:
     source_id = uuid4()
+
     source_code = (
         f"CISA_PIPE_{uuid4().hex[:20]}"
     )
@@ -296,11 +363,13 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
         )
     )
 
-    owner_session_factory = (
-        _create_owner_session_factory()
+    owner_engine, owner_session_factory = (
+        _create_owner_resources()
     )
 
-    ingestion_engine = create_ingestion_engine()
+    ingestion_engine = (
+        create_ingestion_engine()
+    )
 
     ingestion_session_factory = (
         create_session_factory(
@@ -309,20 +378,26 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
     )
 
     _create_source(
-        owner_session_factory=owner_session_factory,
+        owner_session_factory=(
+            owner_session_factory
+        ),
         source_id=source_id,
         source_code=source_code,
     )
 
     try:
         service = IngestionService(
-            unit_of_work=SqlAlchemyUnitOfWork(
-                session_factory=(
-                    ingestion_session_factory
-                ),
+            unit_of_work=(
+                SqlAlchemyUnitOfWork(
+                    session_factory=(
+                        ingestion_session_factory
+                    ),
+                )
             ),
             connector=ingestion_connector,
-            payload_hasher=Sha256PayloadHasher(),
+            payload_hasher=(
+                Sha256PayloadHasher()
+            ),
         )
 
         job = RawIngestionJob(
@@ -334,34 +409,76 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
         first_result = job.run()
         second_result = job.run()
 
-        assert first_result.status == "completed"
-        assert first_result.records_received == 2
-        assert first_result.records_persisted == 2
-        assert first_result.records_skipped == 0
+        assert (
+            first_result.status
+            == "completed"
+        )
 
-        assert second_result.status == "completed"
-        assert second_result.records_received == 2
-        assert second_result.records_persisted == 0
-        assert second_result.records_skipped == 2
+        assert (
+            first_result.records_received
+            == 2
+        )
 
-        assert len(fake_http_session.calls) == 2
+        assert (
+            first_result.records_persisted
+            == 2
+        )
+
+        assert (
+            first_result.records_skipped
+            == 0
+        )
+
+        assert (
+            second_result.status
+            == "completed"
+        )
+
+        assert (
+            second_result.records_received
+            == 2
+        )
+
+        assert (
+            second_result.records_persisted
+            == 0
+        )
+
+        assert (
+            second_result.records_skipped
+            == 2
+        )
+
+        assert (
+            len(fake_http_session.calls)
+            == 2
+        )
 
         assert all(
-            call["url"] == CISAConnector.KEV_URL
-            for call in fake_http_session.calls
+            call["url"]
+            == CISAConnector.KEV_URL
+            for call
+            in fake_http_session.calls
         )
 
         assert all(
             call["timeout"] == 10.0
-            for call in fake_http_session.calls
+            for call
+            in fake_http_session.calls
         )
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             payloads = list(
                 session.execute(
-                    select(SourcePayloadModel)
+                    select(
+                        SourcePayloadModel
+                    )
                     .where(
-                        SourcePayloadModel.source_id
+                        SourcePayloadModel
+                        .source_id
                         == source_id
                     )
                     .order_by(
@@ -376,9 +493,12 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
 
             runs = list(
                 session.execute(
-                    select(IngestionRunModel)
+                    select(
+                        IngestionRunModel
+                    )
                     .where(
-                        IngestionRunModel.source_id
+                        IngestionRunModel
+                        .source_id
                         == source_id
                     )
                     .order_by(
@@ -419,7 +539,8 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
             )
 
             assert all(
-                payload.retrieved_at is not None
+                payload.retrieved_at
+                is not None
                 for payload in payloads
             )
 
@@ -430,7 +551,8 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
             )
 
             assert all(
-                len(payload.payload_hash) == 64
+                len(payload.payload_hash)
+                == 64
                 for payload in payloads
             )
 
@@ -456,7 +578,9 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
             assert sync_state.cursor is None
 
             assert (
-                sync_state.metadata_["source"]
+                sync_state.metadata_[
+                    "source"
+                ]
                 == "cisa_kev"
             )
 
@@ -487,19 +611,57 @@ def test_cisa_pipeline_persists_and_deduplicates() -> None:
                 ]
                 is True
             )
-            assert runs[0].connector_version == "1.0.0"
-            assert runs[0].metadata_["source"] == "cisa_kev"
-            assert runs[0].metadata_["catalog_version"] == "2026.07.28"
-            assert runs[0].metadata_["declared_count"] == 2
-            assert runs[0].metadata_["records_count"] == 2
 
-            assert runs[1].connector_version == "1.0.0"
-            assert runs[1].metadata_["source"] == "cisa_kev"
+            assert (
+                runs[0].connector_version
+                == "1.0.0"
+            )
+
+            assert (
+                runs[0].metadata_["source"]
+                == "cisa_kev"
+            )
+
+            assert (
+                runs[0].metadata_[
+                    "catalog_version"
+                ]
+                == "2026.07.28"
+            )
+
+            assert (
+                runs[0].metadata_[
+                    "declared_count"
+                ]
+                == 2
+            )
+
+            assert (
+                runs[0].metadata_[
+                    "records_count"
+                ]
+                == 2
+            )
+
+            assert (
+                runs[1].connector_version
+                == "1.0.0"
+            )
+
+            assert (
+                runs[1].metadata_["source"]
+                == "cisa_kev"
+            )
 
     finally:
-        _delete_test_data(
-            owner_session_factory=(
-                owner_session_factory
-            ),
-            source_id=source_id,
-        )
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
+            )
+        finally:
+            fake_http_session.close()
+            ingestion_engine.dispose()
+            owner_engine.dispose()
