@@ -33,6 +33,9 @@ from application.ports.outbound.raw_payload_repository import (
 from application.ports.outbound.sync_state_repository import (
     SyncStateRepository,
 )
+from application.ports.outbound.urlhaus_url_repository import (
+    URLhausURLRepository,
+)
 
 
 class UnitOfWork(Protocol):
@@ -63,6 +66,8 @@ class UnitOfWork(Protocol):
     phishtank_phishing: (
         PhishTankPhishingRepository
     )
+
+    urlhaus_urls: URLhausURLRepository
 
     cwe_weaknesses: WritableCWERepository
 

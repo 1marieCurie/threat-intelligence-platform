@@ -29,11 +29,17 @@ from application.ports.outbound.ingestion_run_payload_repository import (
 from application.ports.outbound.ingestion_run_repository import (
     IngestionRunRepository,
 )
+from application.ports.outbound.phishtank_phishing_repository import (
+    PhishTankPhishingRepository,
+)
 from application.ports.outbound.raw_payload_repository import (
     RawPayloadRepository,
 )
 from application.ports.outbound.sync_state_repository import (
     SyncStateRepository,
+)
+from application.ports.outbound.urlhaus_url_repository import (
+    URLhausURLRepository,
 )
 from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
     SqlAlchemyCisaKevVulnerabilityRepository,
@@ -56,17 +62,17 @@ from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_payload_re
 from infrastructure.persistence.sqlalchemy.repositories.ingestion_run_repository import (
     SqlAlchemyIngestionRunRepository,
 )
+from infrastructure.persistence.sqlalchemy.repositories.phishtank_phishing_repository import (
+    SqlAlchemyPhishTankPhishingRepository,
+)
 from infrastructure.persistence.sqlalchemy.repositories.raw_payload_repository import (
     SqlAlchemyRawPayloadRepository,
 )
 from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository import (
     SqlAlchemySyncStateRepository,
 )
-from application.ports.outbound.phishtank_phishing_repository import (
-    PhishTankPhishingRepository,
-)
-from infrastructure.persistence.sqlalchemy.repositories.phishtank_phishing_repository import (
-    SqlAlchemyPhishTankPhishingRepository,
+from infrastructure.persistence.sqlalchemy.repositories.urlhaus_url_repository import (
+    SqlAlchemyURLhausURLRepository,
 )
 
 
@@ -75,7 +81,7 @@ class SqlAlchemyUnitOfWork:
     Unit of Work SQLAlchemy de la plateforme.
 
     Chaque entrée dans le contexte ouvre une session unique.
-    Tous les repositories partagent cette même session et donc
+    Tous les repositories partagent cette session et donc
     la même transaction PostgreSQL.
     """
 
@@ -100,17 +106,13 @@ class SqlAlchemyUnitOfWork:
             IngestionRunRepository
         )
 
-        self.raw_payloads: (
-            RawPayloadRepository
-        )
+        self.raw_payloads: RawPayloadRepository
 
         self.ingestion_run_payloads: (
             IngestionRunPayloadRepository
         )
 
-        self.sync_states: (
-            SyncStateRepository
-        )
+        self.sync_states: SyncStateRepository
 
         self.cisa_kev_vulnerabilities: (
             CisaKevVulnerabilityRepository
@@ -119,6 +121,12 @@ class SqlAlchemyUnitOfWork:
         self.github_advisory_vulnerabilities: (
             GitHubAdvisoryVulnerabilityRepository
         )
+
+        self.phishtank_phishing: (
+            PhishTankPhishingRepository
+        )
+
+        self.urlhaus_urls: URLhausURLRepository
 
         self.cwe_weaknesses: (
             WritableCWERepository
@@ -130,10 +138,6 @@ class SqlAlchemyUnitOfWork:
 
         self.epss_scores: (
             WritableEPSSScoreRepository
-        )
-        
-        self.phishtank_phishing: (
-            PhishTankPhishingRepository
         )
 
     def __enter__(
@@ -183,9 +187,15 @@ class SqlAlchemyUnitOfWork:
                 session=self._session,
             )
         )
-        
+
         self.phishtank_phishing = (
             SqlAlchemyPhishTankPhishingRepository(
+                session=self._session,
+            )
+        )
+
+        self.urlhaus_urls = (
+            SqlAlchemyURLhausURLRepository(
                 session=self._session,
             )
         )
