@@ -234,7 +234,8 @@ def test_unsafe_query_status_is_not_echoed(
     )
 
     with pytest.raises(
-        URLhausQueryError
+        URLhausQueryError,
+        match=r"^URLhaus query failed\.$",
     ) as captured_error:
         connector.fetch_recent_urls(
             limit=10
@@ -244,44 +245,68 @@ def test_unsafe_query_status_is_not_echoed(
         captured_error.value
     )
 
-    assert (
-        error_message
-        == (
-            "URLhaus query failed with "
-            "an unsafe query status."
-        )
-    )
-
     assert sensitive_status not in error_message
     assert "private-token" not in error_message
-
+    assert "malicious.example" not in error_message
+    
 
 @pytest.mark.parametrize(
-    "unsafe_base_url",
+    (
+        "unsafe_base_url",
+        "expected_message",
+    ),
     [
         (
-            "https://user:password@"
-            "urlhaus-api.abuse.ch/v1"
+            (
+                "https://user:password@"
+                "urlhaus-api.abuse.ch/v1"
+            ),
+            (
+                "must not contain "
+                "credentials"
+            ),
         ),
         (
-            "https://urlhaus-api.abuse.ch/"
-            "v1?api_key=private"
+            (
+                "https://urlhaus-api.abuse.ch/"
+                "v1?api_key=private"
+            ),
+            (
+                "must not contain "
+                "a query string"
+            ),
         ),
         (
-            "https://urlhaus-api.abuse.ch/"
-            "v1#private"
+            (
+                "https://urlhaus-api.abuse.ch/"
+                "v1#private"
+            ),
+            (
+                "must not contain "
+                "a fragment"
+            ),
         ),
     ],
 )
 def test_connector_rejects_unsafe_base_url(
     unsafe_base_url: str,
+    expected_message: str,
 ) -> None:
     with pytest.raises(
         ValueError,
-        match="must not contain credentials",
-    ):
+        match=expected_message,
+    ) as captured_error:
         URLhausConnector(
-            auth_key="private-auth-key",
+            auth_key="test-auth-key",
             base_url=unsafe_base_url,
-            session=FakeSession(),  # type: ignore[arg-type]
         )
+
+    error_message = str(
+        captured_error.value
+    )
+
+    # Les valeurs potentiellement sensibles présentes
+    # dans l'URL ne doivent pas être recopiées.
+    assert unsafe_base_url not in error_message
+    assert "password" not in error_message
+    assert "private" not in error_message

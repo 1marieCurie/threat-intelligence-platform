@@ -13,8 +13,15 @@ from infrastructure.bootstrap.urlhaus_ingestion import (
     DEFAULT_BASE_URL,
     DEFAULT_BATCH_SIZE,
     DEFAULT_TIMEOUT,
+    URLHAUS_AUTH_KEY_ENV,
     URLHAUS_SOURCE_CODE,
     build_urlhaus_ingestion_job,
+)
+
+
+BOOTSTRAP_MODULE = (
+    "infrastructure.bootstrap."
+    "urlhaus_ingestion"
 )
 
 
@@ -24,42 +31,35 @@ def test_build_job_composes_dependencies(
 
     with (
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion.URLhausConnector"
+            f"{BOOTSTRAP_MODULE}."
+            "URLhausConnector"
         ) as connector_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "URLhausIngestionConnector"
         ) as ingestion_connector_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "create_ingestion_engine"
         ) as create_engine,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "create_session_factory"
         ) as create_session_factory,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "SqlAlchemyUnitOfWork"
         ) as unit_of_work_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "Sha256PayloadHasher"
         ) as payload_hasher_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "IngestionService"
         ) as ingestion_service_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "RawIngestionJob"
         ) as job_class,
     ):
@@ -107,7 +107,7 @@ def test_build_job_composes_dependencies(
         with patch.dict(
             os.environ,
             {
-                "URLHAUS_AUTH_KEY": (
+                URLHAUS_AUTH_KEY_ENV: (
                     " test-auth-key "
                 ),
             },
@@ -145,7 +145,9 @@ def test_build_job_composes_dependencies(
         )
 
         unit_of_work_class.assert_called_once_with(
-            session_factory=session_factory,
+            session_factory=(
+                session_factory
+            ),
         )
 
         payload_hasher_class.assert_called_once_with()
@@ -158,7 +160,9 @@ def test_build_job_composes_dependencies(
         )
 
         job_class.assert_called_once_with(
-            ingestion_service=ingestion_service,
+            ingestion_service=(
+                ingestion_service
+            ),
             source_id=source_id,
             source_code=URLHAUS_SOURCE_CODE,
         )
@@ -172,42 +176,35 @@ def test_build_job_uses_safe_defaults(
 
     with (
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion.URLhausConnector"
+            f"{BOOTSTRAP_MODULE}."
+            "URLhausConnector"
         ) as connector_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "URLhausIngestionConnector"
         ) as ingestion_connector_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "create_ingestion_engine"
         ) as create_engine,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "create_session_factory"
         ) as create_session_factory,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "SqlAlchemyUnitOfWork"
         ) as unit_of_work_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "Sha256PayloadHasher"
         ) as payload_hasher_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "IngestionService"
         ) as ingestion_service_class,
         patch(
-            "infrastructure.bootstrap."
-            "urlhaus_ingestion."
+            f"{BOOTSTRAP_MODULE}."
             "RawIngestionJob"
         ) as job_class,
     ):
@@ -255,7 +252,7 @@ def test_build_job_uses_safe_defaults(
         with patch.dict(
             os.environ,
             {
-                "URLHAUS_AUTH_KEY": (
+                URLHAUS_AUTH_KEY_ENV: (
                     "test-auth-key"
                 ),
             },
@@ -278,11 +275,33 @@ def test_build_job_uses_safe_defaults(
             limit=None,
         )
 
+        create_engine.assert_called_once_with()
+
+        create_session_factory.assert_called_once_with(
+            engine
+        )
+
+        unit_of_work_class.assert_called_once_with(
+            session_factory=(
+                session_factory
+            ),
+        )
+
+        payload_hasher_class.assert_called_once_with()
+
         ingestion_service_class.assert_called_once_with(
             unit_of_work=unit_of_work,
             connector=ingestion_connector,
             payload_hasher=payload_hasher,
             batch_size=DEFAULT_BATCH_SIZE,
+        )
+
+        job_class.assert_called_once_with(
+            ingestion_service=(
+                ingestion_service
+            ),
+            source_id=source_id,
+            source_code=URLHAUS_SOURCE_CODE,
         )
 
         assert result is expected_job
@@ -295,7 +314,9 @@ def test_build_job_rejects_invalid_source_id(
         match="source_id must be a UUID",
     ):
         build_urlhaus_ingestion_job(
-            source_id="invalid",  # type: ignore[arg-type]
+            source_id=(
+                "invalid"
+            ),  # type: ignore[arg-type]
         )
 
 
@@ -307,7 +328,7 @@ def test_build_job_rejects_missing_auth_key(
         clear=False,
     ):
         os.environ.pop(
-            "URLHAUS_AUTH_KEY",
+            URLHAUS_AUTH_KEY_ENV,
             None,
         )
 
@@ -333,7 +354,7 @@ def test_build_job_rejects_empty_auth_key(
     with patch.dict(
         os.environ,
         {
-            "URLHAUS_AUTH_KEY": (
+            URLHAUS_AUTH_KEY_ENV: (
                 auth_key
             ),
         },

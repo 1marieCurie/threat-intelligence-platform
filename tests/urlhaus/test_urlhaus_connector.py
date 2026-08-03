@@ -214,7 +214,8 @@ def no_results_payload() -> Dict[str, Any]:
 # ============================================================
 
 
-def test_init_accepts_explicit_auth_key() -> None:
+def test_init_accepts_explicit_auth_key(
+) -> None:
     connector = URLhausConnector(
         auth_key="test-auth-key"
     )
@@ -222,7 +223,7 @@ def test_init_accepts_explicit_auth_key() -> None:
     assert connector is not None
 
 
-def test_init_reads_auth_key_from_environment(
+def test_init_does_not_read_auth_key_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
@@ -230,24 +231,24 @@ def test_init_reads_auth_key_from_environment(
         "environment-auth-key",
     )
 
-    connector = URLhausConnector()
-
-    assert connector is not None
-
-
-def test_init_rejects_missing_auth_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv(
-        "URLHAUS_AUTH_KEY",
-        raising=False,
-    )
-
     with pytest.raises(
         URLhausAuthenticationError,
         match="Auth-Key is required",
     ):
-        URLhausConnector()
+        URLhausConnector(
+            auth_key=None
+        )
+
+
+def test_init_rejects_missing_auth_key(
+) -> None:
+    with pytest.raises(
+        URLhausAuthenticationError,
+        match="Auth-Key is required",
+    ):
+        URLhausConnector(
+            auth_key=None
+        )
 
 
 @pytest.mark.parametrize(
@@ -1041,10 +1042,18 @@ def test_unsuccessful_query_status_is_rejected(
 
     with pytest.raises(
         URLhausQueryError,
-        match=query_status,
-    ):
-        connector.fetch_recent_urls(limit=5)
+        match=r"^URLhaus query failed\.$",
+    ) as captured_error:
+        connector.fetch_recent_urls()
 
+    error_message = str(
+        captured_error.value
+    )
+
+    # Une valeur contrôlée par le fournisseur ne doit
+    # jamais être réinjectée dans les erreurs applicatives.
+    assert query_status not in error_message
+    
 
 def test_base_url_trailing_slash_is_normalized(
     recent_urls_payload: Dict[str, Any],
@@ -1066,3 +1075,5 @@ def test_base_url_trailing_slash_is_normalized(
     assert session.get_calls[0]["url"] == (
         "https://example.test/v1/urls/recent/limit/5/"
     )
+    
+    

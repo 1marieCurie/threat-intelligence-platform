@@ -1,74 +1,50 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(
-    dotenv_path=find_dotenv(usecwd=True),
-    override=False,
-)
-
-
-import os
-import re
 from typing import Any
 from urllib.parse import urlsplit
 
 import requests
-from requests import Response, Session
+from requests import (
+    Response,
+    Session,
+)
 
 
 class URLhausConnectorError(RuntimeError):
-    """
-    Base exception raised by the URLhaus connector.
-    """
+    """Erreur de base du connecteur URLhaus."""
 
 
 class URLhausAuthenticationError(
     URLhausConnectorError
 ):
-    """
-    Raised when the URLhaus Auth-Key is missing or rejected.
-    """
+    """Clé d'authentification absente ou refusée."""
 
 
 class URLhausHTTPError(
     URLhausConnectorError
 ):
-    """
-    Raised when URLhaus returns an unexpected HTTP response.
-    """
+    """Erreur de transport ou réponse HTTP invalide."""
 
 
 class URLhausResponseError(
     URLhausConnectorError
 ):
-    """
-    Raised when URLhaus returns an invalid response structure.
-    """
+    """Réponse JSON URLhaus invalide."""
 
 
 class URLhausQueryError(
     URLhausConnectorError
 ):
-    """
-    Raised when URLhaus returns an unsuccessful query status.
-    """
+    """Échec fonctionnel signalé par URLhaus."""
 
 
 class URLhausConnector:
     """
-    HTTP adapter for the URLhaus API.
+    Adaptateur HTTP sortant vers URLhaus.
 
-    Responsibilities:
-
-    - authenticate requests;
-    - call URLhaus endpoints;
-    - validate transport-level responses;
-    - validate the JSON envelope;
-    - return raw dictionaries.
-
-    This connector performs no business normalization and no
-    persistence.
+    La clé d'authentification doit être injectée explicitement.
+    Le connecteur ne lit jamais directement les variables
+    d'environnement.
     """
 
     BASE_URL = (
@@ -105,13 +81,9 @@ class URLhausConnector:
     SUCCESS_QUERY_STATUS = "ok"
     EMPTY_QUERY_STATUS = "no_results"
 
-    _SAFE_QUERY_STATUS_PATTERN = re.compile(
-        r"\A[a-z0-9_]{1,64}\Z"
-    )
-
     def __init__(
         self,
-        auth_key: str | None = None,
+        auth_key: str | None,
         *,
         session: Session | None = None,
         timeout: float = DEFAULT_TIMEOUT,
@@ -120,20 +92,20 @@ class URLhausConnector:
             "threat-intelligence-engine/0.1"
         ),
     ) -> None:
-        resolved_auth_key = (
-            self._resolve_auth_key(
+        normalized_auth_key = (
+            self._validate_auth_key(
                 auth_key
             )
         )
 
-        self._timeout = (
+        normalized_timeout = (
             self._validate_timeout(
                 timeout
             )
         )
 
-        self._base_url = (
-            self._normalize_base_url(
+        normalized_base_url = (
+            self._validate_base_url(
                 base_url
             )
         )
@@ -145,35 +117,38 @@ class URLhausConnector:
             )
         )
 
+        self._timeout = normalized_timeout
+        self._base_url = normalized_base_url
+
         self._session = (
             session
             if session is not None
             else requests.Session()
         )
 
-        # The key remains confined to the private HTTP headers.
-        # Never log this dictionary or connector.__dict__.
         self._headers = {
-            "Auth-Key": resolved_auth_key,
+            "Auth-Key": normalized_auth_key,
             "Accept": "application/json",
             "User-Agent": (
                 normalized_user_agent
             ),
         }
-
+        
     @property
     def canonical_source_url(
         self,
     ) -> str:
         """
-        Return the non-authenticated canonical provider URL.
+        Retourne l'URL canonique de la collecte récente.
+
+        Cette URL ne contient ni clé d'authentification,
+        ni paramètres sensibles.
         """
 
-        return self._base_url
-
-    # ========================================================
-    # Public collection methods
-    # ========================================================
+        return (
+            f"{self._base_url}"
+            f"{self.RECENT_URLS_ENDPOINT}"
+        )
 
     def fetch_recent_urls(
         self,
@@ -191,7 +166,7 @@ class URLhausConnector:
             )
 
             endpoint = (
-                f"{self.RECENT_URLS_ENDPOINT}"
+                f"{endpoint}"
                 f"limit/{normalized_limit}/"
             )
 
@@ -221,11 +196,29 @@ class URLhausConnector:
         self,
         urlhaus_id: str | int,
     ) -> dict[str, Any]:
-        normalized_id = (
-            self._validate_urlhaus_id(
-                urlhaus_id
+        if isinstance(
+            urlhaus_id,
+            bool,
+        ):
+            raise ValueError(
+                "URLhaus ID must contain "
+                "only digits."
             )
-        )
+
+        normalized_id = str(
+            urlhaus_id
+        ).strip()
+
+        if not normalized_id:
+            raise ValueError(
+                "URLhaus ID must not be empty."
+            )
+
+        if not normalized_id.isdigit():
+            raise ValueError(
+                "URLhaus ID must contain "
+                "only digits."
+            )
 
         return self._post(
             self.URL_ID_INFORMATION_ENDPOINT,
@@ -268,7 +261,7 @@ class URLhausConnector:
             )
 
             endpoint = (
-                f"{self.RECENT_PAYLOADS_ENDPOINT}"
+                f"{endpoint}"
                 f"limit/{normalized_limit}/"
             )
 
@@ -282,14 +275,14 @@ class URLhausConnector:
         md5_hash: str | None = None,
         sha256_hash: str | None = None,
     ) -> dict[str, Any]:
-        supplied_hashes = [
+        supplied_hashes = tuple(
             value
             for value in (
                 md5_hash,
                 sha256_hash,
             )
             if value is not None
-        ]
+        )
 
         if len(supplied_hashes) != 1:
             raise ValueError(
@@ -306,7 +299,7 @@ class URLhausConnector:
                 )
             )
 
-            payload = {
+            data = {
                 "md5_hash": normalized_hash,
             }
 
@@ -319,49 +312,41 @@ class URLhausConnector:
                 )
             )
 
-            payload = {
-                "sha256_hash": (
-                    normalized_hash
-                ),
+            data = {
+                "sha256_hash": normalized_hash,
             }
 
         return self._post(
             self.PAYLOAD_INFORMATION_ENDPOINT,
-            data=payload,
+            data=data,
         )
-
-    # ========================================================
-    # HTTP helpers
-    # ========================================================
 
     def _get(
         self,
         endpoint: str,
     ) -> dict[str, Any]:
-        request_url = self._build_url(
+        url = self._build_url(
             endpoint
         )
 
         try:
             response = self._session.get(
-                request_url,
+                url,
                 headers=dict(
                     self._headers
                 ),
                 timeout=self._timeout,
             )
 
-        except requests.Timeout as error:
+        except requests.Timeout:
             raise URLhausHTTPError(
                 "URLhaus GET request timed out."
-            ) from error
+            ) from None
 
-        except requests.RequestException as error:
-            # Do not propagate the original exception message:
-            # requests may include URLs, parameters or headers.
+        except requests.RequestException:
             raise URLhausHTTPError(
                 "URLhaus GET request failed."
-            ) from error
+            ) from None
 
         return self._process_response(
             response
@@ -373,32 +358,29 @@ class URLhausConnector:
         *,
         data: dict[str, str],
     ) -> dict[str, Any]:
-        request_url = self._build_url(
+        url = self._build_url(
             endpoint
         )
 
         try:
             response = self._session.post(
-                request_url,
+                url,
                 headers=dict(
                     self._headers
                 ),
-                data=dict(
-                    data
-                ),
+                data=dict(data),
                 timeout=self._timeout,
             )
 
-        except requests.Timeout as error:
+        except requests.Timeout:
             raise URLhausHTTPError(
                 "URLhaus POST request timed out."
-            ) from error
+            ) from None
 
-        except requests.RequestException as error:
-            # POST data may contain a malicious URL or hash.
+        except requests.RequestException:
             raise URLhausHTTPError(
                 "URLhaus POST request failed."
-            ) from error
+            ) from None
 
         return self._process_response(
             response
@@ -423,22 +405,19 @@ class URLhausConnector:
         try:
             response.raise_for_status()
 
-        except requests.HTTPError as error:
-            # The response body is deliberately excluded. It may
-            # contain an IOC, reflected input or provider details.
+        except requests.HTTPError:
             raise URLhausHTTPError(
                 "URLhaus returned HTTP "
                 f"{status_code}."
-            ) from error
+            ) from None
 
         try:
             payload = response.json()
 
-        except ValueError as error:
-            # Never include response.text in this exception.
+        except ValueError:
             raise URLhausResponseError(
                 "URLhaus returned invalid JSON."
-            ) from error
+            ) from None
 
         if not isinstance(
             payload,
@@ -469,125 +448,11 @@ class URLhausConnector:
         }:
             return payload
 
+        # La valeur fournie par le fournisseur n'est pas
+        # réinjectée dans l'exception.
         raise URLhausQueryError(
-            self._build_query_error_message(
-                query_status
-            )
+            "URLhaus query failed."
         )
-
-    # ========================================================
-    # Validation helpers
-    # ========================================================
-
-    @staticmethod
-    def _resolve_auth_key(
-        auth_key: str | None,
-    ) -> str:
-        resolved_auth_key = (
-            auth_key
-            if auth_key is not None
-            else os.getenv(
-                "URLHAUS_AUTH_KEY"
-            )
-        )
-
-        if not isinstance(
-            resolved_auth_key,
-            str,
-        ):
-            raise URLhausAuthenticationError(
-                "URLhaus Auth-Key is required. "
-                "Pass auth_key or set the "
-                "URLHAUS_AUTH_KEY environment "
-                "variable."
-            )
-
-        normalized_auth_key = (
-            resolved_auth_key.strip()
-        )
-
-        if not normalized_auth_key:
-            raise URLhausAuthenticationError(
-                "URLhaus Auth-Key must not "
-                "be empty."
-            )
-
-        return normalized_auth_key
-
-    @staticmethod
-    def _validate_timeout(
-        timeout: float,
-    ) -> float:
-        if (
-            isinstance(timeout, bool)
-            or not isinstance(
-                timeout,
-                (int, float),
-            )
-            or timeout <= 0
-        ):
-            raise ValueError(
-                "URLhaus timeout must be "
-                "a positive number."
-            )
-
-        return float(
-            timeout
-        )
-
-    @staticmethod
-    def _normalize_base_url(
-        base_url: str,
-    ) -> str:
-        if not isinstance(
-            base_url,
-            str,
-        ):
-            raise TypeError(
-                "URLhaus base_url must "
-                "be a string."
-            )
-
-        normalized_base_url = (
-            base_url.strip().rstrip("/")
-        )
-
-        if not normalized_base_url:
-            raise ValueError(
-                "URLhaus base_url must "
-                "not be empty."
-            )
-
-        parsed_url = urlsplit(
-            normalized_base_url
-        )
-
-        if (
-            parsed_url.scheme
-            not in {
-                "http",
-                "https",
-            }
-            or not parsed_url.hostname
-        ):
-            raise ValueError(
-                "URLhaus base_url must be "
-                "a valid HTTP URL."
-            )
-
-        if (
-            parsed_url.username is not None
-            or parsed_url.password is not None
-            or parsed_url.query
-            or parsed_url.fragment
-        ):
-            raise ValueError(
-                "URLhaus base_url must not "
-                "contain credentials, query "
-                "parameters or fragments."
-            )
-
-        return normalized_base_url
 
     def _build_url(
         self,
@@ -599,6 +464,19 @@ class URLhausConnector:
                 field_name="endpoint",
             )
         )
+
+        if any(
+            forbidden_value
+            in normalized_endpoint
+            for forbidden_value in (
+                "://",
+                "?",
+                "#",
+            )
+        ):
+            raise ValueError(
+                "URLhaus endpoint is unsafe."
+            )
 
         if not normalized_endpoint.startswith(
             "/"
@@ -612,12 +490,11 @@ class URLhausConnector:
             f"{normalized_endpoint}"
         )
 
+    @classmethod
     def _validate_limit(
-        self,
+        cls,
         limit: int,
     ) -> int:
-        # ValueError is preserved for compatibility with the
-        # existing public connector tests.
         if (
             isinstance(limit, bool)
             or not isinstance(
@@ -633,71 +510,116 @@ class URLhausConnector:
         if not (
             1
             <= limit
-            <= self.MAX_RECENT_LIMIT
+            <= cls.MAX_RECENT_LIMIT
         ):
             raise ValueError(
                 "URLhaus limit must be "
                 "between 1 and "
-                f"{self.MAX_RECENT_LIMIT}."
+                f"{cls.MAX_RECENT_LIMIT}."
             )
 
         return limit
 
     @staticmethod
-    def _validate_urlhaus_id(
-        value: str | int,
+    def _validate_auth_key(
+        auth_key: str | None,
     ) -> str:
-        if isinstance(
-            value,
-            bool,
-        ):
-            raise ValueError(
-                "URLhaus ID must be "
-                "a positive integer."
-            )
-
-        if isinstance(
-            value,
-            int,
-        ):
-            parsed_value = value
-
-        elif isinstance(
-            value,
+        if not isinstance(
+            auth_key,
             str,
         ):
-            normalized_value = (
-                value.strip()
+            raise URLhausAuthenticationError(
+                "URLhaus Auth-Key is required."
             )
 
-            if (
-                not normalized_value
-                or not normalized_value.isascii()
-                or not normalized_value.isdigit()
-            ):
-                raise ValueError(
-                    "URLhaus ID must be "
-                    "a positive integer."
-                )
+        normalized_auth_key = (
+            auth_key.strip()
+        )
 
-            parsed_value = int(
-                normalized_value
+        if not normalized_auth_key:
+            raise URLhausAuthenticationError(
+                "URLhaus Auth-Key must "
+                "not be empty."
             )
 
-        else:
+        return normalized_auth_key
+
+    @staticmethod
+    def _validate_timeout(
+        timeout: float,
+    ) -> float:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(
+                timeout,
+                (
+                    int,
+                    float,
+                ),
+            )
+            or timeout <= 0
+        ):
             raise ValueError(
-                "URLhaus ID must be "
-                "a positive integer."
+                "URLhaus timeout must be "
+                "a positive number."
             )
 
-        if parsed_value <= 0:
+        return float(
+            timeout
+        )
+
+    @staticmethod
+    def _validate_base_url(
+        base_url: str,
+    ) -> str:
+        normalized_base_url = (
+            URLhausConnector
+            ._validate_non_empty_string(
+                value=base_url,
+                field_name="base_url",
+            )
+        )
+
+        parsed_url = urlsplit(
+            normalized_base_url
+        )
+
+        if parsed_url.scheme.lower() != "https":
             raise ValueError(
-                "URLhaus ID must be "
-                "a positive integer."
+                "URLhaus base_url must use HTTPS."
             )
 
-        return str(
-            parsed_value
+        if parsed_url.hostname is None:
+            raise ValueError(
+                "URLhaus base_url must contain "
+                "a valid hostname."
+            )
+
+        if (
+            parsed_url.username is not None
+            or parsed_url.password is not None
+        ):
+            raise ValueError(
+                "URLhaus base_url must not "
+                "contain credentials."
+            )
+
+        if parsed_url.query:
+            raise ValueError(
+                "URLhaus base_url must not "
+                "contain a query string."
+            )
+
+        if parsed_url.fragment:
+            raise ValueError(
+                "URLhaus base_url must not "
+                "contain a fragment."
+            )
+
+        return (
+            normalized_base_url.rstrip(
+                "/"
+            )
         )
 
     @staticmethod
@@ -763,36 +685,10 @@ class URLhausConnector:
                 16,
             )
 
-        except ValueError as error:
+        except ValueError:
             raise ValueError(
                 f"{field_name} must be "
                 "hexadecimal."
-            ) from error
+            ) from None
 
         return normalized_value
-
-    @classmethod
-    def _build_query_error_message(
-        cls,
-        query_status: str,
-    ) -> str:
-        """
-        Preserve useful diagnostics only for a small safe syntax.
-
-        A malformed or reflected status is not included because it
-        could contain URLs, tokens or arbitrary provider content.
-        """
-
-        if cls._SAFE_QUERY_STATUS_PATTERN.fullmatch(
-            query_status
-        ):
-            return (
-                "URLhaus query failed with "
-                "query_status="
-                f"{query_status!r}."
-            )
-
-        return (
-            "URLhaus query failed with "
-            "an unsafe query status."
-        )

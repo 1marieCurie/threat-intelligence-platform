@@ -1,9 +1,23 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = (
+    PROJECT_ROOT
+    / ".env"
+)
 
 load_dotenv(
-    dotenv_path=find_dotenv(usecwd=True),
+    dotenv_path=ENV_FILE,
     override=False,
 )
 
@@ -40,9 +54,19 @@ from infrastructure.security.sha256_payload_hasher import (
 
 URLHAUS_SOURCE_CODE = "URLHAUS"
 
+URLHAUS_AUTH_KEY_ENV = (
+    "URLHAUS_AUTH_KEY"
+)
+
 DEFAULT_BATCH_SIZE = 500
-DEFAULT_TIMEOUT = URLhausConnector.DEFAULT_TIMEOUT
-DEFAULT_BASE_URL = URLhausConnector.BASE_URL
+
+DEFAULT_TIMEOUT = (
+    URLhausConnector.DEFAULT_TIMEOUT
+)
+
+DEFAULT_BASE_URL = (
+    URLhausConnector.BASE_URL
+)
 
 
 def build_urlhaus_ingestion_job(
@@ -56,24 +80,26 @@ def build_urlhaus_ingestion_job(
     """
     Assemble le pipeline d'ingestion brute URLhaus.
 
-    L'appel URLhaus est effectué par IngestionService avant
-    l'ouverture des transactions PostgreSQL.
+    Les dépendances sont créées exclusivement dans ce bootstrap :
 
-    La clé d'authentification est résolue uniquement dans ce
-    bootstrap puis injectée explicitement dans le connecteur.
+    - lecture de la configuration ;
+    - construction du connecteur HTTP ;
+    - adaptation au port d'ingestion ;
+    - construction de l'Unit of Work ;
+    - construction du service ;
+    - construction du job.
+
+    L'appel fournisseur est exécuté avant les transactions
+    PostgreSQL par IngestionService.
     """
 
-    if not isinstance(
-        source_id,
-        UUID,
-    ):
-        raise TypeError(
-            "source_id must be a UUID"
-        )
+    _validate_source_id(
+        source_id
+    )
 
     auth_key = (
         _get_required_environment_variable(
-            "URLHAUS_AUTH_KEY"
+            URLHAUS_AUTH_KEY_ENV
         )
     )
 
@@ -98,33 +124,79 @@ def build_urlhaus_ingestion_job(
         )
     )
 
-    unit_of_work = SqlAlchemyUnitOfWork(
-        session_factory=session_factory,
+    unit_of_work = (
+        SqlAlchemyUnitOfWork(
+            session_factory=(
+                session_factory
+            ),
+        )
     )
 
     payload_hasher = (
         Sha256PayloadHasher()
     )
 
-    ingestion_service = IngestionService(
-        unit_of_work=unit_of_work,
-        connector=ingestion_connector,
-        payload_hasher=payload_hasher,
-        batch_size=batch_size,
+    ingestion_service = (
+        IngestionService(
+            unit_of_work=unit_of_work,
+            connector=ingestion_connector,
+            payload_hasher=payload_hasher,
+            batch_size=batch_size,
+        )
     )
 
     return RawIngestionJob(
-        ingestion_service=ingestion_service,
+        ingestion_service=(
+            ingestion_service
+        ),
         source_id=source_id,
         source_code=URLHAUS_SOURCE_CODE,
     )
 
 
+def _validate_source_id(
+    source_id: UUID,
+) -> None:
+    if not isinstance(
+        source_id,
+        UUID,
+    ):
+        raise TypeError(
+            "source_id must be a UUID"
+        )
+
+
 def _get_required_environment_variable(
     name: str,
 ) -> str:
-    value = os.getenv(
-        name
+    """
+    Lit une variable obligatoire sans exposer sa valeur.
+
+    Le message d'erreur contient uniquement le nom public
+    de la configuration, jamais son contenu.
+    """
+
+    if not isinstance(
+        name,
+        str,
+    ):
+        raise TypeError(
+            "environment variable name "
+            "must be a string"
+        )
+
+    normalized_name = (
+        name.strip()
+    )
+
+    if not normalized_name:
+        raise ValueError(
+            "environment variable name "
+            "must not be empty"
+        )
+
+    value = os.environ.get(
+        normalized_name
     )
 
     if not isinstance(
@@ -133,11 +205,13 @@ def _get_required_environment_variable(
     ):
         raise URLhausAuthenticationError(
             "URLhaus Auth-Key is required. "
-            "Set the URLHAUS_AUTH_KEY "
+            f"Set the {URLHAUS_AUTH_KEY_ENV} "
             "environment variable."
         )
 
-    normalized_value = value.strip()
+    normalized_value = (
+        value.strip()
+    )
 
     if not normalized_value:
         raise URLhausAuthenticationError(
