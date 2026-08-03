@@ -1,22 +1,44 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import (
+    UTC,
+    datetime,
+    timedelta,
+)
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
 
-load_dotenv()
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
 
 import pytest
 from sqlalchemy import (
+    Engine,
     create_engine,
     delete,
     select,
     text,
     update,
 )
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import (
+    Session,
+    sessionmaker,
+)
 
 from application.ports.outbound.ingestion_run_payload_repository import (
     IngestionRunPayloadLink,
@@ -50,14 +72,18 @@ from infrastructure.persistence.sqlalchemy import (
 pytestmark = pytest.mark.integration
 
 
-def _create_owner_session_factory() -> sessionmaker[Session]:
+def _create_owner_resources() -> tuple[
+    Engine,
+    sessionmaker[Session],
+]:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
     )
 
     if not database_url:
         raise RuntimeError(
-            "MIGRATION_DATABASE_URL is not defined"
+            "MIGRATION_DATABASE_URL "
+            "is not defined"
         )
 
     engine = create_engine(
@@ -65,18 +91,24 @@ def _create_owner_session_factory() -> sessionmaker[Session]:
         pool_pre_ping=True,
     )
 
-    return sessionmaker(
+    session_factory = sessionmaker(
         bind=engine,
         class_=Session,
         autoflush=False,
         expire_on_commit=False,
     )
 
+    return engine, session_factory
+
 
 def _create_source_and_run(
     *,
-    owner_session_factory: sessionmaker[Session],
-    ingestion_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
+    ingestion_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
     ingestion_run_id: UUID,
     source_code: str,
@@ -93,15 +125,18 @@ def _create_source_and_run(
                 id=source_id,
                 code=source_code,
                 name=(
-                    "CISA normalization service "
-                    "integration test"
+                    "CISA normalization "
+                    "service integration test"
                 ),
             )
         )
 
         session.commit()
 
-    with ingestion_session_factory() as session:
+    with (
+        ingestion_session_factory()
+        as session
+    ):
         session.add(
             IngestionRunModel(
                 id=ingestion_run_id,
@@ -115,7 +150,9 @@ def _create_source_and_run(
 
 def _delete_test_data(
     *,
-    owner_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
 ) -> None:
     with owner_session_factory() as session:
@@ -189,28 +226,40 @@ def _delete_test_data(
 
 def _save_pending_payload(
     *,
-    ingestion_session_factory: sessionmaker[Session],
+    ingestion_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
     ingestion_run_id: UUID,
     external_record_id: str,
     payload: dict[str, object],
 ) -> UUID:
     unit_of_work = SqlAlchemyUnitOfWork(
-        session_factory=ingestion_session_factory,
+        session_factory=(
+            ingestion_session_factory
+        ),
     )
 
     with unit_of_work:
-        payload_id = unit_of_work.raw_payloads.save(
-            RawPayloadData(
-                source_id=source_id,
-                ingestion_run_id=ingestion_run_id,
-                external_record_id=(
-                    external_record_id
-                ),
-                payload=payload,
-                payload_hash=uuid4().hex * 2,
-                http_status=200,
-                processing_status="pending",
+        payload_id = (
+            unit_of_work.raw_payloads.save(
+                RawPayloadData(
+                    source_id=source_id,
+                    ingestion_run_id=(
+                        ingestion_run_id
+                    ),
+                    external_record_id=(
+                        external_record_id
+                    ),
+                    payload=payload,
+                    payload_hash=(
+                        uuid4().hex * 2
+                    ),
+                    http_status=200,
+                    processing_status=(
+                        "pending"
+                    ),
+                )
             )
         )
 
@@ -223,7 +272,9 @@ def _save_pending_payload(
                         ingestion_run_id=(
                             ingestion_run_id
                         ),
-                        raw_payload_id=payload_id,
+                        raw_payload_id=(
+                            payload_id
+                        ),
                     ),
                 )
             )
@@ -231,11 +282,12 @@ def _save_pending_payload(
 
         if (
             link_result.unique_count != 1
-            or link_result.inserted_count != 1
+            or link_result.inserted_count
+            != 1
         ):
             raise RuntimeError(
-                "Unable to link the raw payload "
-                "to its ingestion run"
+                "Unable to link the raw "
+                "payload to its ingestion run"
             )
 
         unit_of_work.commit()
@@ -245,12 +297,17 @@ def _save_pending_payload(
 
 def _force_processing_lease(
     *,
-    ingestion_session_factory: sessionmaker[Session],
+    ingestion_session_factory: (
+        sessionmaker[Session]
+    ),
     payload_id: UUID,
     processing_started_at: datetime,
     processing_attempts: int,
 ) -> None:
-    with ingestion_session_factory() as session:
+    with (
+        ingestion_session_factory()
+        as session
+    ):
         statement = (
             update(
                 SourcePayloadModel
@@ -260,7 +317,9 @@ def _force_processing_lease(
                 == payload_id
             )
             .values(
-                processing_status="processing",
+                processing_status=(
+                    "processing"
+                ),
                 processing_started_at=(
                     processing_started_at
                 ),
@@ -295,19 +354,22 @@ def test_process_pending_persists_normalized_vulnerability(
     ingestion_run_id = uuid4()
 
     source_code = (
-        f"TEST_CISA_NORMALIZE_{uuid4().hex[:16]}"
+        "TEST_CISA_NORMALIZE_"
+        f"{uuid4().hex[:16]}"
     )
 
     cve_id = (
-        f"CVE-2099-"
+        "CVE-2099-"
         f"{uuid4().int % 1_000_000_000:09d}"
     )
 
-    owner_session_factory = (
-        _create_owner_session_factory()
+    owner_engine, owner_session_factory = (
+        _create_owner_resources()
     )
 
-    ingestion_engine = create_ingestion_engine()
+    ingestion_engine = (
+        create_ingestion_engine()
+    )
 
     ingestion_session_factory = (
         create_session_factory(
@@ -323,7 +385,9 @@ def test_process_pending_persists_normalized_vulnerability(
             ingestion_session_factory
         ),
         source_id=source_id,
-        ingestion_run_id=ingestion_run_id,
+        ingestion_run_id=(
+            ingestion_run_id
+        ),
         source_code=source_code,
     )
 
@@ -333,14 +397,19 @@ def test_process_pending_persists_normalized_vulnerability(
                 ingestion_session_factory
             ),
             source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
+            ingestion_run_id=(
+                ingestion_run_id
+            ),
             external_record_id=cve_id,
             payload={
                 "cveID": cve_id,
-                "vendorProject": "Test Vendor",
+                "vendorProject": (
+                    "Test Vendor"
+                ),
                 "product": "Test Product",
                 "vulnerabilityName": (
-                    "Test Product vulnerability"
+                    "Test Product "
+                    "vulnerability"
                 ),
                 "dateAdded": "2026-07-20",
                 "shortDescription": (
@@ -354,7 +423,9 @@ def test_process_pending_persists_normalized_vulnerability(
                 "knownRansomwareCampaignUse": (
                     "Unknown"
                 ),
-                "notes": "Integration test.",
+                "notes": (
+                    "Integration test."
+                ),
                 "cwes": [
                     "CWE-79",
                     "CWE-89",
@@ -362,13 +433,19 @@ def test_process_pending_persists_normalized_vulnerability(
             },
         )
 
-        service = CisaKevNormalizationService(
-            unit_of_work=SqlAlchemyUnitOfWork(
-                session_factory=(
-                    ingestion_session_factory
+        service = (
+            CisaKevNormalizationService(
+                unit_of_work=(
+                    SqlAlchemyUnitOfWork(
+                        session_factory=(
+                            ingestion_session_factory
+                        ),
+                    )
                 ),
-            ),
-            normalizer=CisaKevNormalizer(),
+                normalizer=(
+                    CisaKevNormalizer()
+                ),
+            )
         )
 
         result = service.process_pending(
@@ -378,12 +455,20 @@ def test_process_pending_persists_normalized_vulnerability(
 
         assert result.claimed == 1
         assert result.normalized == 1
-        assert result.already_normalized == 0
+
+        assert (
+            result.already_normalized
+            == 0
+        )
+
         assert result.failed == 0
         assert result.requeued == 0
         assert result.stale_failed == 0
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             raw_payload = session.get(
                 SourcePayloadModel,
                 payload_id,
@@ -410,18 +495,28 @@ def test_process_pending_persists_normalized_vulnerability(
             )
 
             assert (
-                raw_payload.processing_started_at
+                raw_payload
+                .processing_started_at
                 is None
             )
 
             assert (
-                raw_payload.processing_attempts
+                raw_payload
+                .processing_attempts
                 == 1
             )
 
-            assert raw_payload.error_message is None
+            assert (
+                raw_payload.error_message
+                is None
+            )
+
             assert vulnerability is not None
-            assert vulnerability.cve_id == cve_id
+
+            assert (
+                vulnerability.cve_id
+                == cve_id
+            )
 
             assert (
                 vulnerability.vendor_project
@@ -434,29 +529,49 @@ def test_process_pending_persists_normalized_vulnerability(
             ]
 
             assert (
-                vulnerability.normalizer_version
+                vulnerability
+                .normalizer_version
                 == "1.0.0"
             )
 
-        second_result = service.process_pending(
-            source_id=source_id,
-            limit=10,
+        second_result = (
+            service.process_pending(
+                source_id=source_id,
+                limit=10,
+            )
         )
 
-        assert second_result.claimed == 0
-        assert second_result.normalized == 0
-        assert second_result.requeued == 0
-        assert second_result.stale_failed == 0
+        assert (
+            second_result.claimed
+            == 0
+        )
+
+        assert (
+            second_result.normalized
+            == 0
+        )
+
+        assert (
+            second_result.requeued
+            == 0
+        )
+
+        assert (
+            second_result.stale_failed
+            == 0
+        )
 
     finally:
-        _delete_test_data(
-            owner_session_factory=(
-                owner_session_factory
-            ),
-            source_id=source_id,
-        )
-
-        ingestion_engine.dispose()
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
+            )
+        finally:
+            ingestion_engine.dispose()
+            owner_engine.dispose()
 
 
 def test_invalid_payload_is_marked_failed_and_redacted(
@@ -465,19 +580,22 @@ def test_invalid_payload_is_marked_failed_and_redacted(
     ingestion_run_id = uuid4()
 
     source_code = (
-        f"TEST_CISA_FAILURE_{uuid4().hex[:18]}"
+        "TEST_CISA_FAILURE_"
+        f"{uuid4().hex[:18]}"
     )
 
     cve_id = (
-        f"CVE-2099-"
+        "CVE-2099-"
         f"{uuid4().int % 1_000_000_000:09d}"
     )
 
-    owner_session_factory = (
-        _create_owner_session_factory()
+    owner_engine, owner_session_factory = (
+        _create_owner_resources()
     )
 
-    ingestion_engine = create_ingestion_engine()
+    ingestion_engine = (
+        create_ingestion_engine()
+    )
 
     ingestion_session_factory = (
         create_session_factory(
@@ -493,7 +611,9 @@ def test_invalid_payload_is_marked_failed_and_redacted(
             ingestion_session_factory
         ),
         source_id=source_id,
-        ingestion_run_id=ingestion_run_id,
+        ingestion_run_id=(
+            ingestion_run_id
+        ),
         source_code=source_code,
     )
 
@@ -503,11 +623,15 @@ def test_invalid_payload_is_marked_failed_and_redacted(
                 ingestion_session_factory
             ),
             source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
+            ingestion_run_id=(
+                ingestion_run_id
+            ),
             external_record_id=cve_id,
             payload={
                 "cveID": cve_id,
-                "vendorProject": "Test Vendor",
+                "vendorProject": (
+                    "Test Vendor"
+                ),
                 "product": "Test Product",
                 "vulnerabilityName": (
                     "Test vulnerability"
@@ -524,18 +648,27 @@ def test_invalid_payload_is_marked_failed_and_redacted(
                     "Unknown"
                 ),
                 "cwes": [
-                    "api_key=super-secret-value",
+                    (
+                        "api_key="
+                        "super-secret-value"
+                    ),
                 ],
             },
         )
 
-        service = CisaKevNormalizationService(
-            unit_of_work=SqlAlchemyUnitOfWork(
-                session_factory=(
-                    ingestion_session_factory
+        service = (
+            CisaKevNormalizationService(
+                unit_of_work=(
+                    SqlAlchemyUnitOfWork(
+                        session_factory=(
+                            ingestion_session_factory
+                        ),
+                    )
                 ),
-            ),
-            normalizer=CisaKevNormalizer(),
+                normalizer=(
+                    CisaKevNormalizer()
+                ),
+            )
         )
 
         result = service.process_pending(
@@ -545,12 +678,20 @@ def test_invalid_payload_is_marked_failed_and_redacted(
 
         assert result.claimed == 1
         assert result.normalized == 0
-        assert result.already_normalized == 0
+
+        assert (
+            result.already_normalized
+            == 0
+        )
+
         assert result.failed == 1
         assert result.requeued == 0
         assert result.stale_failed == 0
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             raw_payload = session.get(
                 SourcePayloadModel,
                 payload_id,
@@ -577,38 +718,51 @@ def test_invalid_payload_is_marked_failed_and_redacted(
             )
 
             assert (
-                raw_payload.processing_started_at
+                raw_payload
+                .processing_started_at
                 is None
             )
 
             assert (
-                raw_payload.processing_attempts
+                raw_payload
+                .processing_attempts
                 == 1
             )
 
-            assert raw_payload.error_message is not None
+            assert (
+                raw_payload.error_message
+                is not None
+            )
 
             assert (
                 "super-secret-value"
-                not in raw_payload.error_message
+                not in (
+                    raw_payload
+                    .error_message
+                )
             )
 
             assert (
                 "[REDACTED]"
-                in raw_payload.error_message
+                in (
+                    raw_payload
+                    .error_message
+                )
             )
 
             assert vulnerability is None
 
     finally:
-        _delete_test_data(
-            owner_session_factory=(
-                owner_session_factory
-            ),
-            source_id=source_id,
-        )
-
-        ingestion_engine.dispose()
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
+            )
+        finally:
+            ingestion_engine.dispose()
+            owner_engine.dispose()
 
 
 def test_stale_processing_payloads_are_recovered(
@@ -617,24 +771,27 @@ def test_stale_processing_payloads_are_recovered(
     ingestion_run_id = uuid4()
 
     source_code = (
-        f"TEST_CISA_RECOVERY_{uuid4().hex[:16]}"
+        "TEST_CISA_RECOVERY_"
+        f"{uuid4().hex[:16]}"
     )
 
     retry_cve_id = (
-        f"CVE-2099-"
+        "CVE-2099-"
         f"{uuid4().int % 1_000_000_000:09d}"
     )
 
     exhausted_cve_id = (
-        f"CVE-2098-"
+        "CVE-2098-"
         f"{uuid4().int % 1_000_000_000:09d}"
     )
 
-    owner_session_factory = (
-        _create_owner_session_factory()
+    owner_engine, owner_session_factory = (
+        _create_owner_resources()
     )
 
-    ingestion_engine = create_ingestion_engine()
+    ingestion_engine = (
+        create_ingestion_engine()
+    )
 
     ingestion_session_factory = (
         create_session_factory(
@@ -650,76 +807,112 @@ def test_stale_processing_payloads_are_recovered(
             ingestion_session_factory
         ),
         source_id=source_id,
-        ingestion_run_id=ingestion_run_id,
+        ingestion_run_id=(
+            ingestion_run_id
+        ),
         source_code=source_code,
     )
 
     try:
-        retry_payload_id = _save_pending_payload(
-            ingestion_session_factory=(
-                ingestion_session_factory
-            ),
-            source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
-            external_record_id=retry_cve_id,
-            payload={
-                "cveID": retry_cve_id,
-                "vendorProject": "Retry Vendor",
-                "product": "Retry Product",
-                "vulnerabilityName": (
-                    "Recoverable stale vulnerability"
+        retry_payload_id = (
+            _save_pending_payload(
+                ingestion_session_factory=(
+                    ingestion_session_factory
                 ),
-                "dateAdded": "2026-07-20",
-                "shortDescription": (
-                    "A recoverable stale payload."
+                source_id=source_id,
+                ingestion_run_id=(
+                    ingestion_run_id
                 ),
-                "requiredAction": (
-                    "Apply vendor mitigations."
+                external_record_id=(
+                    retry_cve_id
                 ),
-                "dueDate": "2026-08-10",
-                "knownRansomwareCampaignUse": (
-                    "Unknown"
-                ),
-                "cwes": [
-                    "CWE-79",
-                ],
-            },
+                payload={
+                    "cveID": retry_cve_id,
+                    "vendorProject": (
+                        "Retry Vendor"
+                    ),
+                    "product": (
+                        "Retry Product"
+                    ),
+                    "vulnerabilityName": (
+                        "Recoverable stale "
+                        "vulnerability"
+                    ),
+                    "dateAdded": (
+                        "2026-07-20"
+                    ),
+                    "shortDescription": (
+                        "A recoverable "
+                        "stale payload."
+                    ),
+                    "requiredAction": (
+                        "Apply vendor "
+                        "mitigations."
+                    ),
+                    "dueDate": (
+                        "2026-08-10"
+                    ),
+                    (
+                        "knownRansomware"
+                        "CampaignUse"
+                    ): "Unknown",
+                    "cwes": [
+                        "CWE-79",
+                    ],
+                },
+            )
         )
 
-        exhausted_payload_id = _save_pending_payload(
-            ingestion_session_factory=(
-                ingestion_session_factory
-            ),
-            source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
-            external_record_id=exhausted_cve_id,
-            payload={
-                "cveID": exhausted_cve_id,
-                "vendorProject": (
-                    "Exhausted Vendor"
+        exhausted_payload_id = (
+            _save_pending_payload(
+                ingestion_session_factory=(
+                    ingestion_session_factory
                 ),
-                "product": (
-                    "Exhausted Product"
+                source_id=source_id,
+                ingestion_run_id=(
+                    ingestion_run_id
                 ),
-                "vulnerabilityName": (
-                    "Exhausted stale vulnerability"
+                external_record_id=(
+                    exhausted_cve_id
                 ),
-                "dateAdded": "2026-07-20",
-                "shortDescription": (
-                    "A payload that exceeded "
-                    "the retry limit."
-                ),
-                "requiredAction": (
-                    "Apply vendor mitigations."
-                ),
-                "dueDate": "2026-08-10",
-                "knownRansomwareCampaignUse": (
-                    "Unknown"
-                ),
-                "cwes": [
-                    "CWE-89",
-                ],
-            },
+                payload={
+                    "cveID": (
+                        exhausted_cve_id
+                    ),
+                    "vendorProject": (
+                        "Exhausted Vendor"
+                    ),
+                    "product": (
+                        "Exhausted Product"
+                    ),
+                    "vulnerabilityName": (
+                        "Exhausted stale "
+                        "vulnerability"
+                    ),
+                    "dateAdded": (
+                        "2026-07-20"
+                    ),
+                    "shortDescription": (
+                        "A payload that "
+                        "exceeded the retry "
+                        "limit."
+                    ),
+                    "requiredAction": (
+                        "Apply vendor "
+                        "mitigations."
+                    ),
+                    "dueDate": (
+                        "2026-08-10"
+                    ),
+                    (
+                        "knownRansomware"
+                        "CampaignUse"
+                    ): "Unknown",
+                    "cwes": [
+                        "CWE-89",
+                    ],
+                },
+            )
         )
 
         stale_started_at = (
@@ -742,24 +935,32 @@ def test_stale_processing_payloads_are_recovered(
             ingestion_session_factory=(
                 ingestion_session_factory
             ),
-            payload_id=exhausted_payload_id,
+            payload_id=(
+                exhausted_payload_id
+            ),
             processing_started_at=(
                 stale_started_at
             ),
             processing_attempts=3,
         )
 
-        service = CisaKevNormalizationService(
-            unit_of_work=SqlAlchemyUnitOfWork(
-                session_factory=(
-                    ingestion_session_factory
+        service = (
+            CisaKevNormalizationService(
+                unit_of_work=(
+                    SqlAlchemyUnitOfWork(
+                        session_factory=(
+                            ingestion_session_factory
+                        ),
+                    )
                 ),
-            ),
-            normalizer=CisaKevNormalizer(),
-            lease_timeout=timedelta(
-                minutes=15
-            ),
-            max_attempts=3,
+                normalizer=(
+                    CisaKevNormalizer()
+                ),
+                lease_timeout=timedelta(
+                    minutes=15
+                ),
+                max_attempts=3,
+            )
         )
 
         result = service.process_pending(
@@ -771,18 +972,28 @@ def test_stale_processing_payloads_are_recovered(
         assert result.stale_failed == 1
         assert result.claimed == 1
         assert result.normalized == 1
-        assert result.already_normalized == 0
+
+        assert (
+            result.already_normalized
+            == 0
+        )
+
         assert result.failed == 0
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             retry_payload = session.get(
                 SourcePayloadModel,
                 retry_payload_id,
             )
 
-            exhausted_payload = session.get(
-                SourcePayloadModel,
-                exhausted_payload_id,
+            exhausted_payload = (
+                session.get(
+                    SourcePayloadModel,
+                    exhausted_payload_id,
+                )
             )
 
             normalized_rows = (
@@ -795,7 +1006,9 @@ def test_stale_processing_payloads_are_recovered(
                         .in_(
                             [
                                 retry_payload_id,
-                                exhausted_payload_id,
+                                (
+                                    exhausted_payload_id
+                                ),
                             ]
                         )
                     )
@@ -807,43 +1020,58 @@ def test_stale_processing_payloads_are_recovered(
             assert retry_payload is not None
 
             assert (
-                retry_payload.processing_status
+                retry_payload
+                .processing_status
                 == "processed"
             )
 
             assert (
-                retry_payload.processing_started_at
+                retry_payload
+                .processing_started_at
                 is None
             )
 
             assert (
-                retry_payload.processing_attempts
+                retry_payload
+                .processing_attempts
                 == 2
             )
 
-            assert retry_payload.error_message is None
-            assert exhausted_payload is not None
+            assert (
+                retry_payload.error_message
+                is None
+            )
 
             assert (
-                exhausted_payload.processing_status
+                exhausted_payload
+                is not None
+            )
+
+            assert (
+                exhausted_payload
+                .processing_status
                 == "failed"
             )
 
             assert (
-                exhausted_payload.processing_started_at
+                exhausted_payload
+                .processing_started_at
                 is None
             )
 
             assert (
-                exhausted_payload.processing_attempts
+                exhausted_payload
+                .processing_attempts
                 == 3
             )
 
             assert (
-                exhausted_payload.error_message
+                exhausted_payload
+                .error_message
                 == (
-                    "Processing lease expired "
-                    "after maximum attempts"
+                    "Processing lease "
+                    "expired after "
+                    "maximum attempts"
                 )
             )
 
@@ -851,10 +1079,13 @@ def test_stale_processing_payloads_are_recovered(
                 normalized_rows
             ) == 1
 
-            normalized_row = normalized_rows[0]
+            normalized_row = (
+                normalized_rows[0]
+            )
 
             assert (
-                normalized_row.raw_payload_id
+                normalized_row
+                .raw_payload_id
                 == retry_payload_id
             )
 
@@ -864,11 +1095,13 @@ def test_stale_processing_payloads_are_recovered(
             )
 
     finally:
-        _delete_test_data(
-            owner_session_factory=(
-                owner_session_factory
-            ),
-            source_id=source_id,
-        )
-
-        ingestion_engine.dispose()
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
+            )
+        finally:
+            ingestion_engine.dispose()
+            owner_engine.dispose()

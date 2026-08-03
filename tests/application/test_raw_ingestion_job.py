@@ -14,7 +14,8 @@ from infrastructure.adapters.inbound.raw_ingestion_job import (
 )
 
 
-def test_constructor_rejects_missing_service() -> None:
+def test_constructor_rejects_missing_service(
+) -> None:
     with pytest.raises(
         ValueError,
         match="must not be None",
@@ -26,7 +27,8 @@ def test_constructor_rejects_missing_service() -> None:
         )
 
 
-def test_constructor_rejects_invalid_source_id() -> None:
+def test_constructor_rejects_invalid_source_id(
+) -> None:
     with pytest.raises(
         TypeError,
         match="source_id must be a UUID",
@@ -81,7 +83,8 @@ def test_constructor_rejects_empty_source_code(
         )
 
 
-def test_run_delegates_to_ingestion_service() -> None:
+def test_run_delegates_to_ingestion_service(
+) -> None:
     source_id = uuid4()
     ingestion_service = Mock()
 
@@ -135,44 +138,63 @@ def test_run_logs_execution_summary(
         source_code="CISA_KEV",
     )
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(
+        logging.INFO
+    ):
         job.run()
 
     completed_record = next(
         record
         for record in caplog.records
-        if record.getMessage()
-        == "Raw ingestion completed"
+        if (
+            record.getMessage()
+            == "Raw ingestion completed"
+        )
     )
 
     assert (
-        completed_record.__dict__["source_code"]
+        completed_record
+        .__dict__["source_code"]
         == "CISA_KEV"
     )
+
     assert (
-        completed_record.__dict__["source_id"]
+        completed_record
+        .__dict__["source_id"]
         == str(source_id)
     )
+
     assert (
-        completed_record.__dict__["run_id"]
+        completed_record
+        .__dict__["run_id"]
         == str(run_id)
     )
+
     assert (
-        completed_record.__dict__["records_persisted"]
+        completed_record
+        .__dict__["records_persisted"]
         == 90
     )
 
+    assert completed_record.exc_info is None
 
-def test_run_logs_failure_and_propagates_error(
+
+def test_run_logs_sanitized_failure_and_propagates_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     source_id = uuid4()
     ingestion_service = Mock()
 
+    sensitive_error = RuntimeError(
+        "Request failed for "
+        "https://user:private-password@"
+        "provider.invalid/api?"
+        "token=private-token "
+        "while processing CVE-2026-12345"
+    )
+
     ingestion_service.ingest.side_effect = (
-        RuntimeError(
-            "CISA unavailable"
-        )
+        sensitive_error
     )
 
     job = RawIngestionJob(
@@ -181,22 +203,62 @@ def test_run_logs_failure_and_propagates_error(
         source_code="CISA_KEV",
     )
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(
+        logging.ERROR
+    ):
         with pytest.raises(
             RuntimeError,
-            match="CISA unavailable",
+            match="Request failed",
         ):
             job.run()
 
     failure_record = next(
         record
         for record in caplog.records
-        if record.getMessage()
-        == "Raw ingestion failed"
+        if (
+            record.getMessage()
+            == "Raw ingestion failed"
+        )
     )
 
     assert (
-        failure_record.__dict__["source_code"]
+        failure_record
+        .__dict__["source_code"]
         == "CISA_KEV"
     )
-    assert failure_record.exc_info is not None
+
+    assert (
+        failure_record
+        .__dict__["source_id"]
+        == str(source_id)
+    )
+
+    assert (
+        failure_record
+        .__dict__["error_type"]
+        == "RuntimeError"
+    )
+
+    error_summary = (
+        failure_record
+        .__dict__["error_summary"]
+    )
+
+    assert isinstance(
+        error_summary,
+        str,
+    )
+
+    assert "private-password" not in (
+        error_summary
+    )
+
+    assert "private-token" not in (
+        error_summary
+    )
+
+    assert "CVE-2026-12345" not in (
+        error_summary
+    )
+
+    assert failure_record.exc_info is None

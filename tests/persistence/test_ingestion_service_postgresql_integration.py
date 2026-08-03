@@ -1,21 +1,38 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(
-    dotenv_path=find_dotenv(usecwd=True),
-    override=False,
-)
-
-
 import hashlib
 import json
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import (
+    Iterator,
+    Sequence,
+)
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import (
+    UTC,
+    datetime,
+    timedelta,
+)
+from pathlib import Path
 from typing import Self, cast
 from uuid import UUID, uuid4
+
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
 
 import pytest
 from sqlalchemy import (
@@ -92,7 +109,7 @@ class BatchFailureState:
 
 class StaticIngestionConnector:
     """
-    Connecteur déterministe utilisé sans appel réseau.
+    Connecteur déterministe sans appel réseau.
     """
 
     def __init__(
@@ -128,7 +145,7 @@ class StaticIngestionConnector:
 
 class DeterministicPayloadHasher:
     """
-    Hash JSON stable pour le test d'intégration.
+    Produit un hash JSON stable pour les tests.
     """
 
     def hash(
@@ -151,8 +168,8 @@ class DeterministicPayloadHasher:
 
 class FailOnBatchRawPayloadRepository:
     """
-    Décorateur provoquant une erreur avant l'écriture
-    du lot configuré.
+    Décorateur provoquant une erreur avant
+    l'écriture du lot configuré.
     """
 
     def __init__(
@@ -194,8 +211,8 @@ class FailOnSecondBatchUnitOfWork(
     SqlAlchemyUnitOfWork
 ):
     """
-    Unit of Work réelle avec injection d'une défaillance
-    avant la deuxième écriture raw.
+    Unit of Work réelle avec injection d'une
+    défaillance avant la deuxième écriture brute.
     """
 
     def __init__(
@@ -331,6 +348,16 @@ def _delete_source_data(
             )
         )
 
+        run_ids = (
+            select(
+                IngestionRunModel.id
+            )
+            .where(
+                IngestionRunModel.source_id
+                == context.source_id
+            )
+        )
+
         session.execute(
             delete(
                 IngestionRunPayloadModel
@@ -338,17 +365,7 @@ def _delete_source_data(
                 (
                     IngestionRunPayloadModel
                     .ingestion_run_id
-                ).in_(
-                    select(
-                        IngestionRunModel.id
-                    ).where(
-                        (
-                            IngestionRunModel
-                            .source_id
-                        )
-                        == context.source_id
-                    )
-                )
+                ).in_(run_ids)
             )
         )
 
@@ -400,68 +417,78 @@ def database_context(
         _create_owner_engine()
     )
 
-    ingestion_engine = (
-        create_ingestion_engine()
-    )
-
-    owner_session_factory = (
-        _create_owner_session_factory(
-            owner_engine
-        )
-    )
-
-    ingestion_session_factory = (
-        create_session_factory(
-            ingestion_engine
-        )
-    )
-
-    context = DatabaseContext(
-        source_id=source_id,
-        owner_session_factory=(
-            owner_session_factory
-        ),
-        ingestion_session_factory=(
-            ingestion_session_factory
-        ),
-    )
-
-    with owner_session_factory() as session:
-        session.execute(
-            text(
-                "SET ROLE threat_intel_owner"
-            )
-        )
-
-        session.add(
-            SourceModel(
-                id=source_id,
-                code=(
-                    "TEST_INGEST_SERVICE_"
-                    f"{uuid4().hex[:16]}"
-                ),
-                name=(
-                    "Ingestion service "
-                    "integration test"
-                ),
-                base_url=(
-                    PUBLIC_PHISHTANK_URL
-                ),
-            )
-        )
-
-        session.commit()
+    ingestion_engine: Engine | None = None
+    context: DatabaseContext | None = None
 
     try:
+        ingestion_engine = (
+            create_ingestion_engine()
+        )
+
+        owner_session_factory = (
+            _create_owner_session_factory(
+                owner_engine
+            )
+        )
+
+        ingestion_session_factory = (
+            create_session_factory(
+                ingestion_engine
+            )
+        )
+
+        context = DatabaseContext(
+            source_id=source_id,
+            owner_session_factory=(
+                owner_session_factory
+            ),
+            ingestion_session_factory=(
+                ingestion_session_factory
+            ),
+        )
+
+        with (
+            owner_session_factory()
+            as session
+        ):
+            session.execute(
+                text(
+                    "SET ROLE threat_intel_owner"
+                )
+            )
+
+            session.add(
+                SourceModel(
+                    id=source_id,
+                    code=(
+                        "TEST_INGEST_SERVICE_"
+                        f"{uuid4().hex[:16]}"
+                    ),
+                    name=(
+                        "Ingestion service "
+                        "integration test"
+                    ),
+                    base_url=(
+                        PUBLIC_PHISHTANK_URL
+                    ),
+                )
+            )
+
+            session.commit()
+
         yield context
 
     finally:
-        _delete_source_data(
-            context=context
-        )
+        try:
+            if context is not None:
+                _delete_source_data(
+                    context=context
+                )
+        finally:
+            if ingestion_engine is not None:
+                ingestion_engine.dispose()
 
-        ingestion_engine.dispose()
-        owner_engine.dispose()
+            owner_engine.dispose()
 
 
 def test_ingestion_service_persists_complete_snapshot(
@@ -499,7 +526,11 @@ def test_ingestion_service_persists_complete_snapshot(
     assert result.records_received == 3
     assert result.records_persisted == 3
     assert result.records_skipped == 0
-    assert result.pagination_complete is True
+
+    assert (
+        result.pagination_complete
+        is True
+    )
 
     assert connector.calls == [
         (
@@ -518,10 +549,7 @@ def test_ingestion_service_persists_complete_snapshot(
                 select(
                     IngestionRunModel
                 ).where(
-                    (
-                        IngestionRunModel
-                        .source_id
-                    )
+                    IngestionRunModel.source_id
                     == database_context.source_id
                 )
             )
@@ -602,17 +630,12 @@ def test_ingestion_service_persists_complete_snapshot(
                     SourcePayloadModel
                 )
                 .where(
-                    (
-                        SourcePayloadModel
-                        .source_id
-                    )
+                    SourcePayloadModel.source_id
                     == database_context.source_id
                 )
                 .order_by(
-                    (
-                        SourcePayloadModel
-                        .external_record_id
-                    )
+                    SourcePayloadModel
+                    .external_record_id
                 )
             )
             .scalars()
@@ -655,10 +678,8 @@ def test_ingestion_service_persists_complete_snapshot(
                 select(
                     IngestionRunPayloadModel
                 ).where(
-                    (
-                        IngestionRunPayloadModel
-                        .ingestion_run_id
-                    )
+                    IngestionRunPayloadModel
+                    .ingestion_run_id
                     == result.run_id
                 )
             )
@@ -702,7 +723,7 @@ def test_ingestion_service_persists_complete_snapshot(
             ]
             is True
         )
-        
+
         assert (
             sync_state.metadata_[
                 "pagination_complete"
@@ -729,8 +750,6 @@ def test_ingestion_service_persists_complete_snapshot(
             "batch_size"
             not in sync_state.metadata_
         )
-
-    
 
 
 def test_ingestion_service_preserves_first_batch_when_second_fails(
@@ -789,10 +808,7 @@ def test_ingestion_service_preserves_first_batch_when_second_fails(
                 select(
                     IngestionRunModel
                 ).where(
-                    (
-                        IngestionRunModel
-                        .source_id
-                    )
+                    IngestionRunModel.source_id
                     == database_context.source_id
                 )
             )
@@ -817,30 +833,39 @@ def test_ingestion_service_preserves_first_batch_when_second_fails(
             )
         )
 
+        assert (
+            ingestion_run.records_received
+            == 3
+        )
+
+        assert (
+            ingestion_run.records_succeeded
+            == 2
+        )
+
+        assert (
+            ingestion_run.records_failed
+            == 1
+        )
+
         stored_payloads = tuple(
             session.execute(
                 select(
                     SourcePayloadModel
                 )
                 .where(
-                    (
-                        SourcePayloadModel
-                        .source_id
-                    )
+                    SourcePayloadModel.source_id
                     == database_context.source_id
                 )
                 .order_by(
-                    (
-                        SourcePayloadModel
-                        .external_record_id
-                    )
+                    SourcePayloadModel
+                    .external_record_id
                 )
             )
             .scalars()
             .all()
         )
 
-        # Le premier lot a été validé avant la défaillance.
         assert len(
             stored_payloads
         ) == 2
@@ -853,7 +878,6 @@ def test_ingestion_service_preserves_first_batch_when_second_fails(
             "1001",
         }
 
-        # Le troisième élément appartenait au second lot.
         assert all(
             payload.external_record_id
             != "1002"
@@ -865,10 +889,8 @@ def test_ingestion_service_preserves_first_batch_when_second_fails(
                 select(
                     IngestionRunPayloadModel
                 ).where(
-                    (
-                        IngestionRunPayloadModel
-                        .ingestion_run_id
-                    )
+                    IngestionRunPayloadModel
+                    .ingestion_run_id
                     == ingestion_run.id
                 )
             )
@@ -888,25 +910,9 @@ def test_ingestion_service_preserves_first_batch_when_second_fails(
             for payload in stored_payloads
         }
 
-        # Aucun sync state ne doit annoncer un snapshot réussi.
         sync_state = session.get(
             SyncStateModel,
             database_context.source_id,
         )
 
         assert sync_state is None
-        
-        assert (
-        ingestion_run.records_received
-        == 3
-        )
-
-        assert (
-            ingestion_run.records_succeeded
-            == 2
-        )
-
-        assert (
-            ingestion_run.records_failed
-            == 1
-        )

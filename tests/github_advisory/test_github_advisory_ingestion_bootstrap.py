@@ -11,7 +11,7 @@ from infrastructure.bootstrap.github_advisory_ingestion import (
 
 @patch(
     "infrastructure.bootstrap.github_advisory_ingestion."
-    "GitHubAdvisoryRawIngestionJob"
+    "RawIngestionJob"
 )
 @patch(
     "infrastructure.bootstrap.github_advisory_ingestion."
@@ -116,6 +116,7 @@ def test_build_job_composes_dependencies(
     job_class.assert_called_once_with(
         ingestion_service=ingestion_service,
         source_id=source_id,
+        source_code="GITHUB_ADVISORY",
     )
 
     assert result is expected_job

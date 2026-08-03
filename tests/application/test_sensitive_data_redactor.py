@@ -147,4 +147,84 @@ def test_rejects_invalid_max_length(
             "message",
             max_length=max_length,
         )
+        
+@pytest.mark.parametrize(
+    (
+        "secret_name",
+        "secret_value",
+    ),
+    [
+        (
+            "token",
+            "private-token",
+        ),
+        (
+            "auth_key",
+            "private-auth-key",
+        ),
+        (
+            "api_token",
+            "private-api-token",
+        ),
+        (
+            "refresh_token",
+            "private-refresh-token",
+        ),
+        (
+            "client_secret",
+            "private-client-secret",
+        ),
+    ],
+)
+def test_redacts_secret_query_parameters(
+    secret_name: str,
+    secret_value: str,
+) -> None:
+    value = (
+        "Request failed for "
+        "https://provider.invalid/api?"
+        f"{secret_name}={secret_value}"
+        "&page=2"
+    )
+
+    sanitized = redact_sensitive_data(
+        value
+    )
+
+    assert secret_value not in sanitized
+
+    assert (
+        f"{secret_name}=[REDACTED]"
+        in sanitized
+    )
+
+    assert "&page=2" in sanitized
+    
+def test_redacts_multiple_query_secrets(
+) -> None:
+    value = (
+        "https://provider.invalid/api?"
+        "token=first-secret"
+        "&auth_key=second-secret"
+        "&limit=100"
+    )
+
+    sanitized = redact_sensitive_data(
+        value
+    )
+
+    assert "first-secret" not in sanitized
+    assert "second-secret" not in sanitized
+
+    assert (
+        "token=[REDACTED]"
+        in sanitized
+    )
+
+    assert (
+        "auth_key=[REDACTED]"
+        in sanitized
+    )
+
+    assert "limit=100" in sanitized
 

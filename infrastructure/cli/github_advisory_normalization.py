@@ -4,13 +4,29 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from time import perf_counter
 from uuid import UUID
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 
-from application.security.sensitive_data_redactor import (
-    redact_sensitive_data,
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
+
+from application.security.operational_error_sanitizer import (
+    build_sanitized_error_summary,
 )
 from infrastructure.bootstrap.github_advisory_normalization import (
     build_github_advisory_normalization_job,
@@ -22,14 +38,16 @@ from infrastructure.logging.configuration import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_ERROR_SUMMARY_LENGTH = 500
+
 
 def _parse_arguments(
     argv: Sequence[str] | None = None,
 ) -> argparse.Namespace:
     """
-    Analyse les arguments de la commande GHAD.
+    Analyse les arguments de la commande GitHub Advisory.
 
-    argv reste injectable pour permettre des tests
+    argv reste injectable pour permettre les tests
     unitaires sans modifier sys.argv.
     """
 
@@ -48,7 +66,9 @@ def _parse_arguments(
         ),
     )
 
-    return parser.parse_args(argv)
+    return parser.parse_args(
+        argv
+    )
 
 
 def _parse_source_id(
@@ -59,9 +79,14 @@ def _parse_source_id(
     """
 
     try:
-        return UUID(value)
+        return UUID(
+            value
+        )
 
-    except (TypeError, ValueError) as error:
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
         raise ValueError(
             "source-id must be a valid UUID"
         ) from error
@@ -78,17 +103,10 @@ def main(
     - 0 : exécution réussie ;
     - 1 : erreur de configuration, persistance
           ou traitement ;
-    - 2 : arguments CLI invalides gérés par argparse.
+    - 2 : arguments invalides gérés par argparse.
     """
 
     try:
-        load_dotenv(
-            dotenv_path=find_dotenv(
-                usecwd=True
-            ),
-            override=False,
-        )
-
         configure_logging()
 
         arguments = _parse_arguments(
@@ -120,10 +138,14 @@ def main(
                 "execution completed"
             ),
             extra={
-                "source_id": str(source_id),
+                "source_id": str(
+                    source_id
+                ),
                 "batches": result.batches,
                 "claimed": result.claimed,
-                "normalized": result.normalized,
+                "normalized": (
+                    result.normalized
+                ),
                 "already_normalized": (
                     result.already_normalized
                 ),
@@ -140,45 +162,29 @@ def main(
         )
 
         print(
-            (
-                "GitHub Advisory normalization "
-                "completed: "
-            )
-            + f"batches={result.batches}, "
-            + f"claimed={result.claimed}, "
-            + f"normalized={result.normalized}, "
-            + (
-                "already_normalized="
-                f"{result.already_normalized}, "
-            )
-            + f"failed={result.failed}, "
-            + f"requeued={result.requeued}, "
-            + (
-                "stale_failed="
-                f"{result.stale_failed}, "
-            )
-            + (
-                "duration_seconds="
-                f"{duration_seconds:.3f}"
-            )
+            "GitHub Advisory normalization "
+            "completed: "
+            f"batches={result.batches}, "
+            f"claimed={result.claimed}, "
+            f"normalized={result.normalized}, "
+            "already_normalized="
+            f"{result.already_normalized}, "
+            f"failed={result.failed}, "
+            f"requeued={result.requeued}, "
+            f"stale_failed={result.stale_failed}, "
+            "duration_seconds="
+            f"{duration_seconds:.3f}"
         )
 
         return 0
 
     except Exception as error:
-        error_type = type(error).__name__
-        error_message = str(error).strip()
-
-        raw_summary = (
-            f"{error_type}: {error_message}"
-            if error_message
-            else error_type
-        )
-
         sanitized_summary = (
-            redact_sensitive_data(
-                raw_summary,
-                max_length=500,
+            build_sanitized_error_summary(
+                error,
+                max_length=(
+                    _MAX_ERROR_SUMMARY_LENGTH
+                ),
             )
         )
 
@@ -188,7 +194,9 @@ def main(
                 "execution failed"
             ),
             extra={
-                "error_type": error_type,
+                "error_type": (
+                    type(error).__name__
+                ),
                 "error_summary": (
                     sanitized_summary
                 ),

@@ -2,11 +2,25 @@ from __future__ import annotations
 
 import os
 from collections import Counter
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
 
-load_dotenv()
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
 
 import pytest
 from sqlalchemy import (
@@ -16,7 +30,10 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import (
+    Session,
+    sessionmaker,
+)
 
 from application.ports.outbound.ingestion_run_payload_repository import (
     IngestionRunPayloadLink,
@@ -59,10 +76,8 @@ def _create_owner_resources() -> tuple[
     sessionmaker[Session],
 ]:
     """
-    Crée une connexion disposant des droits nécessaires pour
-    préparer et nettoyer les données d'intégration.
-
-    Cette connexion ne doit jamais pointer vers la production.
+    Crée les ressources disposant des droits
+    nécessaires au setup et au nettoyage.
     """
 
     database_url = os.environ.get(
@@ -71,7 +86,8 @@ def _create_owner_resources() -> tuple[
 
     if not database_url:
         raise RuntimeError(
-            "MIGRATION_DATABASE_URL is not defined"
+            "MIGRATION_DATABASE_URL "
+            "is not defined"
         )
 
     engine = create_engine(
@@ -91,16 +107,16 @@ def _create_owner_resources() -> tuple[
 
 def _create_source_and_run(
     *,
-    owner_session_factory: sessionmaker[Session],
-    ingestion_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
+    ingestion_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
     ingestion_run_id: UUID,
     source_code: str,
 ) -> None:
-    """
-    Prépare une source isolée et une exécution d'ingestion.
-    """
-
     with owner_session_factory() as session:
         session.execute(
             text(
@@ -121,7 +137,10 @@ def _create_source_and_run(
 
         session.commit()
 
-    with ingestion_session_factory() as session:
+    with (
+        ingestion_session_factory()
+        as session
+    ):
         session.add(
             IngestionRunModel(
                 id=ingestion_run_id,
@@ -135,18 +154,18 @@ def _create_source_and_run(
 
 def _save_pending_payload(
     *,
-    ingestion_session_factory: sessionmaker[Session],
+    ingestion_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
     ingestion_run_id: UUID,
     external_record_id: str,
     payload: dict[str, object],
 ) -> UUID:
-    """
-    Persiste un payload brut pending avec un hash unique.
-    """
-
     unit_of_work = SqlAlchemyUnitOfWork(
-        session_factory=ingestion_session_factory,
+        session_factory=(
+            ingestion_session_factory
+        ),
     )
 
     with unit_of_work:
@@ -161,9 +180,13 @@ def _save_pending_payload(
                         external_record_id
                     ),
                     payload=payload,
-                    payload_hash=uuid4().hex * 2,
+                    payload_hash=(
+                        uuid4().hex * 2
+                    ),
                     http_status=200,
-                    processing_status="pending",
+                    processing_status=(
+                        "pending"
+                    ),
                 )
             )
         )
@@ -177,7 +200,9 @@ def _save_pending_payload(
                         ingestion_run_id=(
                             ingestion_run_id
                         ),
-                        raw_payload_id=payload_id,
+                        raw_payload_id=(
+                            payload_id
+                        ),
                     ),
                 )
             )
@@ -185,11 +210,12 @@ def _save_pending_payload(
 
         if (
             link_result.unique_count != 1
-            or link_result.inserted_count != 1
+            or link_result.inserted_count
+            != 1
         ):
             raise RuntimeError(
-                "Unable to link the raw payload "
-                "to its ingestion run"
+                "Unable to link the raw "
+                "payload to its ingestion run"
             )
 
         unit_of_work.commit()
@@ -204,22 +230,30 @@ def _build_valid_payload(
 ) -> dict[str, object]:
     return {
         "cveID": cve_id,
-        "vendorProject": "Integration Vendor",
+        "vendorProject": (
+            "Integration Vendor"
+        ),
         "product": product,
         "vulnerabilityName": (
-            f"{product} integration vulnerability"
+            f"{product} integration "
+            "vulnerability"
         ),
         "dateAdded": "2026-07-20",
         "shortDescription": (
-            "A vulnerability used by the CISA "
-            "runner integration test."
+            "A vulnerability used by "
+            "the CISA runner "
+            "integration test."
         ),
         "requiredAction": (
             "Apply the vendor mitigation."
         ),
         "dueDate": "2026-08-10",
-        "knownRansomwareCampaignUse": "Unknown",
-        "notes": "Runner integration test.",
+        "knownRansomwareCampaignUse": (
+            "Unknown"
+        ),
+        "notes": (
+            "Runner integration test."
+        ),
         "cwes": [
             "CWE-79",
             "CWE-89",
@@ -232,27 +266,32 @@ def _build_invalid_payload(
     cve_id: str,
 ) -> dict[str, object]:
     """
-    Produit un payload invalide contenant une valeur sensible.
-
-    Le secret doit être supprimé du message d'erreur persistant.
+    Produit un payload invalide contenant
+    une valeur sensible.
     """
 
     return {
         "cveID": cve_id,
-        "vendorProject": "Integration Vendor",
+        "vendorProject": (
+            "Integration Vendor"
+        ),
         "product": "Invalid Product",
         "vulnerabilityName": (
-            "Invalid integration vulnerability"
+            "Invalid integration "
+            "vulnerability"
         ),
         "dateAdded": "2026-07-20",
         "shortDescription": (
-            "An intentionally invalid payload."
+            "An intentionally "
+            "invalid payload."
         ),
         "requiredAction": (
             "Apply the vendor mitigation."
         ),
         "dueDate": "2026-08-10",
-        "knownRansomwareCampaignUse": "Unknown",
+        "knownRansomwareCampaignUse": (
+            "Unknown"
+        ),
         "cwes": [
             "api_key=super-secret-value",
         ],
@@ -261,13 +300,11 @@ def _build_invalid_payload(
 
 def _delete_test_data(
     *,
-    owner_session_factory: sessionmaker[Session],
+    owner_session_factory: (
+        sessionmaker[Session]
+    ),
     source_id: UUID,
 ) -> None:
-    """
-    Supprime les données dans l'ordre des clés étrangères.
-    """
-
     with owner_session_factory() as session:
         session.execute(
             text(
@@ -343,17 +380,6 @@ def _delete_test_data(
 
 def test_job_processes_multiple_batches_and_is_idempotent(
 ) -> None:
-    """
-    Vérifie le runner complet avec PostgreSQL :
-
-    - plusieurs lots limités ;
-    - payloads valides normalisés ;
-    - payload invalide marqué failed ;
-    - message d'erreur assaini ;
-    - correspondance processed/normalized ;
-    - deuxième exécution idempotente.
-    """
-
     source_id = uuid4()
     ingestion_run_id = uuid4()
 
@@ -366,7 +392,9 @@ def test_job_processes_multiple_batches_and_is_idempotent(
         _create_owner_resources()
     )
 
-    ingestion_engine = create_ingestion_engine()
+    ingestion_engine = (
+        create_ingestion_engine()
+    )
 
     ingestion_session_factory = (
         create_session_factory(
@@ -382,7 +410,9 @@ def test_job_processes_multiple_batches_and_is_idempotent(
             ingestion_session_factory
         ),
         source_id=source_id,
-        ingestion_run_id=ingestion_run_id,
+        ingestion_run_id=(
+            ingestion_run_id
+        ),
         source_code=source_code,
     )
 
@@ -407,8 +437,12 @@ def test_job_processes_multiple_batches_and_is_idempotent(
                 ingestion_session_factory
             ),
             source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
-            external_record_id=first_cve_id,
+            ingestion_run_id=(
+                ingestion_run_id
+            ),
+            external_record_id=(
+                first_cve_id
+            ),
             payload=_build_valid_payload(
                 cve_id=first_cve_id,
                 product="Product One",
@@ -420,8 +454,12 @@ def test_job_processes_multiple_batches_and_is_idempotent(
                 ingestion_session_factory
             ),
             source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
-            external_record_id=second_cve_id,
+            ingestion_run_id=(
+                ingestion_run_id
+            ),
+            external_record_id=(
+                second_cve_id
+            ),
             payload=_build_valid_payload(
                 cve_id=second_cve_id,
                 product="Product Two",
@@ -433,22 +471,32 @@ def test_job_processes_multiple_batches_and_is_idempotent(
                 ingestion_session_factory
             ),
             source_id=source_id,
-            ingestion_run_id=ingestion_run_id,
-            external_record_id=invalid_cve_id,
+            ingestion_run_id=(
+                ingestion_run_id
+            ),
+            external_record_id=(
+                invalid_cve_id
+            ),
             payload=_build_invalid_payload(
                 cve_id=invalid_cve_id,
             ),
         )
 
-        unit_of_work = SqlAlchemyUnitOfWork(
-            session_factory=(
-                ingestion_session_factory
-            ),
+        unit_of_work = (
+            SqlAlchemyUnitOfWork(
+                session_factory=(
+                    ingestion_session_factory
+                ),
+            )
         )
 
-        service = CisaKevNormalizationService(
-            unit_of_work=unit_of_work,
-            normalizer=CisaKevNormalizer(),
+        service = (
+            CisaKevNormalizationService(
+                unit_of_work=unit_of_work,
+                normalizer=(
+                    CisaKevNormalizer()
+                ),
+            )
         )
 
         job = CisaKevNormalizationJob(
@@ -473,7 +521,10 @@ def test_job_processes_multiple_batches_and_is_idempotent(
             )
         )
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             raw_payloads = list(
                 session.execute(
                     select(
@@ -514,18 +565,14 @@ def test_job_processes_multiple_batches_and_is_idempotent(
                 for payload in raw_payloads
             )
 
-            assert len(
-                raw_payloads
-            ) == 3
+            assert len(raw_payloads) == 3
 
             assert status_counts == {
                 "processed": 2,
                 "failed": 1,
             }
 
-            assert len(
-                normalized_rows
-            ) == 2
+            assert len(normalized_rows) == 2
 
             processed_payload_ids = {
                 payload.id
@@ -537,7 +584,8 @@ def test_job_processes_multiple_batches_and_is_idempotent(
             }
 
             normalized_payload_ids = {
-                vulnerability.raw_payload_id
+                vulnerability
+                .raw_payload_id
                 for vulnerability
                 in normalized_rows
             }
@@ -562,16 +610,24 @@ def test_job_processes_multiple_batches_and_is_idempotent(
                 )
             )
 
-            assert failed_payload.error_message
+            assert (
+                failed_payload.error_message
+            )
 
             assert (
                 "super-secret-value"
-                not in failed_payload.error_message
+                not in (
+                    failed_payload
+                    .error_message
+                )
             )
 
             assert (
                 "[REDACTED]"
-                in failed_payload.error_message
+                in (
+                    failed_payload
+                    .error_message
+                )
             )
 
         second_result = job.run()
@@ -588,7 +644,10 @@ def test_job_processes_multiple_batches_and_is_idempotent(
             )
         )
 
-        with ingestion_session_factory() as session:
+        with (
+            ingestion_session_factory()
+            as session
+        ):
             normalized_count = len(
                 session.execute(
                     select(
@@ -608,12 +667,13 @@ def test_job_processes_multiple_batches_and_is_idempotent(
             assert normalized_count == 2
 
     finally:
-        _delete_test_data(
-            owner_session_factory=(
-                owner_session_factory
-            ),
-            source_id=source_id,
-        )
-
-        ingestion_engine.dispose()
-        owner_engine.dispose()
+        try:
+            _delete_test_data(
+                owner_session_factory=(
+                    owner_session_factory
+                ),
+                source_id=source_id,
+            )
+        finally:
+            ingestion_engine.dispose()
+            owner_engine.dispose()

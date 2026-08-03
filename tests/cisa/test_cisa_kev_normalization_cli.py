@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import logging
 from argparse import Namespace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
+from infrastructure.cli import (
+    cisa_kev_normalization as cisa_kev_normalization_cli,
+)
 from infrastructure.cli.cisa_kev_normalization import (
     _parse_arguments,
     _parse_source_id,
@@ -41,6 +45,26 @@ def _build_job_result() -> SimpleNamespace:
         failed=2,
         requeued=4,
         stale_failed=1,
+    )
+
+
+def test_env_file_uses_project_root() -> None:
+    expected_project_root = (
+        Path(
+            cisa_kev_normalization_cli.__file__
+        )
+        .resolve()
+        .parents[2]
+    )
+
+    assert (
+        cisa_kev_normalization_cli.PROJECT_ROOT
+        == expected_project_root
+    )
+
+    assert (
+        cisa_kev_normalization_cli.ENV_FILE
+        == expected_project_root / ".env"
     )
 
 
@@ -101,13 +125,6 @@ def test_main_runs_normalization_and_prints_summary(
 
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value="C:/project/.env",
-        ) as find_dotenv,
-        patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ) as load_dotenv,
-        patch(
             f"{CLI_MODULE}.configure_logging",
         ) as configure_logging,
         patch(
@@ -129,21 +146,14 @@ def test_main_runs_normalization_and_prints_summary(
             ],
         ),
     ):
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(
+            logging.INFO
+        ):
             exit_code = main([])
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
-
-    find_dotenv.assert_called_once_with(
-        usecwd=True
-    )
-
-    load_dotenv.assert_called_once_with(
-        dotenv_path="C:/project/.env",
-        override=False,
-    )
 
     configure_logging.assert_called_once_with()
 
@@ -191,36 +201,64 @@ def test_main_runs_normalization_and_prints_summary(
         ]
         == str(source_id)
     )
+
     assert (
         completed_record.__dict__[
             "batches"
         ]
         == 17
     )
+
     assert (
         completed_record.__dict__[
             "claimed"
         ]
         == 1_655
     )
+
     assert (
         completed_record.__dict__[
             "normalized"
         ]
         == 1_650
     )
+
+    assert (
+        completed_record.__dict__[
+            "already_normalized"
+        ]
+        == 3
+    )
+
     assert (
         completed_record.__dict__[
             "failed"
         ]
         == 2
     )
+
+    assert (
+        completed_record.__dict__[
+            "requeued"
+        ]
+        == 4
+    )
+
+    assert (
+        completed_record.__dict__[
+            "stale_failed"
+        ]
+        == 1
+    )
+
     assert (
         completed_record.__dict__[
             "duration_seconds"
         ]
         == 2.345
     )
+
+    assert completed_record.exc_info is None
 
 
 def test_main_returns_error_for_invalid_source_id(
@@ -229,27 +267,22 @@ def test_main_returns_error_for_invalid_source_id(
 ) -> None:
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value=".env",
-        ),
-        patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ),
-        patch(
             f"{CLI_MODULE}.configure_logging",
-        ),
+        ) as configure_logging,
         patch(
             f"{CLI_MODULE}._parse_arguments",
             return_value=Namespace(
                 source_id="invalid",
             ),
-        ),
+        ) as parse_arguments,
         patch(
             f"{CLI_MODULE}."
             "build_cisa_kev_normalization_job",
         ) as build_job,
     ):
-        with caplog.at_level(logging.ERROR):
+        with caplog.at_level(
+            logging.ERROR
+        ):
             exit_code = main([])
 
     captured = capsys.readouterr()
@@ -257,12 +290,18 @@ def test_main_returns_error_for_invalid_source_id(
     assert exit_code == 1
     assert captured.out == ""
 
+    configure_logging.assert_called_once_with()
+
+    parse_arguments.assert_called_once_with(
+        []
+    )
+
+    build_job.assert_not_called()
+
     assert (
         "source-id must be a valid UUID"
         in captured.err
     )
-
-    build_job.assert_not_called()
 
     failure_record = _find_log_record(
         caplog,
@@ -295,28 +334,23 @@ def test_main_redacts_job_failure(
 
     with (
         patch(
-            f"{CLI_MODULE}.find_dotenv",
-            return_value=".env",
-        ),
-        patch(
-            f"{CLI_MODULE}.load_dotenv",
-        ),
-        patch(
             f"{CLI_MODULE}.configure_logging",
-        ),
+        ) as configure_logging,
         patch(
             f"{CLI_MODULE}._parse_arguments",
             return_value=Namespace(
                 source_id=str(source_id),
             ),
-        ),
+        ) as parse_arguments,
         patch(
             f"{CLI_MODULE}."
             "build_cisa_kev_normalization_job",
             return_value=job,
-        ),
+        ) as build_job,
     ):
-        with caplog.at_level(logging.ERROR):
+        with caplog.at_level(
+            logging.ERROR
+        ):
             exit_code = main([])
 
     captured = capsys.readouterr()
@@ -324,10 +358,23 @@ def test_main_redacts_job_failure(
     assert exit_code == 1
     assert captured.out == ""
 
+    configure_logging.assert_called_once_with()
+
+    parse_arguments.assert_called_once_with(
+        []
+    )
+
+    build_job.assert_called_once_with(
+        source_id=source_id,
+    )
+
+    job.run.assert_called_once_with()
+
     assert (
         "super-secret-value"
         not in captured.err
     )
+
     assert "[REDACTED]" in captured.err
 
     failure_record = _find_log_record(
@@ -336,6 +383,13 @@ def test_main_redacts_job_failure(
             "CISA KEV normalization "
             "execution failed"
         ),
+    )
+
+    assert (
+        failure_record.__dict__[
+            "error_type"
+        ]
+        == "RuntimeError"
     )
 
     error_summary = (
@@ -348,7 +402,7 @@ def test_main_redacts_job_failure(
         "super-secret-value"
         not in error_summary
     )
-    assert "[REDACTED]" in error_summary
 
+    assert "[REDACTED]" in error_summary
     assert failure_record.exc_info is None
     assert "super-secret-value" not in caplog.text

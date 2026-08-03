@@ -3,8 +3,21 @@ import sys
 from uuid import UUID
 import logging
 from time import perf_counter
+from pathlib import Path
+from dotenv import load_dotenv
 
-from dotenv import find_dotenv, load_dotenv
+PROJECT_ROOT = (
+    Path(__file__)
+            .resolve()
+            .parents[2]
+        )
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+        )
 
 from infrastructure.bootstrap.github_advisory_ingestion import (
     build_github_advisory_ingestion_job,
@@ -85,10 +98,7 @@ def _validate_max_pages(value: int) -> int:
 
 
 def main() -> int:
-    load_dotenv(
-        dotenv_path=find_dotenv(usecwd=True),
-        override=False,
-    )
+    
     
     configure_logging()
 

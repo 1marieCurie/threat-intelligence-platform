@@ -6,7 +6,23 @@ import sys
 from collections.abc import Mapping
 from typing import Any, TextIO
 
-from dotenv import find_dotenv, load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
+
+
 
 from application.security.sensitive_data_redactor import (
     redact_sensitive_data,
@@ -90,10 +106,7 @@ def configure_logging(
     stream: TextIO | None = None,
     force: bool = True,
 ) -> None:
-    load_dotenv(
-        dotenv_path=find_dotenv(usecwd=True),
-        override=False,
-    )
+    
 
     resolved_level = _resolve_log_level(
         level or os.getenv("LOG_LEVEL")

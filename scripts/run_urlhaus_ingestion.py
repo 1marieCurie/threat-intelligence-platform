@@ -1,12 +1,21 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
+from pathlib import Path
 
-load_dotenv(
-    dotenv_path=find_dotenv(usecwd=True),
-    override=False,
+from dotenv import load_dotenv
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[1]
 )
 
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=False,
+)
 
 import argparse
 import os
