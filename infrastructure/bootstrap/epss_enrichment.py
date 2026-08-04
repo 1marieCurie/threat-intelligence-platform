@@ -19,6 +19,9 @@ import os
 from application.services.epss_enrichment_service import (
     EPSSEnrichmentService,
 )
+from application.services.epss_lookup_service import (
+    EPSSLookupService,
+)
 from infrastructure.persistence.sqlalchemy.engine import (
     create_ingestion_engine,
 )
@@ -41,13 +44,15 @@ MAX_ALLOWED_CVE_IDS = 50_000
 def build_epss_enrichment_service(
 ) -> EPSSEnrichmentService:
     """
-    Construit le service d'enrichissement EPSS local.
+    Construit le service historique d'enrichissement
+    EPSS et son lookup local.
 
     Aucun connecteur HTTP FIRST n'est créé ici.
 
     Flux :
 
     EPSSEnrichmentService
+        -> EPSSLookupService
         -> SqlAlchemyUnitOfWork
         -> EPSSScoreRepository
         -> normalized.epss_score
@@ -78,9 +83,13 @@ def build_epss_enrichment_service(
         session_factory=session_factory,
     )
 
-    return EPSSEnrichmentService(
+    epss_lookup = EPSSLookupService(
         unit_of_work=unit_of_work,
         max_cve_ids=max_cve_ids,
+    )
+
+    return EPSSEnrichmentService(
+        epss_lookup=epss_lookup,
     )
 
 

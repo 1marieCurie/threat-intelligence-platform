@@ -1,12 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 import pytest
 
-from application.ports.outbound.cwe_repository import (
-    CWERepository,
-)
 from application.services.cwe_enrichment_service import (
     CWEEnrichmentResult,
     CWEEnrichmentService,
@@ -15,189 +13,57 @@ from domain.cwe_weakness import CWEWeakness
 from domain.threat import Threat
 from domain.threat_category import ThreatCategory
 from domain.weakness_reference import WeaknessReference
-from infrastructure.adapters.outbound.cwe_connector import (
-    CWEConnector,
-)
 
 
-# ============================================================
-# Fake repository
-# ============================================================
-
-
-class FakeCWERepository(CWERepository):
+class FakeCWELookupService:
     """
-    In-memory repository used by the unit tests.
-
-    It records every requested identifier so that caching and
-    deduplication behavior can be verified.
+    Deterministic CWE lookup without PostgreSQL access.
     """
 
     def __init__(
         self,
-        entries: dict[str, CWEWeakness] | None = None,
+        *,
+        result: dict[
+            str,
+            CWEWeakness,
+        ] | None = None,
+        error: Exception | None = None,
     ) -> None:
-        self.entries = dict(
-            entries or {}
+        self.result = dict(
+            result or {}
+        )
+        self.error = error
+
+        self.calls: list[
+            list[str | None]
+        ] = []
+
+    def find_many_by_cwe_ids(
+        self,
+        cwe_ids: Iterable[str | None],
+    ) -> dict[str, CWEWeakness]:
+        provided_ids = list(
+            cwe_ids
         )
 
-        self.calls: list[str] = []
-
-    def find_by_id(
-        self,
-        cwe_id: str,
-    ) -> CWEWeakness | None:
         self.calls.append(
-            cwe_id
+            provided_ids
         )
 
-        return self.entries.get(
-            cwe_id
+        if self.error is not None:
+            raise self.error
+
+        return dict(
+            self.result
         )
-
-
-class InvalidReturnCWERepository(CWERepository):
-    """
-    Repository returning an invalid object.
-
-    This verifies that the service protects its domain boundary.
-    """
-
-    def find_by_id(
-        self,
-        cwe_id: str,
-    ) -> CWEWeakness | None:
-        return {  # type: ignore[return-value]
-            "id": cwe_id,
-        }
-
-
-# ============================================================
-# Live integration repository
-# ============================================================
-
-
-class LiveCWERepository(CWERepository):
-    """
-    Minimal repository adapter used only by integration tests.
-
-    It retrieves one entry from the real MITRE CWE API and maps
-    the raw response to CWEWeakness.
-
-    This adapter is intentionally local to the test file. The real
-    persistent repository will be tested separately.
-    """
-
-    def __init__(
-        self,
-        connector: CWEConnector | None = None,
-    ) -> None:
-        self.connector = (
-            connector
-            or CWEConnector()
-        )
-
-        self.calls: list[str] = []
-
-    def find_by_id(
-        self,
-        cwe_id: str,
-    ) -> CWEWeakness | None:
-        self.calls.append(
-            cwe_id
-        )
-
-        payload = self.connector.fetch_weakness(
-            cwe_id
-        )
-
-        weaknesses = payload.get(
-            "Weaknesses",
-            [],
-        )
-
-        if not weaknesses:
-            return None
-
-        raw = weaknesses[0]
-
-        if not isinstance(raw, dict):
-            return None
-
-        raw_id = raw.get("ID")
-
-        if raw_id is None:
-            return None
-
-        return CWEWeakness(
-            id=f"CWE-{raw_id}",
-            name=str(
-                raw.get("Name")
-                or ""
-            ),
-            description=str(
-                raw.get("Description")
-                or ""
-            ),
-            abstraction=_optional_string(
-                raw.get("Abstraction")
-            ),
-            structure=_optional_string(
-                raw.get("Structure")
-            ),
-            status=_optional_string(
-                raw.get("Status")
-            ),
-            extended_description=_optional_string(
-                raw.get("ExtendedDescription")
-            ),
-            likelihood_of_exploit=_optional_string(
-                raw.get("LikelihoodOfExploit")
-            ),
-            catalog_version=None,
-            catalog_date=None,
-            raw=raw,
-        )
-
-
-def _optional_string(
-    value: Any,
-) -> str | None:
-    if not isinstance(value, str):
-        return None
-
-    normalized = value.strip()
-
-    return normalized or None
-
-
-# ============================================================
-# Fixtures
-# ============================================================
 
 
 @pytest.fixture
 def cwe_79() -> CWEWeakness:
     return CWEWeakness(
         id="CWE-79",
-        name=(
-            "Improper Neutralization of Input "
-            "During Web Page Generation "
-            "('Cross-site Scripting')"
-        ),
-        description=(
-            "The product does not correctly neutralize "
-            "user-controlled input in generated web content."
-        ),
-        abstraction="Base",
-        structure="Simple",
-        status="Stable",
-        likelihood_of_exploit="High",
-        alternate_terms=(
-            "XSS",
-        ),
-        catalog_version="4.20",
-        catalog_date="2026-04-30",
+        name="Cross-site Scripting",
+        description="Official CWE-79 description.",
     )
 
 
@@ -205,22 +71,8 @@ def cwe_79() -> CWEWeakness:
 def cwe_89() -> CWEWeakness:
     return CWEWeakness(
         id="CWE-89",
-        name=(
-            "Improper Neutralization of Special Elements "
-            "used in an SQL Command"
-        ),
-        description=(
-            "The product constructs an SQL command using "
-            "externally influenced input."
-        ),
-        abstraction="Base",
-        structure="Simple",
-        status="Stable",
-        alternate_terms=(
-            "SQL Injection",
-        ),
-        catalog_version="4.20",
-        catalog_date="2026-04-30",
+        name="SQL Injection",
+        description="Official CWE-89 description.",
     )
 
 
@@ -229,89 +81,63 @@ def cwe_502() -> CWEWeakness:
     return CWEWeakness(
         id="CWE-502",
         name="Deserialization of Untrusted Data",
-        description=(
-            "The application deserializes untrusted data "
-            "without sufficient validation."
-        ),
-        abstraction="Base",
-        structure="Simple",
-        status="Stable",
-        catalog_version="4.20",
-        catalog_date="2026-04-30",
+        description="Official CWE-502 description.",
     )
 
 
-@pytest.fixture
-def repository(
-    cwe_79: CWEWeakness,
-    cwe_89: CWEWeakness,
-    cwe_502: CWEWeakness,
-) -> FakeCWERepository:
-    return FakeCWERepository(
-        entries={
-            "CWE-79": cwe_79,
-            "CWE-89": cwe_89,
-            "CWE-502": cwe_502,
-        }
+def _build_service(
+    *,
+    lookup_result: dict[
+        str,
+        CWEWeakness,
+    ] | None = None,
+    lookup_error: Exception | None = None,
+) -> tuple[
+    CWEEnrichmentService,
+    FakeCWELookupService,
+]:
+    lookup = FakeCWELookupService(
+        result=lookup_result,
+        error=lookup_error,
     )
 
-
-@pytest.fixture
-def service(
-    repository: FakeCWERepository,
-) -> CWEEnrichmentService:
-    return CWEEnrichmentService(
-        repository=repository
-    )
-
-
-# ============================================================
-# Constructor tests
-# ============================================================
-
-
-def test_unit_constructor_stores_repository(
-    repository: FakeCWERepository,
-) -> None:
     service = CWEEnrichmentService(
-        repository=repository
+        cwe_lookup=lookup,  # type: ignore[arg-type]
     )
 
-    assert service.repository is repository
+    return (
+        service,
+        lookup,
+    )
 
 
-def test_unit_constructor_rejects_missing_repository(
+def test_constructor_rejects_missing_lookup(
 ) -> None:
     with pytest.raises(
         ValueError,
-        match="repository is required",
+        match="cwe_lookup must not be None",
     ):
         CWEEnrichmentService(
-            repository=None,  # type: ignore[arg-type]
+            cwe_lookup=None,  # type: ignore[arg-type]
         )
 
 
-# ============================================================
-# Single Threat enrichment tests
-# ============================================================
-
-
-def test_unit_enrich_single_threat(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_enrich_single_threat(
     cwe_79: CWEWeakness,
 ) -> None:
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
+    )
+
     threat = Threat(
         id="CVE-2026-0001",
         weakness_references=[
             WeaknessReference(
                 source="NVD",
                 cwe_id="CWE-79",
-                source_description=(
-                    "Cross-site Scripting"
-                ),
                 resolution_status="resolved",
-                resolution_method="explicit_id",
             )
         ],
     )
@@ -333,33 +159,36 @@ def test_unit_enrich_single_threat(
         cwe_79,
     ]
 
-    assert repository.calls == [
-        "CWE-79",
+    assert lookup.calls == [
+        [
+            "CWE-79",
+        ]
     ]
 
     assert result.metadata[
-        "total_threats"
+        "repository_queries"
     ] == 1
 
     assert result.metadata[
         "newly_enriched_threats"
     ] == 1
 
-    assert result.metadata[
-        "newly_added_official_weaknesses"
-    ] == 1
 
-
-def test_unit_enrich_threat_preserves_source_reference(
-    service: CWEEnrichmentService,
+def test_enrichment_preserves_source_reference(
+    cwe_79: CWEWeakness,
 ) -> None:
+    service, _ = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
+    )
+
     reference = WeaknessReference(
         source="GITHUB_ADVISORY",
         cwe_id="CWE-79",
         source_description="XSS",
         origin="github_advisory",
         resolution_status="resolved",
-        resolution_method="explicit_id",
     )
 
     threat = Threat(
@@ -383,11 +212,15 @@ def test_unit_enrich_threat_preserves_source_reference(
     )
 
 
-def test_unit_enrich_threat_normalizes_identifier(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_enrichment_normalizes_reference_identifiers(
     cwe_79: CWEWeakness,
 ) -> None:
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
+    )
+
     threat = Threat(
         id="CVE-2026-0003",
         weakness_references=[
@@ -403,18 +236,15 @@ def test_unit_enrich_threat_normalizes_identifier(
         threat
     )
 
-    assert repository.calls == [
-        "CWE-79",
+    assert lookup.calls == [
+        [
+            "CWE-79",
+        ]
     ]
 
     assert threat.official_weaknesses == [
         cwe_79,
     ]
-
-
-# ============================================================
-# Resolution status tests
-# ============================================================
 
 
 @pytest.mark.parametrize(
@@ -437,12 +267,12 @@ def test_unit_enrich_threat_normalizes_identifier(
         ),
     ],
 )
-def test_unit_non_resolvable_reference_is_skipped(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_non_resolvable_reference_is_skipped(
     status: str,
     metadata_key: str,
 ) -> None:
+    service, lookup = _build_service()
+
     threat = Threat(
         id=f"CVE-2026-{status}",
         weakness_references=[
@@ -458,8 +288,8 @@ def test_unit_non_resolvable_reference_is_skipped(
         threat
     )
 
+    assert lookup.calls == []
     assert threat.official_weaknesses == []
-    assert repository.calls == []
 
     assert result.metadata[
         metadata_key
@@ -470,17 +300,16 @@ def test_unit_non_resolvable_reference_is_skipped(
     ] == 1
 
 
-def test_unit_resolved_reference_without_id_is_invalid(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_resolved_reference_without_id_is_invalid(
 ) -> None:
+    service, lookup = _build_service()
+
     threat = Threat(
         id="CVE-2026-0004",
         weakness_references=[
             WeaknessReference(
                 source="MITRE",
                 cwe_id=None,
-                source_description="Unknown weakness",
                 resolution_status="resolved",
             )
         ],
@@ -490,8 +319,7 @@ def test_unit_resolved_reference_without_id_is_invalid(
         threat
     )
 
-    assert repository.calls == []
-    assert threat.official_weaknesses == []
+    assert lookup.calls == []
 
     assert result.metadata[
         "invalid_references"
@@ -502,17 +330,17 @@ def test_unit_resolved_reference_without_id_is_invalid(
     ] == 1
 
 
-def test_unit_unknown_resolution_status_is_skipped(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_unknown_resolution_status_is_skipped(
 ) -> None:
+    service, lookup = _build_service()
+
     threat = Threat(
         id="CVE-2026-0005",
         weakness_references=[
             WeaknessReference(
                 source="NVD",
                 cwe_id="CWE-79",
-                resolution_status="unknown_status",
+                resolution_status="unknown",
             )
         ],
     )
@@ -521,24 +349,22 @@ def test_unit_unknown_resolution_status_is_skipped(
         threat
     )
 
-    assert repository.calls == []
-    assert threat.official_weaknesses == []
+    assert lookup.calls == []
 
     assert result.metadata[
         "skipped_references"
     ] == 1
 
 
-# ============================================================
-# Deduplication tests
-# ============================================================
-
-
-def test_unit_duplicate_source_references_create_one_official_link(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_duplicate_references_create_one_official_link(
     cwe_502: CWEWeakness,
 ) -> None:
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-502": cwe_502,
+        },
+    )
+
     threat = Threat(
         id="CVE-2021-44228",
         weakness_references=[
@@ -564,16 +390,14 @@ def test_unit_duplicate_source_references_create_one_official_link(
         threat
     )
 
-    assert len(
-        threat.weakness_references
-    ) == 3
-
     assert threat.official_weaknesses == [
         cwe_502,
     ]
 
-    assert repository.calls == [
-        "CWE-502",
+    assert lookup.calls == [
+        [
+            "CWE-502",
+        ]
     ]
 
     assert result.metadata[
@@ -581,58 +405,50 @@ def test_unit_duplicate_source_references_create_one_official_link(
     ] == 3
 
     assert result.metadata[
-        "newly_added_official_weaknesses"
-    ] == 1
-
-    assert result.metadata[
         "duplicate_weakness_links"
     ] == 2
 
 
-def test_unit_repository_cache_is_shared_between_threats(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_lookup_is_shared_across_threats(
     cwe_79: CWEWeakness,
 ) -> None:
-    first = Threat(
-        id="CVE-2026-1001",
-        weakness_references=[
-            WeaknessReference(
-                source="NVD",
-                cwe_id="CWE-79",
-                resolution_status="resolved",
-            )
-        ],
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
     )
 
-    second = Threat(
-        id="CVE-2026-1002",
-        weakness_references=[
-            WeaknessReference(
-                source="MITRE",
-                cwe_id="CWE-79",
-                resolution_status="resolved",
-            )
-        ],
-    )
+    threats = [
+        Threat(
+            id="CVE-2026-1001",
+            weakness_references=[
+                WeaknessReference(
+                    source="NVD",
+                    cwe_id="CWE-79",
+                    resolution_status="resolved",
+                )
+            ],
+        ),
+        Threat(
+            id="CVE-2026-1002",
+            weakness_references=[
+                WeaknessReference(
+                    source="MITRE",
+                    cwe_id="CWE-79",
+                    resolution_status="resolved",
+                )
+            ],
+        ),
+    ]
 
     result = service.enrich_threats(
-        [
-            first,
-            second,
-        ]
+        threats
     )
 
-    assert repository.calls == [
-        "CWE-79",
-    ]
-
-    assert first.official_weaknesses == [
-        cwe_79,
-    ]
-
-    assert second.official_weaknesses == [
-        cwe_79,
+    assert lookup.calls == [
+        [
+            "CWE-79",
+        ]
     ]
 
     assert result.metadata[
@@ -644,11 +460,67 @@ def test_unit_repository_cache_is_shared_between_threats(
     ] == 2
 
 
-def test_unit_preserves_existing_official_weakness(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_multiple_unique_ids_use_one_lookup(
+    cwe_79: CWEWeakness,
+    cwe_89: CWEWeakness,
+) -> None:
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+            "CWE-89": cwe_89,
+        },
+    )
+
+    threat = Threat(
+        id="CVE-2026-3001",
+        weakness_references=[
+            WeaknessReference(
+                source="NVD",
+                cwe_id="CWE-79",
+                resolution_status="resolved",
+            ),
+            WeaknessReference(
+                source="GITHUB_ADVISORY",
+                cwe_id="CWE-89",
+                resolution_status="resolved",
+            ),
+        ],
+    )
+
+    result = service.enrich_threat(
+        threat
+    )
+
+    assert lookup.calls == [
+        [
+            "CWE-79",
+            "CWE-89",
+        ]
+    ]
+
+    assert threat.official_weaknesses == [
+        cwe_79,
+        cwe_89,
+    ]
+
+    assert result.metadata[
+        "repository_queries"
+    ] == 1
+
+    assert result.metadata[
+        "requested_unique_cwe_ids"
+    ] == 2
+
+
+def test_existing_official_weakness_is_preserved(
     cwe_79: CWEWeakness,
 ) -> None:
+    service, _ = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
+    )
+
     threat = Threat(
         id="CVE-2026-1003",
         weakness_references=[
@@ -671,14 +543,6 @@ def test_unit_preserves_existing_official_weakness(
         cwe_79,
     ]
 
-    assert repository.calls == [
-        "CWE-79",
-    ]
-
-    assert result.metadata[
-        "newly_added_official_weaknesses"
-    ] == 0
-
     assert result.metadata[
         "duplicate_weakness_links"
     ] == 1
@@ -688,10 +552,11 @@ def test_unit_preserves_existing_official_weakness(
     ] == 1
 
 
-def test_unit_deduplicates_existing_official_weaknesses(
-    service: CWEEnrichmentService,
+def test_existing_official_weaknesses_are_deduplicated(
     cwe_79: CWEWeakness,
 ) -> None:
+    service, lookup = _build_service()
+
     duplicate = CWEWeakness(
         id="cwe-00079",
         name=cwe_79.name,
@@ -710,20 +575,22 @@ def test_unit_deduplicates_existing_official_weaknesses(
         threat
     )
 
+    assert lookup.calls == []
+
     assert threat.official_weaknesses == [
         cwe_79,
     ]
 
 
-# ============================================================
-# Missing catalog entries
-# ============================================================
-
-
-def test_unit_missing_cwe_does_not_stop_enrichment(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_missing_cwe_does_not_stop_enrichment(
+    cwe_79: CWEWeakness,
 ) -> None:
+    service, lookup = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
+    )
+
     threat = Threat(
         id="CVE-2026-2001",
         weakness_references=[
@@ -744,41 +611,30 @@ def test_unit_missing_cwe_does_not_stop_enrichment(
         threat
     )
 
-    assert [
-        weakness.id
-        for weakness in threat.official_weaknesses
-    ] == [
-        "CWE-79",
+    assert lookup.calls == [
+        [
+            "CWE-999999",
+            "CWE-79",
+        ]
     ]
 
-    assert repository.calls == [
-        "CWE-999999",
-        "CWE-79",
+    assert threat.official_weaknesses == [
+        cwe_79,
     ]
 
     assert result.metadata[
         "missing_references"
     ] == 1
 
-    assert result.metadata[
-        "missing_unique_cwe_ids"
-    ] == 1
-
-    assert result.metadata[
-        "missing_cwe_ids"
-    ] == [
-        "CWE-999999",
-    ]
-
     assert result.missing_cwe_ids() == [
         "CWE-999999",
     ]
 
 
-def test_unit_missing_cwe_is_cached(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_missing_cwe_is_counted_per_reference(
 ) -> None:
+    service, lookup = _build_service()
+
     threats = [
         Threat(
             id="CVE-2026-2002",
@@ -806,8 +662,10 @@ def test_unit_missing_cwe_is_cached(
         threats
     )
 
-    assert repository.calls == [
-        "CWE-999999",
+    assert lookup.calls == [
+        [
+            "CWE-999999",
+        ]
     ]
 
     assert result.metadata[
@@ -818,74 +676,36 @@ def test_unit_missing_cwe_is_cached(
         "missing_unique_cwe_ids"
     ] == 1
 
+
+def test_empty_collection_skips_lookup(
+) -> None:
+    service, lookup = _build_service()
+
+    result = service.enrich_threats(
+        []
+    )
+
+    assert result.threats == []
+    assert lookup.calls == []
+
+    assert result.metadata[
+        "total_threats"
+    ] == 0
+
     assert result.metadata[
         "repository_queries"
-    ] == 1
+    ] == 0
 
 
-# ============================================================
-# Several CWE entries
-# ============================================================
-
-
-def test_unit_enrich_threat_with_multiple_cwes(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
+def test_result_helpers(
+    cwe_79: CWEWeakness,
 ) -> None:
-    threat = Threat(
-        id="CVE-2026-3001",
-        weakness_references=[
-            WeaknessReference(
-                source="NVD",
-                cwe_id="CWE-79",
-                resolution_status="resolved",
-            ),
-            WeaknessReference(
-                source="GITHUB_ADVISORY",
-                cwe_id="CWE-89",
-                resolution_status="resolved",
-            ),
-        ],
+    service, _ = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
     )
 
-    result = service.enrich_threat(
-        threat
-    )
-
-    assert [
-        weakness.id
-        for weakness in threat.official_weaknesses
-    ] == [
-        "CWE-79",
-        "CWE-89",
-    ]
-
-    assert repository.calls == [
-        "CWE-79",
-        "CWE-89",
-    ]
-
-    assert result.metadata[
-        "requested_unique_cwe_ids"
-    ] == 2
-
-    assert result.metadata[
-        "found_unique_cwe_ids"
-    ] == 2
-
-    assert result.metadata[
-        "newly_added_official_weaknesses"
-    ] == 2
-
-
-# ============================================================
-# Result helper tests
-# ============================================================
-
-
-def test_unit_result_enriched_threats(
-    service: CWEEnrichmentService,
-) -> None:
     enriched = Threat(
         id="CVE-2026-4001",
         weakness_references=[
@@ -897,21 +717,14 @@ def test_unit_result_enriched_threats(
         ],
     )
 
-    not_enriched = Threat(
+    plain = Threat(
         id="CVE-2026-4002",
-        weakness_references=[
-            WeaknessReference(
-                source="NVD",
-                cwe_id=None,
-                resolution_status="unresolved",
-            )
-        ],
     )
 
     result = service.enrich_threats(
         [
             enriched,
-            not_enriched,
+            plain,
         ]
     )
 
@@ -919,31 +732,7 @@ def test_unit_result_enriched_threats(
         enriched,
     ]
 
-
-def test_unit_empty_threat_collection(
-    service: CWEEnrichmentService,
-    repository: FakeCWERepository,
-) -> None:
-    result = service.enrich_threats([])
-
-    assert result.threats == []
-    assert repository.calls == []
-
-    assert result.metadata[
-        "total_threats"
-    ] == 0
-
-    assert result.metadata[
-        "repository_queries"
-    ] == 0
-
-    assert result.enriched_threats() == []
     assert result.missing_cwe_ids() == []
-
-
-# ============================================================
-# Invalid input tests
-# ============================================================
 
 
 @pytest.mark.parametrize(
@@ -955,10 +744,11 @@ def test_unit_empty_threat_collection(
         123,
     ],
 )
-def test_unit_enrich_threat_rejects_invalid_type(
-    service: CWEEnrichmentService,
+def test_enrich_threat_rejects_invalid_type(
     invalid_threat: Any,
 ) -> None:
+    service, lookup = _build_service()
+
     with pytest.raises(
         TypeError,
         match="threat must be a Threat instance",
@@ -966,6 +756,8 @@ def test_unit_enrich_threat_rejects_invalid_type(
         service.enrich_threat(
             invalid_threat
         )
+
+    assert lookup.calls == []
 
 
 @pytest.mark.parametrize(
@@ -978,10 +770,11 @@ def test_unit_enrich_threat_rejects_invalid_type(
         b"invalid",
     ],
 )
-def test_unit_enrich_threats_rejects_invalid_collection(
-    service: CWEEnrichmentService,
+def test_enrich_threats_rejects_invalid_collection(
     invalid_collection: Any,
 ) -> None:
+    service, lookup = _build_service()
+
     with pytest.raises(
         TypeError,
         match=(
@@ -993,10 +786,13 @@ def test_unit_enrich_threats_rejects_invalid_collection(
             invalid_collection
         )
 
+    assert lookup.calls == []
 
-def test_unit_enrich_threats_rejects_invalid_element(
-    service: CWEEnrichmentService,
+
+def test_enrich_threats_rejects_invalid_element(
 ) -> None:
+    service, lookup = _build_service()
+
     with pytest.raises(
         TypeError,
         match=(
@@ -1013,39 +809,7 @@ def test_unit_enrich_threats_rejects_invalid_element(
             ]
         )
 
-
-def test_unit_rejects_invalid_repository_return_type(
-) -> None:
-    service = CWEEnrichmentService(
-        repository=InvalidReturnCWERepository()
-    )
-
-    threat = Threat(
-        id="CVE-2026-5002",
-        weakness_references=[
-            WeaknessReference(
-                source="NVD",
-                cwe_id="CWE-79",
-                resolution_status="resolved",
-            )
-        ],
-    )
-
-    with pytest.raises(
-        TypeError,
-        match=(
-            "CWERepository.find_by_id\\(\\) "
-            "must return CWEWeakness or None"
-        ),
-    ):
-        service.enrich_threat(
-            threat
-        )
-
-
-# ============================================================
-# Identifier helper tests
-# ============================================================
+    assert lookup.calls == []
 
 
 @pytest.mark.parametrize(
@@ -1054,37 +818,16 @@ def test_unit_rejects_invalid_repository_return_type(
         "expected",
     ),
     [
-        (
-            "CWE-79",
-            "CWE-79",
-        ),
-        (
-            "cwe-79",
-            "CWE-79",
-        ),
-        (
-            "79",
-            "CWE-79",
-        ),
-        (
-            79,
-            "CWE-79",
-        ),
-        (
-            "00079",
-            "CWE-79",
-        ),
-        (
-            "CWE-00079",
-            "CWE-79",
-        ),
-        (
-            " CWE-502 ",
-            "CWE-502",
-        ),
+        ("CWE-79", "CWE-79"),
+        ("cwe-79", "CWE-79"),
+        ("79", "CWE-79"),
+        (79, "CWE-79"),
+        ("00079", "CWE-79"),
+        ("CWE-00079", "CWE-79"),
+        (" CWE-502 ", "CWE-502"),
     ],
 )
-def test_unit_normalize_cwe_id(
+def test_normalize_cwe_id(
     raw_value: Any,
     expected: str,
 ) -> None:
@@ -1114,9 +857,10 @@ def test_unit_normalize_cwe_id(
         7.9,
         [],
         {},
+        "CWE-" + ("9" * 40),
     ],
 )
-def test_unit_normalize_cwe_id_rejects_invalid_value(
+def test_normalize_cwe_id_rejects_invalid_value(
     invalid_value: Any,
 ) -> None:
     assert (
@@ -1127,226 +871,23 @@ def test_unit_normalize_cwe_id_rejects_invalid_value(
     )
 
 
-# ============================================================
-# Integration tests: service + real MITRE CWE API
-# ============================================================
-
-
-@pytest.mark.integration
-@pytest.mark.external
-def test_integration_enrich_single_threat_with_live_cwe(
+def test_enrichment_preserves_category(
+    cwe_79: CWEWeakness,
 ) -> None:
-    repository = LiveCWERepository()
-
-    service = CWEEnrichmentService(
-        repository=repository
+    service, _ = _build_service(
+        lookup_result={
+            "CWE-79": cwe_79,
+        },
     )
 
     threat = Threat(
-        id="CVE-TEST-CWE-79",
-        weakness_references=[
-            WeaknessReference(
-                source="NVD",
-                cwe_id="CWE-79",
-                source_description=(
-                    "Cross-site Scripting"
-                ),
-                resolution_status="resolved",
-                resolution_method="explicit_id",
-            )
-        ],
-    )
-
-    result = service.enrich_threat(
-        threat
-    )
-
-    print(
-        "\n========== CWE ENRICHMENT =========="
-    )
-    print(
-        f"Threat ID       : {threat.id}"
-    )
-    print(
-        f"Reference IDs   : {threat.weakness_ids}"
-    )
-    print(
-        "Official CWEs   : "
-        f"{len(threat.official_weaknesses)}"
-    )
-
-    for weakness in threat.official_weaknesses:
-        print(
-            f"{weakness.id}: {weakness.name}"
-        )
-
-    print(
-        "\n========== METADATA =========="
-    )
-
-    for key, value in result.metadata.items():
-        print(
-            f"{key:<35}: {value}"
-        )
-
-    assert repository.calls == [
-        "CWE-79",
-    ]
-
-    assert len(
-        threat.official_weaknesses
-    ) == 1
-
-    weakness = threat.official_weaknesses[0]
-
-    assert weakness.id == "CWE-79"
-    assert weakness.name
-    assert weakness.description
-    assert weakness.raw
-
-    assert result.metadata[
-        "newly_enriched_threats"
-    ] == 1
-
-    assert result.metadata[
-        "found_unique_cwe_ids"
-    ] == 1
-
-
-@pytest.mark.integration
-@pytest.mark.external
-def test_integration_enrich_multiple_threats_with_live_cwe(
-) -> None:
-    repository = LiveCWERepository()
-
-    service = CWEEnrichmentService(
-        repository=repository
-    )
-
-    threats = [
-        Threat(
-            id="CVE-TEST-CWE-79-A",
-            weakness_references=[
-                WeaknessReference(
-                    source="NVD",
-                    cwe_id="CWE-79",
-                    resolution_status="resolved",
-                )
-            ],
-        ),
-        Threat(
-            id="CVE-TEST-CWE-79-B",
-            weakness_references=[
-                WeaknessReference(
-                    source="MITRE",
-                    cwe_id="CWE-79",
-                    resolution_status="resolved",
-                )
-            ],
-        ),
-        Threat(
-            id="CVE-TEST-CWE-89",
-            weakness_references=[
-                WeaknessReference(
-                    source="GITHUB_ADVISORY",
-                    cwe_id="CWE-89",
-                    resolution_status="resolved",
-                )
-            ],
-        ),
-    ]
-
-    result = service.enrich_threats(
-        threats
-    )
-
-    print(
-        "\n========== MULTIPLE CWE ENRICHMENT =========="
-    )
-
-    for threat in threats:
-        ids = [
-            weakness.id
-            for weakness in threat.official_weaknesses
-        ]
-
-        print(
-            f"{threat.id}: {ids}"
-        )
-
-    print(
-        "\n========== METADATA =========="
-    )
-
-    for key, value in result.metadata.items():
-        print(
-            f"{key:<35}: {value}"
-        )
-
-    # CWE-79 is requested by two Threat objects, but the service
-    # cache causes only one repository call for that identifier.
-    assert repository.calls == [
-        "CWE-79",
-        "CWE-89",
-    ]
-
-    assert [
-        weakness.id
-        for weakness
-        in threats[0].official_weaknesses
-    ] == [
-        "CWE-79",
-    ]
-
-    assert [
-        weakness.id
-        for weakness
-        in threats[1].official_weaknesses
-    ] == [
-        "CWE-79",
-    ]
-
-    assert [
-        weakness.id
-        for weakness
-        in threats[2].official_weaknesses
-    ] == [
-        "CWE-89",
-    ]
-
-    assert result.metadata[
-        "total_threats"
-    ] == 3
-
-    assert result.metadata[
-        "requested_unique_cwe_ids"
-    ] == 2
-
-    assert result.metadata[
-        "found_unique_cwe_ids"
-    ] == 2
-
-    assert result.metadata[
-        "repository_queries"
-    ] == 2
-
-    assert result.metadata[
-        "newly_enriched_threats"
-    ] == 3
-
-
-def test_cwe_enrichment_preserves_category(
-    service: CWEEnrichmentService,
-) -> None:
-    threat = Threat(
-        id="CVE-2021-44228",
+        id="CVE-2026-6001",
         category=ThreatCategory.VULNERABILITY,
         weakness_references=[
             WeaknessReference(
                 source="NVD",
-                cwe_id="CWE-502",
+                cwe_id="CWE-79",
                 resolution_status="resolved",
-                resolution_method="explicit_id",
             )
         ],
     )
@@ -1359,3 +900,69 @@ def test_cwe_enrichment_preserves_category(
         result.threats[0].category
         is ThreatCategory.VULNERABILITY
     )
+
+
+def test_lookup_failure_preserves_all_threats(
+    cwe_79: CWEWeakness,
+) -> None:
+    expected_error = RuntimeError(
+        "PostgreSQL read failure"
+    )
+
+    service, lookup = _build_service(
+        lookup_error=expected_error,
+    )
+
+    first = Threat(
+        id="CVE-2026-7001",
+        weakness_references=[
+            WeaknessReference(
+                source="NVD",
+                cwe_id="CWE-79",
+                resolution_status="resolved",
+            )
+        ],
+    )
+
+    second = Threat(
+        id="CVE-2026-7002",
+        official_weaknesses=[
+            cwe_79,
+            cwe_79,
+        ],
+        weakness_references=[
+            WeaknessReference(
+                source="MITRE",
+                cwe_id="CWE-89",
+                resolution_status="resolved",
+            )
+        ],
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="PostgreSQL read failure",
+    ) as raised_error:
+        service.enrich_threats(
+            [
+                first,
+                second,
+            ]
+        )
+
+    assert raised_error.value is expected_error
+
+    assert lookup.calls == [
+        [
+            "CWE-79",
+            "CWE-89",
+        ]
+    ]
+
+    assert first.official_weaknesses == []
+
+    # Aucune mutation avant la réussite du lookup.
+    assert second.official_weaknesses == [
+        cwe_79,
+        cwe_79,
+    ]

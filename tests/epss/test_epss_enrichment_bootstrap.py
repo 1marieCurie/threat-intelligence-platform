@@ -37,6 +37,7 @@ def test_build_service_composes_defaults(
     engine = Mock()
     session_factory = Mock()
     unit_of_work = Mock()
+    expected_lookup = Mock()
     expected_service = Mock()
 
     with (
@@ -57,6 +58,11 @@ def test_build_service_composes_defaults(
         ) as unit_of_work_class,
         patch(
             f"{BOOTSTRAP_MODULE}."
+            "EPSSLookupService",
+            return_value=expected_lookup,
+        ) as lookup_class,
+        patch(
+            f"{BOOTSTRAP_MODULE}."
             "EPSSEnrichmentService",
             return_value=expected_service,
         ) as service_class,
@@ -75,9 +81,13 @@ def test_build_service_composes_defaults(
         session_factory=session_factory,
     )
 
-    service_class.assert_called_once_with(
+    lookup_class.assert_called_once_with(
         unit_of_work=unit_of_work,
         max_cve_ids=DEFAULT_MAX_CVE_IDS,
+    )
+
+    service_class.assert_called_once_with(
+        epss_lookup=expected_lookup,
     )
 
     assert result is expected_service
@@ -98,6 +108,7 @@ def test_build_service_uses_environment(
     engine = Mock()
     session_factory = Mock()
     unit_of_work = Mock()
+    expected_lookup = Mock()
     expected_service = Mock()
 
     with (
@@ -118,6 +129,11 @@ def test_build_service_uses_environment(
         ),
         patch(
             f"{BOOTSTRAP_MODULE}."
+            "EPSSLookupService",
+            return_value=expected_lookup,
+        ) as lookup_class,
+        patch(
+            f"{BOOTSTRAP_MODULE}."
             "EPSSEnrichmentService",
             return_value=expected_service,
         ) as service_class,
@@ -126,9 +142,13 @@ def test_build_service_uses_environment(
             build_epss_enrichment_service()
         )
 
-    service_class.assert_called_once_with(
+    lookup_class.assert_called_once_with(
         unit_of_work=unit_of_work,
         max_cve_ids=1200,
+    )
+
+    service_class.assert_called_once_with(
+        epss_lookup=expected_lookup,
     )
 
     assert result is expected_service
