@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
-from application.ports.outbound.cwe_repository import (
-    CWERepository,
+from application.services.cwe_lookup_service import (
+    CWELookupService,
 )
 from domain.cwe_weakness import CWEWeakness
 from domain.threat import Threat
@@ -33,7 +34,6 @@ class CWEEnrichmentResult:
         """
         Return threats containing at least one official CWE entry.
         """
-
         return [
             threat
             for threat in self.threats
@@ -44,9 +44,8 @@ class CWEEnrichmentResult:
         self,
     ) -> list[str]:
         """
-        Return CWE identifiers that were not found in the catalog.
+        Return CWE identifiers that were not found locally.
         """
-
         value = self.metadata.get(
             "missing_cwe_ids",
             [],
@@ -64,18 +63,16 @@ class CWEEnrichmentResult:
 
 class CWEEnrichmentService:
     """
-    Enrich Threat objects using the official MITRE CWE catalog.
+    Enrich historical Threat objects with locally persisted CWE data.
 
     The service preserves source-specific WeaknessReference objects
     and adds normalized CWEWeakness objects separately.
 
-    Important behavior:
-    - only resolved references with a valid CWE ID are searched;
-    - placeholder, invalid and unresolved references are skipped;
-    - several source references to the same CWE produce only one
-      official CWEWeakness per Threat;
-    - repository lookups are cached during one enrichment run;
-    - missing CWE IDs do not stop the enrichment process.
+    The service no longer accesses a repository directly. All local
+    reads are delegated to CWELookupService before Threat mutation.
+
+    This service is transitional. The canonical layer will consume
+    CWELookupService directly without depending on Threat.
     """
 
     CWE_ID_PATTERN = re.compile(
@@ -85,26 +82,17 @@ class CWEEnrichmentService:
 
     RESOLVABLE_STATUS = "resolved"
 
-    NON_RESOLVABLE_STATUSES = {
-        "unresolved",
-        "placeholder",
-        "invalid",
-    }
-
     def __init__(
         self,
-        repository: CWERepository,
+        *,
+        cwe_lookup: CWELookupService,
     ) -> None:
-        if repository is None:
+        if cwe_lookup is None:
             raise ValueError(
-                "repository is required."
+                "cwe_lookup must not be None"
             )
 
-        self.repository = repository
-
-    # ============================================================
-    # Public operations
-    # ============================================================
+        self._cwe_lookup = cwe_lookup
 
     def enrich_threat(
         self,
@@ -113,8 +101,10 @@ class CWEEnrichmentService:
         """
         Enrich one Threat object.
         """
-
-        if not isinstance(threat, Threat):
+        if not isinstance(
+            threat,
+            Threat,
+        ):
             raise TypeError(
                 "threat must be a Threat instance."
             )
@@ -130,51 +120,34 @@ class CWEEnrichmentService:
         """
         Enrich several Threat objects with official CWE entries.
 
-        Threat objects are modified in place.
+        All valid CWE identifiers are loaded in one lookup before
+        any Threat object is modified.
         """
-
         normalized_threats = (
             self._validate_threats(
                 threats
             )
         )
 
-        cache: dict[
-            str,
-            CWEWeakness | None,
-        ] = {}
+        requested_cwe_ids: list[str] = []
+        requested_cwe_id_set: set[str] = set()
 
-        requested_ids: set[str] = set()
-        found_ids: set[str] = set()
-        missing_ids: set[str] = set()
+        cwe_ids_by_threat: list[
+            list[str]
+        ] = []
 
         total_references = 0
         references_with_cwe_id = 0
-        resolved_references = 0
-        missing_references = 0
 
         unresolved_references = 0
         placeholder_references = 0
         invalid_references = 0
         skipped_references = 0
 
-        newly_enriched_threats = 0
-        already_enriched_threats = 0
-        newly_added_weaknesses = 0
-        duplicate_weakness_links = 0
-
+        # Première phase :
+        # analyser les références sans modifier les Threat.
         for threat in normalized_threats:
-            existing_by_id = (
-                self._index_existing_weaknesses(
-                    threat
-                )
-            )
-
-            had_official_weaknesses = bool(
-                existing_by_id
-            )
-
-            added_to_current_threat = 0
+            threat_cwe_ids: list[str] = []
 
             for reference in threat.weakness_references:
                 total_references += 1
@@ -221,44 +194,97 @@ class CWEEnrichmentService:
                     continue
 
                 references_with_cwe_id += 1
-                requested_ids.add(
+
+                threat_cwe_ids.append(
                     normalized_cwe_id
                 )
 
+                if (
+                    normalized_cwe_id
+                    not in requested_cwe_id_set
+                ):
+                    requested_cwe_id_set.add(
+                        normalized_cwe_id
+                    )
+
+                    requested_cwe_ids.append(
+                        normalized_cwe_id
+                    )
+
+            cwe_ids_by_threat.append(
+                threat_cwe_ids
+            )
+
+        # Une seule lecture groupée pour tous les Threat.
+        if requested_cwe_ids:
+            weaknesses_by_id = (
+                self._cwe_lookup
+                .find_many_by_cwe_ids(
+                    requested_cwe_ids
+                )
+            )
+
+            repository_queries = 1
+
+        else:
+            weaknesses_by_id = {}
+            repository_queries = 0
+
+        found_ids: set[str] = set()
+        missing_ids: set[str] = set()
+
+        resolved_references = 0
+        missing_references = 0
+
+        newly_enriched_threats = 0
+        already_enriched_threats = 0
+        newly_added_weaknesses = 0
+        duplicate_weakness_links = 0
+
+        # Deuxième phase :
+        # appliquer les données uniquement après un lookup réussi.
+        for threat, threat_cwe_ids in zip(
+            normalized_threats,
+            cwe_ids_by_threat,
+            strict=True,
+        ):
+            existing_by_id = (
+                self._index_existing_weaknesses(
+                    threat
+                )
+            )
+
+            had_official_weaknesses = bool(
+                existing_by_id
+            )
+
+            added_to_current_threat = 0
+
+            for cwe_id in threat_cwe_ids:
                 official_weakness = (
-                    self._find_with_cache(
-                        cwe_id=normalized_cwe_id,
-                        cache=cache,
+                    weaknesses_by_id.get(
+                        cwe_id
                     )
                 )
 
                 if official_weakness is None:
                     missing_ids.add(
-                        normalized_cwe_id
+                        cwe_id
                     )
                     missing_references += 1
                     continue
 
                 found_ids.add(
-                    normalized_cwe_id
+                    cwe_id
                 )
                 resolved_references += 1
 
-                official_id = (
-                    self._normalize_cwe_id(
-                        official_weakness.id
-                    )
-                )
-
-                if official_id is None:
-                    official_id = normalized_cwe_id
-
-                if official_id in existing_by_id:
+                if cwe_id in existing_by_id:
                     duplicate_weakness_links += 1
                     continue
 
                 existing_by_id[
-                    official_id
+                    cwe_id
                 ] = official_weakness
 
                 newly_added_weaknesses += 1
@@ -305,7 +331,7 @@ class CWEEnrichmentService:
                 skipped_references
             ),
             "requested_unique_cwe_ids": len(
-                requested_ids
+                requested_cwe_ids
             ),
             "found_unique_cwe_ids": len(
                 found_ids
@@ -329,8 +355,8 @@ class CWEEnrichmentService:
             "duplicate_weakness_links": (
                 duplicate_weakness_links
             ),
-            "repository_queries": len(
-                cache
+            "repository_queries": (
+                repository_queries
             ),
         }
 
@@ -338,50 +364,6 @@ class CWEEnrichmentService:
             threats=normalized_threats,
             metadata=metadata,
         )
-
-    # ============================================================
-    # Repository access
-    # ============================================================
-
-    def _find_with_cache(
-        self,
-        *,
-        cwe_id: str,
-        cache: dict[
-            str,
-            CWEWeakness | None,
-        ],
-    ) -> CWEWeakness | None:
-        """
-        Retrieve one official CWE and cache the result.
-
-        Missing values are cached as None to avoid repeated queries.
-        """
-
-        if cwe_id not in cache:
-            weakness = self.repository.find_by_id(
-                cwe_id
-            )
-
-            if (
-                weakness is not None
-                and not isinstance(
-                    weakness,
-                    CWEWeakness,
-                )
-            ):
-                raise TypeError(
-                    "CWERepository.find_by_id() must return "
-                    "CWEWeakness or None."
-                )
-
-            cache[cwe_id] = weakness
-
-        return cache[cwe_id]
-
-    # ============================================================
-    # Existing enrichment
-    # ============================================================
 
     def _index_existing_weaknesses(
         self,
@@ -391,7 +373,6 @@ class CWEEnrichmentService:
         Preserve and deduplicate official weaknesses already stored
         on a Threat.
         """
-
         result: dict[
             str,
             CWEWeakness,
@@ -432,10 +413,6 @@ class CWEEnrichmentService:
 
         return result
 
-    # ============================================================
-    # Input validation
-    # ============================================================
-
     @staticmethod
     def _validate_threats(
         threats: Iterable[Threat],
@@ -443,7 +420,6 @@ class CWEEnrichmentService:
         """
         Validate and materialize a Threat iterable.
         """
-
         if isinstance(
             threats,
             (str, bytes),
@@ -474,27 +450,14 @@ class CWEEnrichmentService:
 
         return normalized_threats
 
-    # ============================================================
-    # Normalization helpers
-    # ============================================================
-
     @classmethod
     def _normalize_cwe_id(
         cls,
         value: Any,
     ) -> str | None:
         """
-        Normalize a CWE identifier to CWE-<number>.
-
-        Accepted values:
-            CWE-79
-            cwe-79
-            79
-            "79"
-            CWE-00079
-            "00079"
+        Normalize a source CWE identifier to CWE-<number>.
         """
-
         if isinstance(value, bool):
             return None
 
@@ -509,7 +472,11 @@ class CWEEnrichmentService:
 
         normalized = value.strip()
 
-        if not normalized:
+        if (
+            not normalized
+            or len(normalized)
+            > CWELookupService.MAX_CWE_ID_LENGTH
+        ):
             return None
 
         match = cls.CWE_ID_PATTERN.fullmatch(
@@ -535,7 +502,6 @@ class CWEEnrichmentService:
         """
         Normalize a WeaknessReference resolution status.
         """
-
         if not isinstance(value, str):
             return ""
 
@@ -553,7 +519,6 @@ class CWEEnrichmentService:
         """
         Sort canonical CWE identifiers numerically.
         """
-
         try:
             numeric_part = cwe_id.split(
                 "-",
