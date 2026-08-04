@@ -3,6 +3,9 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol, Self
 
+from application.ports.outbound.canonical_vulnerability_repository import (
+    CanonicalVulnerabilityRepository,
+)
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
@@ -42,8 +45,11 @@ class UnitOfWork(Protocol):
     """
     Contrat transactionnel partagé par les services applicatifs.
 
-    Tous les repositories sont injectés par l'implémentation
-    concrète de l'Unit of Work.
+    Tous les repositories exposés par une Unit of Work concrète
+    partagent la même transaction.
+
+    Les services applicatifs décident explicitement quand valider
+    ou annuler leurs opérations.
     """
 
     ingestion_runs: IngestionRunRepository
@@ -61,6 +67,10 @@ class UnitOfWork(Protocol):
 
     github_advisory_vulnerabilities: (
         GitHubAdvisoryVulnerabilityRepository
+    )
+
+    canonical_vulnerabilities: (
+        CanonicalVulnerabilityRepository
     )
 
     phishtank_phishing: (

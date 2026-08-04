@@ -8,6 +8,9 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
+from application.ports.outbound.canonical_vulnerability_repository import (
+    CanonicalVulnerabilityRepository,
+)
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
@@ -40,6 +43,9 @@ from application.ports.outbound.sync_state_repository import (
 )
 from application.ports.outbound.urlhaus_url_repository import (
     URLhausURLRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_repository import (
+    SqlAlchemyCanonicalVulnerabilityRepository,
 )
 from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
     SqlAlchemyCisaKevVulnerabilityRepository,
@@ -122,6 +128,10 @@ class SqlAlchemyUnitOfWork:
             GitHubAdvisoryVulnerabilityRepository
         )
 
+        self.canonical_vulnerabilities: (
+            CanonicalVulnerabilityRepository
+        )
+
         self.phishtank_phishing: (
             PhishTankPhishingRepository
         )
@@ -188,6 +198,12 @@ class SqlAlchemyUnitOfWork:
             )
         )
 
+        self.canonical_vulnerabilities = (
+            SqlAlchemyCanonicalVulnerabilityRepository(
+                session=self._session,
+            )
+        )
+
         self.phishtank_phishing = (
             SqlAlchemyPhishTankPhishingRepository(
                 session=self._session,
@@ -233,8 +249,8 @@ class SqlAlchemyUnitOfWork:
                 self.rollback()
 
             elif self._session is not None:
-                # Une transaction non explicitement validée
-                # doit être annulée à la sortie du contexte.
+                # Toute transaction non explicitement validée
+                # est annulée à la sortie du contexte.
                 self.rollback()
 
         finally:
