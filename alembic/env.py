@@ -88,6 +88,7 @@ MANAGED_SCHEMAS: set[str] = {
     "ops",
     "raw",
     "normalized",
+    "canonical",
 }
 
 

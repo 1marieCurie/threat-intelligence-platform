@@ -1,6 +1,11 @@
 from infrastructure.persistence.models.base import (
     Base,
 )
+from infrastructure.persistence.models.canonical import (
+    CanonicalVulnerabilityEvidenceModel,
+    CanonicalVulnerabilityIdentifierModel,
+    CanonicalVulnerabilityModel,
+)
 from infrastructure.persistence.models.normalized import (
     CisaKevVulnerabilityModel,
     EPSSScoreModel,
@@ -35,4 +40,7 @@ __all__ = [
     "PhishTankPhishingModel",
     "URLhausURLModel",
     "EPSSScoreModel",
+    "CanonicalVulnerabilityModel",
+    "CanonicalVulnerabilityIdentifierModel",
+    "CanonicalVulnerabilityEvidenceModel",
 ]
