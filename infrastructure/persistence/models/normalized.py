@@ -46,8 +46,9 @@ class CisaKevVulnerabilityModel(Base):
             name="ransomware_campaign_use_valid",
         ),
         Index(
-            "ix_cisa_kev_vulnerability_cve_id",
+            "ix_cisa_kev_vulnerability_cve_id_id",
             "cve_id",
+            "id",
         ),
         Index(
             "ix_cisa_kev_vulnerability_due_date",
