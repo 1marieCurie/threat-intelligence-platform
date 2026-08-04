@@ -46,8 +46,9 @@ class CisaKevVulnerabilityModel(Base):
             name="ransomware_campaign_use_valid",
         ),
         Index(
-            "ix_cisa_kev_vulnerability_cve_id",
+            "ix_cisa_kev_vulnerability_cve_id_id",
             "cve_id",
+            "id",
         ),
         Index(
             "ix_cisa_kev_vulnerability_due_date",
@@ -153,40 +154,46 @@ class GitHubAdvisoryVulnerabilityModel(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "raw_payload_id",
-            name="github_advisory_raw_payload",
-        ),
-        CheckConstraint(
-            "cvss_score IS NULL OR "
-            "(cvss_score >= 0 AND cvss_score <= 10)",
-            name="cvss_score_range",
-        ),
-        CheckConstraint(
-            "epss_score IS NULL OR "
-            "(epss_score >= 0 AND epss_score <= 1)",
-            name="epss_score_range",
-        ),
-        CheckConstraint(
-            "epss_percentile IS NULL OR "
-            "(epss_percentile >= 0 "
-            "AND epss_percentile <= 1)",
-            name="epss_percentile_range",
-        ),
-        Index(
-            "ix_github_advisory_"
-            "vulnerability_ghsa_updated",
-            "ghsa_id",
-            "updated_at",
-        ),
-        Index(
-            "ix_github_advisory_"
-            "vulnerability_cve_id",
-            "cve_id",
-        ),
-        {
-            "schema": "normalized",
-        },
+    UniqueConstraint(
+        "raw_payload_id",
+        name="github_advisory_raw_payload",
+    ),
+    CheckConstraint(
+        "cvss_score IS NULL OR "
+        "(cvss_score >= 0 AND cvss_score <= 10)",
+        name="cvss_score_range",
+    ),
+    CheckConstraint(
+        "epss_score IS NULL OR "
+        "(epss_score >= 0 AND epss_score <= 1)",
+        name="epss_score_range",
+    ),
+    CheckConstraint(
+        "epss_percentile IS NULL OR "
+        "(epss_percentile >= 0 "
+        "AND epss_percentile <= 1)",
+        name="epss_percentile_range",
+    ),
+    Index(
+        "ix_github_advisory_"
+        "vulnerability_ghsa_updated",
+        "ghsa_id",
+        "updated_at",
+    ),
+    Index(
+        "ix_github_advisory_"
+        "vulnerability_ghsa_id_id",
+        "ghsa_id",
+        "id",
+    ),
+    Index(
+        "ix_github_advisory_"
+        "vulnerability_cve_id",
+        "cve_id",
+    ),
+    {
+        "schema": "normalized",
+    },
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
