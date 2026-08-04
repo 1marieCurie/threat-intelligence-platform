@@ -218,10 +218,27 @@ def test_integration_fetch_recent_urls(
         (bool, str),
     )
 
-    assert isinstance(
-        first["tags"],
-        list,
+    tags = first["tags"]
+
+    assert (
+        tags is None
+        or isinstance(
+            tags,
+            list,
+        )
     )
+
+    if isinstance(
+        tags,
+        list,
+    ):
+        assert all(
+            isinstance(
+                tag,
+                str,
+            )
+            for tag in tags
+        )
 
     # Ne jamais afficher ni ouvrir l'URL malveillante.
     assert first["url"].strip()
