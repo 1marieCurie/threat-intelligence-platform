@@ -6,6 +6,9 @@ from typing import Protocol, Self
 from application.ports.outbound.canonical_vulnerability_repository import (
     CanonicalVulnerabilityRepository,
 )
+from application.ports.outbound.canonical_vulnerability_weakness_repository import (
+    CanonicalVulnerabilityWeaknessRepository,
+)
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
@@ -71,6 +74,10 @@ class UnitOfWork(Protocol):
 
     canonical_vulnerabilities: (
         CanonicalVulnerabilityRepository
+    )
+    
+    canonical_vulnerability_weaknesses: (
+        CanonicalVulnerabilityWeaknessRepository
     )
 
     phishtank_phishing: (

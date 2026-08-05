@@ -18,6 +18,7 @@ from infrastructure.persistence.models import (
     CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
     CanonicalVulnerabilityModel,
+    CanonicalVulnerabilityWeaknessModel,
 )
 
 
@@ -166,6 +167,13 @@ def test_canonical_tables_use_expected_schema(
         ).schema
         == "canonical"
     )
+    
+    assert (
+        _table(
+            CanonicalVulnerabilityWeaknessModel
+        ).schema
+        == "canonical"
+    )
 
     assert (
         _table(
@@ -189,6 +197,10 @@ def test_canonical_tables_are_registered_in_metadata(
         (
             "canonical."
             "canonical_vulnerability_evidence"
+        ),
+        (
+            "canonical."
+            "canonical_vulnerability_weakness"
         ),
     }
 
@@ -721,5 +733,160 @@ def test_evidence_has_expected_indexes(
 
     assert (
         "ix_canonical_evidence_last_observed_at"
+        in index_names
+    )
+    
+# ============================================================
+# Canonical vulnerability weaknesses
+# ============================================================
+
+
+def test_weakness_has_global_provenance_constraint(
+) -> None:
+    assert (
+        "source",
+        "source_record_key",
+        "cwe_id",
+    ) in _unique_column_sets(
+        CanonicalVulnerabilityWeaknessModel
+    )
+
+
+def test_weakness_vulnerability_foreign_key_cascades(
+) -> None:
+    column = _column(
+        CanonicalVulnerabilityWeaknessModel,
+        "vulnerability_id",
+    )
+
+    foreign_key = next(
+        iter(
+            column.foreign_keys
+        )
+    )
+
+    assert foreign_key.target_fullname == (
+        "canonical."
+        "canonical_vulnerability.id"
+    )
+
+    assert foreign_key.ondelete == "CASCADE"
+
+
+def test_weakness_cwe_foreign_key_restricts_deletion(
+) -> None:
+    column = _column(
+        CanonicalVulnerabilityWeaknessModel,
+        "cwe_id",
+    )
+
+    foreign_key = next(
+        iter(
+            column.foreign_keys
+        )
+    )
+
+    assert foreign_key.target_fullname == (
+        "normalized.cwe_weakness.cwe_id"
+    )
+
+    assert foreign_key.ondelete == "RESTRICT"
+
+
+def test_weakness_has_validation_constraints(
+) -> None:
+    expressions = _check_expressions(
+        CanonicalVulnerabilityWeaknessModel
+    )
+
+    assert any(
+        "^CWE-[1-9][0-9]*$"
+        in expression
+        for expression in expressions
+    )
+
+    assert any(
+        "source ~ '^[a-z][a-z0-9_]*$'"
+        in expression
+        for expression in expressions
+    )
+
+    assert (
+        "btrim(source_record_key) <> ''"
+        in expressions
+    )
+
+    assert (
+        "btrim(normalized_record_id) <> ''"
+        in expressions
+    )
+
+    assert (
+        "last_observed_at >= observed_at"
+        in expressions
+    )
+
+
+def test_weakness_observation_columns_are_required(
+) -> None:
+    observed_at = _column(
+        CanonicalVulnerabilityWeaknessModel,
+        "observed_at",
+    )
+
+    last_observed_at = _column(
+        CanonicalVulnerabilityWeaknessModel,
+        "last_observed_at",
+    )
+
+    assert observed_at.nullable is False
+    assert last_observed_at.nullable is False
+
+
+def test_weakness_columns_are_bounded(
+) -> None:
+    expected_lengths = {
+        "cwe_id": 32,
+        "source": 50,
+        "source_record_key": 255,
+        "normalized_record_id": 255,
+    }
+
+    for (
+        column_name,
+        expected_length,
+    ) in expected_lengths.items():
+        assert (
+            _string_column_length(
+                CanonicalVulnerabilityWeaknessModel,
+                column_name,
+            )
+            == expected_length
+        )
+
+
+def test_weakness_has_expected_indexes(
+) -> None:
+    table = _table(
+        CanonicalVulnerabilityWeaknessModel
+    )
+
+    index_names = {
+        index.name
+        for index in table.indexes
+    }
+
+    assert (
+        "ix_canonical_weakness_vulnerability_id"
+        in index_names
+    )
+
+    assert (
+        "ix_canonical_weakness_cwe_id"
+        in index_names
+    )
+
+    assert (
+        "ix_canonical_weakness_last_observed_at"
         in index_names
     )

@@ -80,6 +80,12 @@ from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository im
 from infrastructure.persistence.sqlalchemy.repositories.urlhaus_url_repository import (
     SqlAlchemyURLhausURLRepository,
 )
+from application.ports.outbound.canonical_vulnerability_weakness_repository import (
+    CanonicalVulnerabilityWeaknessRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_weakness_repository import (
+    SqlAlchemyCanonicalVulnerabilityWeaknessRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -130,6 +136,10 @@ class SqlAlchemyUnitOfWork:
 
         self.canonical_vulnerabilities: (
             CanonicalVulnerabilityRepository
+        )
+        
+        self.canonical_vulnerability_weaknesses: (
+            CanonicalVulnerabilityWeaknessRepository
         )
 
         self.phishtank_phishing: (
@@ -200,6 +210,12 @@ class SqlAlchemyUnitOfWork:
 
         self.canonical_vulnerabilities = (
             SqlAlchemyCanonicalVulnerabilityRepository(
+                session=self._session,
+            )
+        )
+        
+        self.canonical_vulnerability_weaknesses = (
+            SqlAlchemyCanonicalVulnerabilityWeaknessRepository(
                 session=self._session,
             )
         )
