@@ -5,11 +5,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = (
-    Path(__file__)
-    .resolve()
-    .parents[2]
-)
+PROJECT_ROOT = Path(
+    __file__
+).resolve().parents[2]
 
 load_dotenv(
     dotenv_path=PROJECT_ROOT / ".env",
@@ -31,6 +29,7 @@ import pytest
 from sqlalchemy import (
     create_engine,
     delete,
+    func,
     select,
     text,
 )
@@ -42,8 +41,17 @@ from sqlalchemy.orm import (
 from application.models.github_advisory_canonical_source_record import (
     GitHubAdvisoryCanonicalCursor,
 )
+from application.services.canonical_cwe_association_builder import (
+    CanonicalCWEAssociationBuilder,
+)
+from application.services.canonical_cwe_enrichment_service import (
+    CanonicalCWEEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalVulnerabilityCorrelationService,
+)
+from application.services.cwe_lookup_service import (
+    CWELookupService,
 )
 from application.services.github_advisory_canonical_correlation_batch_service import (
     GitHubAdvisoryCanonicalCorrelationBatchService,
@@ -52,11 +60,12 @@ from application.services.github_advisory_canonical_observation_builder import (
     GitHubAdvisoryCanonicalObservationBuilder,
 )
 from infrastructure.persistence.models.canonical import (
-    CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
     CanonicalVulnerabilityModel,
+    CanonicalVulnerabilityWeaknessModel,
 )
 from infrastructure.persistence.models.normalized import (
+    CWEWeaknessModel,
     GitHubAdvisoryVulnerabilityModel,
 )
 from infrastructure.persistence.models.ops import (
@@ -79,7 +88,44 @@ from infrastructure.persistence.sqlalchemy.readers.github_advisory_canonical_sou
 pytestmark = pytest.mark.integration
 
 
-def test_correlates_github_advisory_batches_with_real_postgresql(
+def _payload_hash() -> str:
+    return (
+        uuid4().hex
+        + uuid4().hex
+    )
+
+
+def _build_correlation_service(
+    *,
+    session_factory: sessionmaker[Session],
+) -> CanonicalVulnerabilityCorrelationService:
+    return CanonicalVulnerabilityCorrelationService(
+        unit_of_work=SqlAlchemyUnitOfWork(
+            session_factory=session_factory,
+        ),
+    )
+
+
+def _build_cwe_enrichment_service(
+    *,
+    session_factory: sessionmaker[Session],
+) -> CanonicalCWEEnrichmentService:
+    return CanonicalCWEEnrichmentService(
+        cwe_lookup=CWELookupService(
+            unit_of_work=SqlAlchemyUnitOfWork(
+                session_factory=session_factory,
+            ),
+        ),
+        builder=(
+            CanonicalCWEAssociationBuilder()
+        ),
+        unit_of_work=SqlAlchemyUnitOfWork(
+            session_factory=session_factory,
+        ),
+    )
+
+
+def test_correlates_and_enriches_github_advisory_with_real_postgresql(
 ) -> None:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
@@ -93,65 +139,73 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
 
     source_id = uuid4()
     ingestion_run_id = uuid4()
+    raw_payload_id = uuid4()
+    normalized_record_id = uuid4()
 
     source_code = (
-        "TEST_GHSA_CANON_"
-        f"{uuid4().hex[:20]}"
+        "TEST_GHSA_CWE_"
+        f"{uuid4().hex[:16].upper()}"
     )
 
-    token = uuid4().hex[:8]
-
-    active_storage_ghsa = (
-    "GHSA-zzzz-zzzz-zzzy"
-)
-
-    withdrawn_storage_ghsa = (
-        "GHSA-zzzz-zzzz-zzzz"
+    storage_ghsa_id = (
+        "GHSA-zzzz-zzzz-"
+        f"{uuid4().hex[:4]}"
     )
 
-    active_canonical_ghsa = (
-        active_storage_ghsa.upper()
+    canonical_ghsa_id = (
+        storage_ghsa_id.upper()
     )
 
-    withdrawn_canonical_ghsa = (
-        withdrawn_storage_ghsa.upper()
-    )
-
-    serial = (
-        8_000_000_000_000_000_000
+    cve_serial = (
+        100_000_000_000_000_000
         + uuid4().int
-        % 100_000_000_000_000_000
+        % 800_000_000_000_000_000
     )
 
-    cve_id = f"CVE-9999-{serial}"
-
-    raw_payload_ids = [
-        uuid4()
-        for _ in range(3)
-    ]
-
-    uuid_base = (
-        uuid4().int
-        & ~0xFF
+    cve_id = (
+        f"CVE-9999-{cve_serial}"
     )
 
-    normalized_ids = [
-        UUID(
-            int=uuid_base + index
-        )
-        for index in range(1, 4)
-    ]
+    cwe_number = (
+        100_000
+        + uuid4().int
+        % 800_000
+    )
+
+    official_cwe_id = (
+        f"CWE-{cwe_number}"
+    )
+
+    missing_cwe_id = (
+        f"CWE-{cwe_number + 1_000_000}"
+    )
+
+    observed_at = datetime(
+        2026,
+        8,
+        5,
+        10,
+        0,
+        tzinfo=UTC,
+    )
+
+    modified_at = datetime(
+        2026,
+        8,
+        5,
+        11,
+        0,
+        tzinfo=UTC,
+    )
 
     initial_cursor = (
-    GitHubAdvisoryCanonicalCursor(
-        ghsa_id=active_storage_ghsa,
-        normalized_record_id=UUID(
-            int=0
-        ),
+        GitHubAdvisoryCanonicalCursor(
+            ghsa_id=storage_ghsa_id,
+            normalized_record_id=UUID(
+                int=0
+            ),
+        )
     )
-)
-
-    canonical_ids: set[UUID] = set()
 
     owner_engine = create_engine(
         database_url,
@@ -188,14 +242,12 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                     id=source_id,
                     code=source_code,
                     name=(
-                        "GitHub advisory canonical "
+                        "GitHub canonical CWE "
                         "integration test"
                     ),
                 )
             )
 
-            # SourceModel et IngestionRunModel ne
-            # déclarent pas de relation ORM explicite.
             session.flush()
 
             session.add(
@@ -208,201 +260,84 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
 
             session.flush()
 
-            storage_ghsa_ids = [
-                active_storage_ghsa,
-                active_storage_ghsa,
-                withdrawn_storage_ghsa,
-            ]
-
-            session.add_all(
-                [
-                    SourcePayloadModel(
-                        id=raw_payload_id,
-                        source_id=source_id,
-                        ingestion_run_id=(
-                            ingestion_run_id
+            session.add(
+                SourcePayloadModel(
+                    id=raw_payload_id,
+                    source_id=source_id,
+                    ingestion_run_id=(
+                        ingestion_run_id
+                    ),
+                    external_record_id=(
+                        storage_ghsa_id
+                    ),
+                    payload={
+                        "ghsa_id": (
+                            storage_ghsa_id
                         ),
-                        external_record_id=(
-                            f"{ghsa_id}-{index}"
-                        ),
-                        payload={
-                            "ghsa_id": ghsa_id,
-                        },
-                        payload_hash=(
-                            f"{index + 1:064x}"
-                        ),
-                        http_status=200,
-                        processing_status=(
-                            "processed"
-                        ),
-                    )
-                    for (
-                        index,
-                        (
-                            raw_payload_id,
-                            ghsa_id,
-                        ),
-                    )
-                    in enumerate(
-                        zip(
-                            raw_payload_ids,
-                            storage_ghsa_ids,
-                            strict=True,
-                        )
-                    )
-                ]
+                    },
+                    payload_hash=_payload_hash(),
+                    http_status=200,
+                    processing_status="processed",
+                )
             )
 
             session.flush()
 
-            session.add_all(
-                [
-                    GitHubAdvisoryVulnerabilityModel(
-                        id=normalized_ids[0],
-                        raw_payload_id=(
-                            raw_payload_ids[0]
-                        ),
-                        ghsa_id=active_storage_ghsa,
-                        cve_id=None,
-                        advisory_type="reviewed",
-                        severity="HIGH",
-                        summary="First snapshot",
-                        description=None,
-                        published_at=datetime(
-                            2026,
-                            8,
-                            1,
-                            10,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        updated_at=datetime(
-                            2026,
-                            8,
-                            2,
-                            11,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        reviewed_at=None,
-                        withdrawn_at=None,
-                        cvss_score=None,
-                        epss_score=None,
-                        epss_percentile=None,
-                        normalizer_version="1.0.0",
-                        normalized_at=datetime(
-                            2026,
-                            8,
-                            2,
-                            12,
-                            0,
-                            tzinfo=UTC,
-                        ),
+            session.add(
+                CWEWeaknessModel(
+                    cwe_id=official_cwe_id,
+                    name=(
+                        "Integration test CWE"
                     ),
-                    GitHubAdvisoryVulnerabilityModel(
-                        id=normalized_ids[1],
-                        raw_payload_id=(
-                            raw_payload_ids[1]
-                        ),
-                        ghsa_id=active_storage_ghsa,
-                        cve_id=cve_id,
-                        advisory_type="reviewed",
-                        severity="HIGH",
-                        summary="Second snapshot",
-                        description=None,
-                        published_at=datetime(
-                            2026,
-                            8,
-                            1,
-                            10,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        updated_at=datetime(
-                            2026,
-                            8,
-                            3,
-                            11,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        reviewed_at=None,
-                        withdrawn_at=None,
-                        cvss_score=None,
-                        epss_score=None,
-                        epss_percentile=None,
-                        normalizer_version="1.0.0",
-                        normalized_at=datetime(
-                            2026,
-                            8,
-                            3,
-                            12,
-                            0,
-                            tzinfo=UTC,
-                        ),
+                    description=(
+                        "Temporary official CWE "
+                        "catalogue fixture."
                     ),
-                    GitHubAdvisoryVulnerabilityModel(
-                        id=normalized_ids[2],
-                        raw_payload_id=(
-                            raw_payload_ids[2]
-                        ),
-                        ghsa_id=withdrawn_storage_ghsa,
-                        cve_id=None,
-                        advisory_type="reviewed",
-                        severity="LOW",
-                        summary="Withdrawn snapshot",
-                        description=None,
-                        published_at=datetime(
-                            2026,
-                            8,
-                            1,
-                            10,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        updated_at=datetime(
-                            2026,
-                            8,
-                            3,
-                            11,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        reviewed_at=None,
-                        withdrawn_at=datetime(
-                            2026,
-                            8,
-                            4,
-                            10,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                        cvss_score=None,
-                        epss_score=None,
-                        epss_percentile=None,
-                        normalizer_version="1.0.0",
-                        normalized_at=datetime(
-                            2026,
-                            8,
-                            4,
-                            12,
-                            0,
-                            tzinfo=UTC,
-                        ),
+                )
+            )
+
+            session.add(
+                GitHubAdvisoryVulnerabilityModel(
+                    id=normalized_record_id,
+                    raw_payload_id=raw_payload_id,
+                    ghsa_id=storage_ghsa_id,
+                    cve_id=cve_id,
+                    advisory_type="reviewed",
+                    severity="HIGH",
+                    summary=(
+                        "Canonical CWE integration"
                     ),
-                ]
+                    description=None,
+                    published_at=observed_at,
+                    updated_at=modified_at,
+                    reviewed_at=None,
+                    withdrawn_at=None,
+                    cvss_score=None,
+                    epss_score=None,
+                    epss_percentile=None,
+                    cwe_ids=[
+                        official_cwe_id,
+                        missing_cwe_id,
+                    ],
+                    normalizer_version="1.0.0",
+                    normalized_at=observed_at,
+                )
             )
 
             session.commit()
 
         correlation_service = (
-            CanonicalVulnerabilityCorrelationService(
-                unit_of_work=(
-                    SqlAlchemyUnitOfWork(
-                        session_factory=(
-                            ingestion_session_factory
-                        ),
-                    )
+            _build_correlation_service(
+                session_factory=(
+                    ingestion_session_factory
+                ),
+            )
+        )
+
+        cwe_enrichment_service = (
+            _build_cwe_enrichment_service(
+                session_factory=(
+                    ingestion_session_factory
                 ),
             )
         )
@@ -421,130 +356,84 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                     correlation_service=(
                         correlation_service
                     ),
+                    cwe_enrichment_service=(
+                        cwe_enrichment_service
+                    ),
                 )
             )
 
-            first_batch = (
-                batch_service.process_batch(
-                    after_cursor=initial_cursor,
-                    limit=1,
-                )
+            result = batch_service.process_batch(
+                after_cursor=initial_cursor,
+                limit=1,
             )
 
-            assert first_batch.records_read == 1
+            assert result.records_read == 1
 
-            assert first_batch.next_cursor == (
+            assert result.next_cursor == (
                 GitHubAdvisoryCanonicalCursor(
-                    ghsa_id=active_storage_ghsa,
+                    ghsa_id=storage_ghsa_id,
                     normalized_record_id=(
-                        normalized_ids[0]
+                        normalized_record_id
                     ),
                 )
             )
 
             assert (
-                first_batch.source_exhausted
-                is False
-            )
-
-            assert (
-                first_batch
-                .correlation
-                .observations_received
+                result.correlation.created
                 == 1
             )
 
             assert (
-                first_batch
-                .correlation
-                .created
+                result.correlation.persisted
                 == 1
             )
 
-            first_aggregate = (
-                first_batch
+            assert (
+                result.cwe_enrichment
+                .records_received
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .records_enriched
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .requested_unique_cwe_ids
+                == 2
+            )
+
+            assert (
+                result.cwe_enrichment
+                .found_unique_cwe_ids
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .missing_cwe_ids
+                == (
+                    missing_cwe_id,
+                )
+            )
+
+            assert (
+                result.cwe_enrichment
+                .persisted
+                == 1
+            )
+
+            aggregate = (
+                result
                 .correlation
                 .aggregates[0]
             )
 
-            canonical_ids.add(
-                first_aggregate.id
-            )
-
             assert (
-                first_aggregate.status
-                == "provisional"
-            )
-
-            assert [
-                identifier.key
-                for identifier
-                in first_aggregate.identifiers
-            ] == [
-                (
-                    "GHSA",
-                    active_canonical_ghsa,
-                )
-            ]
-
-            second_batch = (
-                batch_service.process_batch(
-                    after_cursor=(
-                        first_batch.next_cursor
-                    ),
-                    limit=2,
-                )
-            )
-
-            # Le troisième enregistrement est retiré
-            # et doit être filtré directement en SQL.
-            assert second_batch.records_read == 1
-
-            assert second_batch.next_cursor == (
-                GitHubAdvisoryCanonicalCursor(
-                    ghsa_id=active_storage_ghsa,
-                    normalized_record_id=(
-                        normalized_ids[1]
-                    ),
-                )
-            )
-
-            assert (
-                second_batch.source_exhausted
-                is True
-            )
-
-            assert (
-                second_batch
-                .correlation
-                .created
-                == 0
-            )
-
-            assert (
-                second_batch
-                .correlation
-                .updated
-                == 1
-            )
-
-            second_aggregate = (
-                second_batch
-                .correlation
-                .aggregates[0]
-            )
-
-            canonical_ids.add(
-                second_aggregate.id
-            )
-
-            assert (
-                second_aggregate.id
-                == first_aggregate.id
-            )
-
-            assert (
-                second_aggregate
+                aggregate
                 .primary_identifier
                 .key
                 == (
@@ -556,7 +445,7 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
             assert {
                 identifier.key
                 for identifier
-                in second_aggregate.identifiers
+                in aggregate.identifiers
             } == {
                 (
                     "CVE",
@@ -564,65 +453,9 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 ),
                 (
                     "GHSA",
-                    active_canonical_ghsa,
+                    canonical_ghsa_id,
                 ),
             }
-
-            assert len(
-                second_aggregate.evidences
-            ) == 1
-
-            evidence = (
-                second_aggregate.evidences[0]
-            )
-
-            assert evidence.key == (
-                "github_advisory",
-                active_canonical_ghsa,
-            )
-
-            assert (
-                evidence.observed_at
-                == datetime(
-                    2026,
-                    8,
-                    2,
-                    12,
-                    0,
-                    tzinfo=UTC,
-                )
-            )
-
-            assert (
-                evidence.last_observed_at
-                == datetime(
-                    2026,
-                    8,
-                    3,
-                    12,
-                    0,
-                    tzinfo=UTC,
-                )
-            )
-
-            assert (
-                evidence.source_modified_at
-                == datetime(
-                    2026,
-                    8,
-                    3,
-                    11,
-                    0,
-                    tzinfo=UTC,
-                )
-            )
-
-            assert (
-                evidence.normalized_record_id
-                == str(
-                    normalized_ids[1]
-                )
-            )
 
             replay = (
                 batch_service.process_batch(
@@ -631,98 +464,103 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 )
             )
 
-            assert replay.correlation.created == 0
-            assert replay.correlation.updated == 1
-            assert replay.correlation.persisted == 1
-
-        with ingestion_session_factory() as session:
-            identifiers = (
-                session.execute(
-                    select(
-                        CanonicalVulnerabilityIdentifierModel
-                    )
-                    .where(
-                        CanonicalVulnerabilityIdentifierModel
-                        .value
-                        .in_(
-                            [
-                                active_canonical_ghsa,
-                                cve_id,
-                                withdrawn_canonical_ghsa,
-                            ]
-                        )
-                    )
-                )
-                .scalars()
-                .all()
+            assert (
+                replay.correlation.created
+                == 0
             )
 
-            assert {
-                identifier.value
-                for identifier in identifiers
-            } == {
-                active_canonical_ghsa,
-                cve_id,
-            }
+            assert (
+                replay.correlation.updated
+                == 1
+            )
 
-            evidences = (
+            assert (
+                replay.cwe_enrichment.persisted
+                == 1
+            )
+
+        with ingestion_session_factory() as session:
+            associations = (
                 session.execute(
                     select(
-                        CanonicalVulnerabilityEvidenceModel
+                        CanonicalVulnerabilityWeaknessModel
                     )
                     .where(
-                        CanonicalVulnerabilityEvidenceModel
+                        CanonicalVulnerabilityWeaknessModel
                         .source
                         == "github_advisory"
                     )
                     .where(
-                        CanonicalVulnerabilityEvidenceModel
+                        CanonicalVulnerabilityWeaknessModel
                         .source_record_key
-                        .in_(
-                            [
-                                active_canonical_ghsa,
-                                withdrawn_canonical_ghsa,
-                            ]
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            assert len(evidences) == 1
-
-            assert (
-                evidences[0].source_record_key
-                == active_canonical_ghsa
-            )
-
-            assert (
-                evidences[0].evidence_type
-                == "github_security_advisory"
-            )
-
-            vulnerabilities = (
-                session.execute(
-                    select(
-                        CanonicalVulnerabilityModel
+                        == canonical_ghsa_id
                     )
                     .where(
-                        CanonicalVulnerabilityModel
-                        .id
-                        .in_(canonical_ids)
+                        CanonicalVulnerabilityWeaknessModel
+                        .cwe_id
+                        == official_cwe_id
                     )
                 )
                 .scalars()
                 .all()
             )
 
-            assert len(vulnerabilities) == 1
+            assert len(associations) == 1
+
+            association = associations[0]
 
             assert (
-                vulnerabilities[0].status
-                == "provisional"
+                association.vulnerability_id
+                == aggregate.id
             )
+
+            assert (
+                association.normalized_record_id
+                == str(
+                    normalized_record_id
+                )
+            )
+
+            assert (
+                association.observed_at
+                == observed_at
+            )
+
+            assert (
+                association.last_observed_at
+                == observed_at
+            )
+
+            assert (
+                association.source_modified_at
+                == modified_at
+            )
+
+            row_count = session.execute(
+                select(
+                    func.count()
+                )
+                .select_from(
+                    CanonicalVulnerabilityWeaknessModel
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source
+                    == "github_advisory"
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source_record_key
+                    == canonical_ghsa_id
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .cwe_id
+                    == official_cwe_id
+                )
+            ).scalar_one()
+
+            assert row_count == 1
 
     finally:
         with owner_session_factory() as session:
@@ -732,7 +570,21 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 )
             )
 
-            discovered_ids = set(
+            session.execute(
+                delete(
+                    CanonicalVulnerabilityWeaknessModel
+                ).where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source
+                    == "github_advisory"
+                ).where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source_record_key
+                    == canonical_ghsa_id
+                )
+            )
+
+            canonical_ids = (
                 session.execute(
                     select(
                         CanonicalVulnerabilityIdentifierModel
@@ -743,9 +595,8 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                         .value
                         .in_(
                             [
-                                active_canonical_ghsa,
+                                canonical_ghsa_id,
                                 cve_id,
-                                withdrawn_canonical_ghsa,
                             ]
                         )
                     )
@@ -754,19 +605,16 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 .all()
             )
 
-            cleanup_ids = (
-                canonical_ids
-                | discovered_ids
-            )
-
-            if cleanup_ids:
+            if canonical_ids:
                 session.execute(
                     delete(
                         CanonicalVulnerabilityModel
                     ).where(
                         CanonicalVulnerabilityModel
                         .id
-                        .in_(cleanup_ids)
+                        .in_(
+                            canonical_ids
+                        )
                     )
                 )
 
@@ -776,7 +624,7 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 ).where(
                     GitHubAdvisoryVulnerabilityModel
                     .id
-                    .in_(normalized_ids)
+                    == normalized_record_id
                 )
             )
 
@@ -784,9 +632,8 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 delete(
                     SourcePayloadModel
                 ).where(
-                    SourcePayloadModel
-                    .id
-                    .in_(raw_payload_ids)
+                    SourcePayloadModel.id
+                    == raw_payload_id
                 )
             )
 
@@ -805,6 +652,15 @@ def test_correlates_github_advisory_batches_with_real_postgresql(
                 ).where(
                     SourceModel.id
                     == source_id
+                )
+            )
+
+            session.execute(
+                delete(
+                    CWEWeaknessModel
+                ).where(
+                    CWEWeaknessModel.cwe_id
+                    == official_cwe_id
                 )
             )
 

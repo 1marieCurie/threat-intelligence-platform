@@ -37,6 +37,7 @@ CANONICAL_TABLES = (
     "canonical_vulnerability",
     "canonical_vulnerability_identifier",
     "canonical_vulnerability_evidence",
+    "canonical_vulnerability_weakness",
 )
 
 
@@ -290,18 +291,54 @@ def test_canonical_tables_have_expected_columns(
     ] = {}
 
     for row in rows:
+        table_name = row[
+            "table_name"
+        ]
+
+        column_name = row[
+            "column_name"
+        ]
+
+        data_type = row[
+            "data_type"
+        ]
+
+        is_nullable = row[
+            "is_nullable"
+        ]
+
+        assert isinstance(
+            table_name,
+            str,
+        )
+
+        assert isinstance(
+            column_name,
+            str,
+        )
+
+        assert isinstance(
+            data_type,
+            str,
+        )
+
+        assert isinstance(
+            is_nullable,
+            str,
+        )
+
         table_columns = (
             columns_by_table.setdefault(
-                row["table_name"],
+                table_name,
                 {},
             )
         )
 
         table_columns[
-            row["column_name"]
+            column_name
         ] = (
-            row["data_type"],
-            row["is_nullable"],
+            data_type,
+            is_nullable,
         )
 
     assert columns_by_table[
@@ -415,6 +452,47 @@ def test_canonical_tables_have_expected_columns(
         ),
     }
 
+    assert columns_by_table[
+        "canonical_vulnerability_weakness"
+    ] == {
+        "id": (
+            "uuid",
+            "NO",
+        ),
+        "vulnerability_id": (
+            "uuid",
+            "NO",
+        ),
+        "cwe_id": (
+            "character varying",
+            "NO",
+        ),
+        "source": (
+            "character varying",
+            "NO",
+        ),
+        "source_record_key": (
+            "character varying",
+            "NO",
+        ),
+        "normalized_record_id": (
+            "character varying",
+            "NO",
+        ),
+        "observed_at": (
+            "timestamp with time zone",
+            "NO",
+        ),
+        "last_observed_at": (
+            "timestamp with time zone",
+            "NO",
+        ),
+        "source_modified_at": (
+            "timestamp with time zone",
+            "YES",
+        ),
+    }
+
 
 def test_database_contains_expected_constraints(
     ingestion_session_factory: (
@@ -481,6 +559,8 @@ def test_database_contains_expected_constraints(
             definition,
             str,
         )
+
+        assert table_name in definitions
 
         definitions[
             table_name
@@ -629,7 +709,66 @@ def test_database_contains_expected_constraints(
         for definition
         in evidence_definitions
     )
-    
+
+    weakness_definitions = (
+        definitions[
+            "canonical_vulnerability_weakness"
+        ]
+    )
+
+    assert any(
+        (
+            "UNIQUE "
+            "(source, source_record_key, cwe_id)"
+            in definition
+        )
+        for definition
+        in weakness_definitions
+    )
+
+    assert any(
+        (
+            "last_observed_at >= observed_at"
+            in definition
+        )
+        for definition
+        in weakness_definitions
+    )
+
+    assert any(
+        (
+            "FOREIGN KEY (vulnerability_id)"
+            in definition
+            and
+            "REFERENCES canonical."
+            "canonical_vulnerability"
+            in definition
+            and
+            "ON DELETE CASCADE"
+            in definition
+        )
+        for definition
+        in weakness_definitions
+    )
+
+    assert any(
+        (
+            "FOREIGN KEY (cwe_id)"
+            in definition
+            and
+            "REFERENCES normalized.cwe_weakness"
+            in definition
+            and
+            "ON DELETE CASCADE"
+            not in definition
+            and
+            "ON DELETE SET NULL"
+            not in definition
+        )
+        for definition
+        in weakness_definitions
+    )
+
 
 def test_primary_identifier_index_is_unique_and_partial(
     ingestion_session_factory: (
@@ -654,8 +793,14 @@ def test_primary_identifier_index_is_unique_and_partial(
             .scalar_one()
         )
 
-    assert "CREATE UNIQUE INDEX" in (
-        index_definition
+    assert isinstance(
+        index_definition,
+        str,
+    )
+
+    assert (
+        "CREATE UNIQUE INDEX"
+        in index_definition
     )
 
     assert (
@@ -747,22 +892,26 @@ def test_database_accepts_provisional_epss_only_vulnerability(
             .one()
         )
 
-        assert row["status"] == (
-            "provisional"
-        )
+        assert row[
+            "status"
+        ] == "provisional"
 
         assert row[
             "correlation_version"
         ] == 1
 
-        assert row["value"] == cve_id
-        assert row["source"] == "epss"
+        assert row[
+            "value"
+        ] == cve_id
 
-        assert row["evidence_type"] == (
-            "epss_snapshot"
-        )
+        assert row[
+            "source"
+        ] == "epss"
 
-        # Keep the integration test side-effect free.
+        assert row[
+            "evidence_type"
+        ] == "epss_snapshot"
+
         session.rollback()
 
 
@@ -967,6 +1116,9 @@ def test_ingestion_role_has_least_privilege(
                             ),
                             (
                                 'canonical_vulnerability_evidence'
+                            ),
+                            (
+                                'canonical_vulnerability_weakness'
                             )
                     ) AS tables(table_name)
                     ORDER BY table_name
@@ -987,7 +1139,9 @@ def test_ingestion_role_has_least_privilege(
 
     assert len(
         table_permissions
-    ) == 3
+    ) == len(
+        CANONICAL_TABLES
+    )
 
     for permissions in table_permissions:
         assert permissions[

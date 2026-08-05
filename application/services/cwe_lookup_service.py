@@ -1,5 +1,9 @@
 from __future__ import annotations
-
+import re
+from domain.cwe_identifier import (
+    MAX_CWE_ID_LENGTH as DOMAIN_MAX_CWE_ID_LENGTH,
+    normalize_cwe_id,
+)
 import re
 from collections.abc import Iterable
 
@@ -9,10 +13,6 @@ from application.ports.outbound.unit_of_work import (
 from domain.cwe_weakness import CWEWeakness
 
 
-_CWE_ID_PATTERN = re.compile(
-    r"^(?:CWE-)?(\d+)$",
-    re.IGNORECASE,
-)
 
 
 class CWELookupService:
@@ -32,7 +32,7 @@ class CWELookupService:
     """
 
     DEFAULT_MAX_CWE_IDS = 10_000
-    MAX_CWE_ID_LENGTH = 32
+    MAX_CWE_ID_LENGTH = DOMAIN_MAX_CWE_ID_LENGTH
 
     def __init__(
         self,
@@ -151,38 +151,13 @@ class CWELookupService:
 
         return normalized_cwe_ids
 
-    @classmethod
+    @staticmethod
     def _normalize_cwe_id(
-        cls,
         value: object,
     ) -> str | None:
-        if not isinstance(value, str):
-            return None
-
-        normalized_value = value.strip()
-
-        if (
-            not normalized_value
-            or len(normalized_value)
-            > cls.MAX_CWE_ID_LENGTH
-        ):
-            return None
-
-        match = _CWE_ID_PATTERN.fullmatch(
-            normalized_value
+        return normalize_cwe_id(
+            value
         )
-
-        if match is None:
-            return None
-
-        numeric_id = int(
-            match.group(1)
-        )
-
-        if numeric_id < 1:
-            return None
-
-        return f"CWE-{numeric_id}"
 
     @classmethod
     def _validate_and_order_weaknesses(

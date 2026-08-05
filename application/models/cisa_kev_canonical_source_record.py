@@ -8,6 +8,9 @@ from datetime import (
 )
 from uuid import UUID
 
+from domain.cwe_identifier import (
+    normalize_cwe_ids,
+)
 from domain.vulnerability_identifier import (
     VulnerabilityIdentifier,
 )
@@ -59,7 +62,13 @@ class CisaKevCanonicalCursor:
 class CisaKevCanonicalSourceRecord:
     """
     Projection minimale d'une vulnérabilité CISA KEV
-    normalisée destinée à la corrélation canonique.
+    normalisée destinée à la couche canonique.
+
+    Cette projection transporte uniquement :
+    - l'identité CVE ;
+    - les références CWE ;
+    - les informations temporelles nécessaires ;
+    - l'identifiant de l'enregistrement normalisé.
 
     Aucun payload brut, texte descriptif ou détail
     opérationnel n'est exposé.
@@ -69,6 +78,8 @@ class CisaKevCanonicalSourceRecord:
     cve_id: str
     date_added: date
     normalized_at: datetime
+
+    cwe_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         cursor = CisaKevCanonicalCursor(
@@ -92,6 +103,10 @@ class CisaKevCanonicalSourceRecord:
                 "date_added must be a date"
             )
 
+        normalized_cwe_ids = normalize_cwe_ids(
+            self.cwe_ids
+        )
+
         normalized_at = (
             self._normalize_datetime(
                 self.normalized_at,
@@ -103,6 +118,12 @@ class CisaKevCanonicalSourceRecord:
             self,
             "cve_id",
             cursor.cve_id,
+        )
+
+        object.__setattr__(
+            self,
+            "cwe_ids",
+            normalized_cwe_ids,
         )
 
         object.__setattr__(

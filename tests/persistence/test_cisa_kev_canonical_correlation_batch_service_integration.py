@@ -5,11 +5,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = (
-    Path(__file__)
-    .resolve()
-    .parents[2]
-)
+PROJECT_ROOT = Path(
+    __file__
+).resolve().parents[2]
 
 load_dotenv(
     dotenv_path=PROJECT_ROOT / ".env",
@@ -32,6 +30,7 @@ import pytest
 from sqlalchemy import (
     create_engine,
     delete,
+    func,
     select,
     text,
 )
@@ -43,6 +42,12 @@ from sqlalchemy.orm import (
 from application.models.cisa_kev_canonical_source_record import (
     CisaKevCanonicalCursor,
 )
+from application.services.canonical_cwe_association_builder import (
+    CanonicalCWEAssociationBuilder,
+)
+from application.services.canonical_cwe_enrichment_service import (
+    CanonicalCWEEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalVulnerabilityCorrelationService,
 )
@@ -52,13 +57,17 @@ from application.services.cisa_kev_canonical_correlation_batch_service import (
 from application.services.cisa_kev_canonical_observation_builder import (
     CisaKevCanonicalObservationBuilder,
 )
+from application.services.cwe_lookup_service import (
+    CWELookupService,
+)
 from infrastructure.persistence.models.canonical import (
-    CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
     CanonicalVulnerabilityModel,
+    CanonicalVulnerabilityWeaknessModel,
 )
 from infrastructure.persistence.models.normalized import (
     CisaKevVulnerabilityModel,
+    CWEWeaknessModel,
 )
 from infrastructure.persistence.models.ops import (
     IngestionRunModel,
@@ -80,7 +89,44 @@ from infrastructure.persistence.sqlalchemy.readers.cisa_kev_canonical_source imp
 pytestmark = pytest.mark.integration
 
 
-def test_correlates_cisa_kev_batches_with_real_postgresql(
+def _payload_hash() -> str:
+    return (
+        uuid4().hex
+        + uuid4().hex
+    )
+
+
+def _build_correlation_service(
+    *,
+    session_factory: sessionmaker[Session],
+) -> CanonicalVulnerabilityCorrelationService:
+    return CanonicalVulnerabilityCorrelationService(
+        unit_of_work=SqlAlchemyUnitOfWork(
+            session_factory=session_factory,
+        ),
+    )
+
+
+def _build_cwe_enrichment_service(
+    *,
+    session_factory: sessionmaker[Session],
+) -> CanonicalCWEEnrichmentService:
+    return CanonicalCWEEnrichmentService(
+        cwe_lookup=CWELookupService(
+            unit_of_work=SqlAlchemyUnitOfWork(
+                session_factory=session_factory,
+            ),
+        ),
+        builder=(
+            CanonicalCWEAssociationBuilder()
+        ),
+        unit_of_work=SqlAlchemyUnitOfWork(
+            session_factory=session_factory,
+        ),
+    )
+
+
+def test_correlates_and_enriches_cisa_kev_with_real_postgresql(
 ) -> None:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
@@ -94,69 +140,59 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
 
     source_id = uuid4()
     ingestion_run_id = uuid4()
+    raw_payload_id = uuid4()
+    normalized_record_id = uuid4()
 
     source_code = (
-        "TEST_CISA_CANON_"
-        f"{uuid4().hex[:20]}"
+        "TEST_CISA_CWE_"
+        f"{uuid4().hex[:16].upper()}"
     )
 
-    serial = (
-        8_000_000_000_000_000_000
+    cve_serial = (
+        100_000_000_000_000_000
         + uuid4().int
-        % 100_000_000_000_000_000
+        % 800_000_000_000_000_000
     )
 
-    duplicate_cve = (
-        f"CVE-9998-{serial}"
+    cve_id = (
+        f"CVE-9999-{cve_serial}"
     )
 
-    second_cve = (
-        f"CVE-9999-{serial}"
+    cwe_number = (
+        100_000
+        + uuid4().int
+        % 800_000
     )
 
-    cve_ids = [
-        duplicate_cve,
-        second_cve,
-    ]
-
-    raw_payload_ids = [
-        uuid4()
-        for _ in range(3)
-    ]
-
-    uuid_base = (
-        uuid4().int
-        & ~0xFF
+    official_cwe_id = (
+        f"CWE-{cwe_number}"
     )
 
-    normalized_ids = [
-        UUID(
-            int=uuid_base + index
-        )
-        for index in range(1, 4)
-    ]
-
-    duplicate_ids = sorted(
-        normalized_ids[:2],
-        key=str,
+    missing_cwe_id = (
+        f"CWE-{cwe_number + 1_000_000}"
     )
 
-    normalized_ids = [
-        duplicate_ids[0],
-        duplicate_ids[1],
-        normalized_ids[2],
-    ]
+    observed_at = datetime(
+        2026,
+        8,
+        5,
+        12,
+        0,
+        tzinfo=UTC,
+    )
+
+    date_added = date(
+        2026,
+        8,
+        5,
+    )
 
     initial_cursor = CisaKevCanonicalCursor(
-        cve_id=(
-            f"CVE-9998-{serial - 1}"
-        ),
+        cve_id=cve_id,
         normalized_record_id=UUID(
-            int=(1 << 128) - 1
+            int=0
         ),
     )
-
-    canonical_ids: set[UUID] = set()
 
     owner_engine = create_engine(
         database_url,
@@ -193,14 +229,12 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                     id=source_id,
                     code=source_code,
                     name=(
-                        "CISA canonical "
+                        "CISA canonical CWE "
                         "integration test"
                     ),
                 )
             )
 
-            # Persister explicitement le parent avant
-            # d'insérer l'ingestion run qui le référence.
             session.flush()
 
             session.add(
@@ -213,118 +247,92 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
 
             session.flush()
 
-            session.add_all(
-                [
-                    SourcePayloadModel(
-                        id=raw_payload_id,
-                        source_id=source_id,
-                        ingestion_run_id=(
-                            ingestion_run_id
-                        ),
-                        external_record_id=(
-                            f"{cve_id}-{index}"
-                        ),
-                        payload={
-                            "cveID": cve_id,
-                        },
-                        payload_hash=(
-                            f"{index + 1:064x}"
-                        ),
-                        http_status=200,
-                        processing_status=(
-                            "processed"
-                        ),
-                    )
-                    for (
-                        index,
-                        (
-                            raw_payload_id,
-                            cve_id,
-                        ),
-                    )
-                    in enumerate(
-                        zip(
-                            raw_payload_ids,
-                            [
-                                duplicate_cve,
-                                duplicate_cve,
-                                second_cve,
-                            ],
-                            strict=True,
-                        )
-                    )
-                ]
+            session.add(
+                SourcePayloadModel(
+                    id=raw_payload_id,
+                    source_id=source_id,
+                    ingestion_run_id=(
+                        ingestion_run_id
+                    ),
+                    external_record_id=cve_id,
+                    payload={
+                        "cveID": cve_id,
+                    },
+                    payload_hash=_payload_hash(),
+                    http_status=200,
+                    processing_status="processed",
+                )
             )
 
             session.flush()
 
-            session.add_all(
-                [
-                    CisaKevVulnerabilityModel(
-                        id=normalized_ids[index],
-                        raw_payload_id=(
-                            raw_payload_ids[index]
-                        ),
-                        cve_id=cve_id,
-                        vendor_project=(
-                            "Test Vendor"
-                        ),
-                        product="Test Product",
-                        vulnerability_name=(
-                            "Test vulnerability"
-                        ),
-                        date_added=date(
-                            2026,
-                            8,
-                            2 + index,
-                        ),
-                        short_description=(
-                            "Test description"
-                        ),
-                        required_action=(
-                            "Apply mitigations."
-                        ),
-                        due_date=date(
-                            2026,
-                            9,
-                            1,
-                        ),
-                        known_ransomware_campaign_use=(
-                            "unknown"
-                        ),
-                        notes=None,
-                        cwes=[],
-                        normalizer_version="1.0.0",
-                        normalized_at=datetime(
-                            2026,
-                            8,
-                            2 + index,
-                            12,
-                            0,
-                            tzinfo=UTC,
-                        ),
-                    )
-                    for index, cve_id
-                    in enumerate(
-                        [
-                            duplicate_cve,
-                            duplicate_cve,
-                            second_cve,
-                        ]
-                    )
-                ]
+            session.add(
+                CWEWeaknessModel(
+                    cwe_id=official_cwe_id,
+                    name=(
+                        "Integration test CWE"
+                    ),
+                    description=(
+                        "Temporary official CWE "
+                        "catalogue fixture."
+                    ),
+                )
+            )
+
+            session.add(
+                CisaKevVulnerabilityModel(
+                    id=normalized_record_id,
+                    raw_payload_id=raw_payload_id,
+                    cve_id=cve_id,
+                    vendor_project=(
+                        "Integration vendor"
+                    ),
+                    product=(
+                        "Integration product"
+                    ),
+                    vulnerability_name=(
+                        "Integration vulnerability"
+                    ),
+                    date_added=date_added,
+                    short_description=(
+                        "Temporary integration "
+                        "test vulnerability."
+                    ),
+                    required_action=(
+                        "Apply the vendor update."
+                    ),
+                    due_date=date(
+                        2026,
+                        8,
+                        20,
+                    ),
+                    known_ransomware_campaign_use=(
+                        "unknown"
+                    ),
+                    notes=None,
+                    cwes=[
+                        official_cwe_id,
+                        missing_cwe_id,
+                    ],
+                    normalizer_version="1.0.0",
+                    normalized_at=observed_at,
+                )
             )
 
             session.commit()
 
         correlation_service = (
-            CanonicalVulnerabilityCorrelationService(
-                unit_of_work=(
-                    SqlAlchemyUnitOfWork(
-                        session_factory=(
-                            ingestion_session_factory
-                        ),
-                    )
+            _build_correlation_service(
+                session_factory=(
+                    ingestion_session_factory
+                ),
+            )
+        )
+
+        cwe_enrichment_service = (
+            _build_cwe_enrichment_service(
+                session_factory=(
+                    ingestion_session_factory
                 ),
             )
         )
@@ -343,161 +351,100 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                     correlation_service=(
                         correlation_service
                     ),
+                    cwe_enrichment_service=(
+                        cwe_enrichment_service
+                    ),
                 )
             )
 
-            first_batch = (
-                batch_service.process_batch(
-                    after_cursor=initial_cursor,
-                    limit=2,
-                )
+            result = batch_service.process_batch(
+                after_cursor=initial_cursor,
+                limit=1,
             )
 
-            assert first_batch.records_read == 2
+            assert result.records_read == 1
 
-            assert first_batch.next_cursor == (
+            assert result.next_cursor == (
                 CisaKevCanonicalCursor(
-                    cve_id=duplicate_cve,
+                    cve_id=cve_id,
                     normalized_record_id=(
-                        normalized_ids[1]
+                        normalized_record_id
                     ),
                 )
             )
 
             assert (
-                first_batch.source_exhausted
-                is False
+                result.correlation.created
+                == 1
             )
 
             assert (
-                first_batch
-                .correlation
-                .observations_received
+                result.correlation.persisted
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .records_received
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .records_enriched
+                == 1
+            )
+
+            assert (
+                result.cwe_enrichment
+                .requested_unique_cwe_ids
                 == 2
             )
 
-            # Les deux lignes possèdent le même CVE
-            # et forment donc un seul agrégat.
             assert (
-                first_batch
-                .correlation
-                .components_built
+                result.cwe_enrichment
+                .found_unique_cwe_ids
                 == 1
             )
 
             assert (
-                first_batch
-                .correlation
-                .created
-                == 1
+                result.cwe_enrichment
+                .missing_cwe_ids
+                == (
+                    missing_cwe_id,
+                )
             )
 
             assert (
-                first_batch
-                .correlation
-                .persisted
+                result.cwe_enrichment.persisted
                 == 1
             )
 
-            first_aggregate = (
-                first_batch
+            aggregate = (
+                result
                 .correlation
                 .aggregates[0]
             )
 
-            canonical_ids.add(
-                first_aggregate.id
-            )
-
             assert (
-                first_aggregate.status
+                aggregate.status
                 == "active"
             )
 
-            assert len(
-                first_aggregate.evidences
-            ) == 1
-
-            merged_evidence = (
-                first_aggregate.evidences[0]
-            )
-
             assert (
-                merged_evidence.observed_at
-                == datetime(
-                    2026,
-                    8,
-                    2,
-                    12,
-                    0,
-                    tzinfo=UTC,
+                aggregate
+                .primary_identifier
+                .key
+                == (
+                    "CVE",
+                    cve_id,
                 )
-            )
-
-            assert (
-                merged_evidence.last_observed_at
-                == datetime(
-                    2026,
-                    8,
-                    3,
-                    12,
-                    0,
-                    tzinfo=UTC,
-                )
-            )
-
-            assert (
-                merged_evidence
-                .normalized_record_id
-                == str(
-                    normalized_ids[1]
-                )
-            )
-
-            second_batch = (
-                batch_service.process_batch(
-                    after_cursor=(
-                        first_batch.next_cursor
-                    ),
-                    limit=2,
-                )
-            )
-
-            assert second_batch.records_read == 1
-
-            assert second_batch.next_cursor == (
-                CisaKevCanonicalCursor(
-                    cve_id=second_cve,
-                    normalized_record_id=(
-                        normalized_ids[2]
-                    ),
-                )
-            )
-
-            assert (
-                second_batch.source_exhausted
-                is True
-            )
-
-            assert (
-                second_batch
-                .correlation
-                .created
-                == 1
-            )
-
-            canonical_ids.update(
-                aggregate.id
-                for aggregate
-                in second_batch
-                .correlation
-                .aggregates
             )
 
             replay = (
                 batch_service.process_batch(
                     after_cursor=initial_cursor,
-                    limit=2,
+                    limit=1,
                 )
             )
 
@@ -512,103 +459,92 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
             )
 
             assert (
-                replay.correlation.persisted
+                replay.cwe_enrichment.persisted
                 == 1
             )
 
         with ingestion_session_factory() as session:
-            identifiers = (
+            associations = (
                 session.execute(
                     select(
-                        CanonicalVulnerabilityIdentifierModel
+                        CanonicalVulnerabilityWeaknessModel
                     )
                     .where(
-                        CanonicalVulnerabilityIdentifierModel
-                        .namespace
-                        == "CVE"
-                    )
-                    .where(
-                        CanonicalVulnerabilityIdentifierModel
-                        .value
-                        .in_(cve_ids)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            assert len(identifiers) == 2
-
-            assert {
-                identifier.value
-                for identifier in identifiers
-            } == set(cve_ids)
-
-            assert all(
-                identifier.is_primary
-                for identifier in identifiers
-            )
-
-            evidences = (
-                session.execute(
-                    select(
-                        CanonicalVulnerabilityEvidenceModel
-                    )
-                    .where(
-                        CanonicalVulnerabilityEvidenceModel
+                        CanonicalVulnerabilityWeaknessModel
                         .source
                         == "cisa_kev"
                     )
                     .where(
-                        CanonicalVulnerabilityEvidenceModel
+                        CanonicalVulnerabilityWeaknessModel
                         .source_record_key
-                        .in_(cve_ids)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            assert len(evidences) == 2
-
-            assert all(
-                evidence.evidence_type
-                == (
-                    "known_exploited_"
-                    "vulnerability"
-                )
-                for evidence in evidences
-            )
-
-            assert all(
-                evidence.correlation_rule
-                == "exact_cve"
-                for evidence in evidences
-            )
-
-            vulnerabilities = (
-                session.execute(
-                    select(
-                        CanonicalVulnerabilityModel
+                        == cve_id
                     )
                     .where(
-                        CanonicalVulnerabilityModel
-                        .id
-                        .in_(canonical_ids)
+                        CanonicalVulnerabilityWeaknessModel
+                        .cwe_id
+                        == official_cwe_id
                     )
                 )
                 .scalars()
                 .all()
             )
 
-            assert len(vulnerabilities) == 2
+            assert len(associations) == 1
 
-            assert all(
-                vulnerability.status
-                == "active"
-                for vulnerability
-                in vulnerabilities
+            association = associations[0]
+
+            assert (
+                association.vulnerability_id
+                == aggregate.id
             )
+
+            assert (
+                association.normalized_record_id
+                == str(
+                    normalized_record_id
+                )
+            )
+
+            assert (
+                association.observed_at
+                == observed_at
+            )
+
+            assert (
+                association.last_observed_at
+                == observed_at
+            )
+
+            assert (
+                association.source_modified_at
+                is None
+            )
+
+            row_count = session.execute(
+                select(
+                    func.count()
+                )
+                .select_from(
+                    CanonicalVulnerabilityWeaknessModel
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source
+                    == "cisa_kev"
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source_record_key
+                    == cve_id
+                )
+                .where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .cwe_id
+                    == official_cwe_id
+                )
+            ).scalar_one()
+
+            assert row_count == 1
 
     finally:
         with owner_session_factory() as session:
@@ -618,6 +554,36 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                 )
             )
 
+            session.execute(
+                delete(
+                    CanonicalVulnerabilityWeaknessModel
+                ).where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source
+                    == "cisa_kev"
+                ).where(
+                    CanonicalVulnerabilityWeaknessModel
+                    .source_record_key
+                    == cve_id
+                )
+            )
+
+            canonical_ids = (
+                session.execute(
+                    select(
+                        CanonicalVulnerabilityIdentifierModel
+                        .vulnerability_id
+                    )
+                    .where(
+                        CanonicalVulnerabilityIdentifierModel
+                        .value
+                        == cve_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
             if canonical_ids:
                 session.execute(
                     delete(
@@ -625,7 +591,9 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                     ).where(
                         CanonicalVulnerabilityModel
                         .id
-                        .in_(canonical_ids)
+                        .in_(
+                            canonical_ids
+                        )
                     )
                 )
 
@@ -633,9 +601,8 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                 delete(
                     CisaKevVulnerabilityModel
                 ).where(
-                    CisaKevVulnerabilityModel
-                    .id
-                    .in_(normalized_ids)
+                    CisaKevVulnerabilityModel.id
+                    == normalized_record_id
                 )
             )
 
@@ -643,9 +610,8 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                 delete(
                     SourcePayloadModel
                 ).where(
-                    SourcePayloadModel
-                    .id
-                    .in_(raw_payload_ids)
+                    SourcePayloadModel.id
+                    == raw_payload_id
                 )
             )
 
@@ -664,6 +630,15 @@ def test_correlates_cisa_kev_batches_with_real_postgresql(
                 ).where(
                     SourceModel.id
                     == source_id
+                )
+            )
+
+            session.execute(
+                delete(
+                    CWEWeaknessModel
+                ).where(
+                    CWEWeaknessModel.cwe_id
+                    == official_cwe_id
                 )
             )
 

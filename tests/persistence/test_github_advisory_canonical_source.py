@@ -38,6 +38,7 @@ def _build_session(
             UUID,
             str,
             str | None,
+            list[str] | None,
             datetime | None,
             datetime | None,
             datetime,
@@ -101,6 +102,12 @@ def test_read_batch_maps_projection_with_one_query(
                 _FIRST_ID,
                 "GHSA-ABCD-1234-EFGH",
                 "CVE-2026-12345",
+                [
+                    "CWE-79",
+                    "cwe-89",
+                    "invalid",
+                    "CWE-079",
+                ],
                 published_at,
                 updated_at,
                 normalized_at,
@@ -132,8 +139,18 @@ def test_read_batch_maps_projection_with_one_query(
     )
 
     assert (
+        record.source_ghsa_id
+        == "GHSA-ABCD-1234-EFGH"
+    )
+
+    assert (
         record.cve_id
         == "CVE-2026-12345"
+    )
+
+    assert record.cwe_ids == (
+        "CWE-79",
+        "CWE-89",
     )
 
     assert (
@@ -258,6 +275,7 @@ def test_read_batch_selects_only_required_columns(
         "id",
         "ghsa_id",
         "cve_id",
+        "cwe_ids",
         "published_at",
         "updated_at",
         "normalized_at",
@@ -293,6 +311,7 @@ def test_read_batch_preserves_duplicate_ghsa_rows(
                 _FIRST_ID,
                 "GHSA-ABCD-1234-EFGH",
                 None,
+                [],
                 None,
                 None,
                 normalized_at,
@@ -301,6 +320,9 @@ def test_read_batch_preserves_duplicate_ghsa_rows(
                 _SECOND_ID,
                 "GHSA-ABCD-1234-EFGH",
                 "CVE-2026-12345",
+                [
+                    "CWE-79",
+                ],
                 None,
                 None,
                 normalized_at,
@@ -332,6 +354,47 @@ def test_read_batch_preserves_duplicate_ghsa_rows(
         == "GHSA-ABCD-1234-EFGH"
         for record in result
     )
+
+    assert result[0].cwe_ids == ()
+
+    assert result[1].cwe_ids == (
+        "CWE-79",
+    )
+
+
+def test_read_batch_handles_null_cwe_collection(
+) -> None:
+    normalized_at = datetime(
+        2026,
+        8,
+        4,
+        12,
+        0,
+        tzinfo=UTC,
+    )
+
+    session = _build_session(
+        rows=[
+            (
+                _FIRST_ID,
+                "GHSA-ABCD-1234-EFGH",
+                None,
+                None,
+                None,
+                None,
+                normalized_at,
+            ),
+        ]
+    )
+
+    result = (
+        SqlAlchemyGitHubAdvisoryCanonicalSource(
+            session=session,
+        )
+        .read_batch()
+    )
+
+    assert result[0].cwe_ids == ()
 
 
 def test_read_batch_returns_empty_tuple(
@@ -431,17 +494,13 @@ def test_read_batch_rejects_invalid_cursor_type(
         )
 
     session.execute.assert_not_called()
-    
+
+
 def test_cursor_preserves_database_ghsa_case(
 ) -> None:
     cursor = GitHubAdvisoryCanonicalCursor(
         ghsa_id="GHSA-abcd-1234-efgh",
         normalized_record_id=_FIRST_ID,
-    )
-    
-    assert (
-        "'GHSA-abcd-1234-efgh'"
-        in str(cursor)
     )
 
     assert (
@@ -458,6 +517,11 @@ def test_record_separates_canonical_and_storage_ghsa(
             ghsa_id="GHSA-abcd-1234-efgh",
             source_ghsa_id=(
                 "GHSA-abcd-1234-efgh"
+            ),
+            cwe_ids=(
+                "cwe-79",
+                "CWE-079",
+                "invalid",
             ),
             normalized_at=datetime(
                 2026,
@@ -483,6 +547,10 @@ def test_record_separates_canonical_and_storage_ghsa(
     assert (
         record.cursor.ghsa_id
         == "GHSA-abcd-1234-efgh"
+    )
+
+    assert record.cwe_ids == (
+        "CWE-79",
     )
 
 

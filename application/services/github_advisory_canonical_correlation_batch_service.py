@@ -8,6 +8,10 @@ from application.models.github_advisory_canonical_source_record import (
 from application.ports.outbound.github_advisory_canonical_source import (
     GitHubAdvisoryCanonicalSource,
 )
+from application.services.canonical_cwe_enrichment_service import (
+    CanonicalCWEEnrichmentResult,
+    CanonicalCWEEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalCorrelationResult,
     CanonicalVulnerabilityCorrelationService,
@@ -22,13 +26,27 @@ from application.services.github_advisory_canonical_observation_builder import (
     slots=True,
 )
 class GitHubAdvisoryCanonicalCorrelationBatchResult:
+    """
+    Résultat du traitement canonique d'un lot GitHub Advisory.
+
+    Le curseur ne doit être sauvegardé par l'appelant
+    qu'après le retour réussi de process_batch().
+    """
+
     records_read: int
+
     next_cursor: (
         GitHubAdvisoryCanonicalCursor
         | None
     )
+
     source_exhausted: bool
+
     correlation: CanonicalCorrelationResult
+
+    cwe_enrichment: (
+        CanonicalCWEEnrichmentResult
+    )
 
 
 class GitHubAdvisoryCanonicalCorrelationBatchService:
@@ -36,8 +54,17 @@ class GitHubAdvisoryCanonicalCorrelationBatchService:
     Orchestre un lot d'advisories GitHub normalisés
     vers la couche canonique.
 
-    Le reader filtre les advisories retirés et le
-    service canonique gère une transaction par lot.
+    Étapes :
+    - lecture keyset d'un lot normalisé ;
+    - construction des observations canoniques ;
+    - corrélation exacte ;
+    - enrichissement relationnel CWE ;
+    - retour du curseur seulement après réussite complète.
+
+    La corrélation et l'enrichissement utilisent deux
+    transactions courtes et idempotentes. En cas d'échec
+    de l'enrichissement, le curseur n'est pas retourné et
+    le lot peut être rejoué sans duplication.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -52,6 +79,9 @@ class GitHubAdvisoryCanonicalCorrelationBatchService:
         ),
         correlation_service: (
             CanonicalVulnerabilityCorrelationService
+        ),
+        cwe_enrichment_service: (
+            CanonicalCWEEnrichmentService
         ),
     ) -> None:
         if source is None:
@@ -70,10 +100,21 @@ class GitHubAdvisoryCanonicalCorrelationBatchService:
                 "must not be None"
             )
 
+        if cwe_enrichment_service is None:
+            raise ValueError(
+                "cwe_enrichment_service "
+                "must not be None"
+            )
+
         self._source = source
         self._builder = builder
+
         self._correlation_service = (
             correlation_service
+        )
+
+        self._cwe_enrichment_service = (
+            cwe_enrichment_service
         )
 
     def process_batch(
@@ -119,6 +160,16 @@ class GitHubAdvisoryCanonicalCorrelationBatchService:
             )
         )
 
+        cwe_enrichment_result = (
+            self._cwe_enrichment_service
+            .enrich(
+                records=records,
+                aggregates=(
+                    correlation_result.aggregates
+                ),
+            )
+        )
+
         next_cursor = (
             records[-1].cursor
             if records
@@ -134,6 +185,9 @@ class GitHubAdvisoryCanonicalCorrelationBatchService:
                     < normalized_limit
                 ),
                 correlation=correlation_result,
+                cwe_enrichment=(
+                    cwe_enrichment_result
+                ),
             )
         )
 
