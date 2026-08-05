@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    literal,
     select,
     tuple_,
-    literal,
 )
 from sqlalchemy.orm import Session
 
@@ -25,9 +25,11 @@ class SqlAlchemyCisaKevCanonicalSource(
     """
     Reader PostgreSQL des projections CISA KEV.
 
-    Il sélectionne uniquement les quatre colonnes
+    Il sélectionne uniquement les cinq colonnes
     nécessaires à la corrélation canonique et
-    n'accède jamais au schéma raw.
+    à l'enrichissement CWE.
+
+    Il n'accède jamais au schéma raw.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -72,6 +74,7 @@ class SqlAlchemyCisaKevCanonicalSource(
         statement = select(
             CisaKevVulnerabilityModel.id,
             CisaKevVulnerabilityModel.cve_id,
+            CisaKevVulnerabilityModel.cwes,
             CisaKevVulnerabilityModel.date_added,
             CisaKevVulnerabilityModel.normalized_at,
         )
@@ -79,7 +82,8 @@ class SqlAlchemyCisaKevCanonicalSource(
         if normalized_cursor is not None:
             statement = statement.where(
                 tuple_(
-                    CisaKevVulnerabilityModel.cve_id,
+                    CisaKevVulnerabilityModel
+                    .cve_id,
                     CisaKevVulnerabilityModel.id,
                 )
                 > tuple_(
@@ -87,7 +91,8 @@ class SqlAlchemyCisaKevCanonicalSource(
                         normalized_cursor.cve_id
                     ),
                     literal(
-                        normalized_cursor.normalized_record_id
+                        normalized_cursor
+                        .normalized_record_id
                     ),
                 )
             )
@@ -120,12 +125,16 @@ class SqlAlchemyCisaKevCanonicalSource(
                     normalized_record_id
                 ),
                 cve_id=cve_id,
+                cwe_ids=tuple(
+                    cwe_ids or ()
+                ),
                 date_added=date_added,
                 normalized_at=normalized_at,
             )
             for (
                 normalized_record_id,
                 cve_id,
+                cwe_ids,
                 date_added,
                 normalized_at,
             )

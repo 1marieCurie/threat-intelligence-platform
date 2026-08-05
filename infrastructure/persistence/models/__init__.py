@@ -5,6 +5,7 @@ from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
     CanonicalVulnerabilityModel,
+    CanonicalVulnerabilityWeaknessModel,
 )
 from infrastructure.persistence.models.normalized import (
     CisaKevVulnerabilityModel,
@@ -43,4 +44,5 @@ __all__ = [
     "CanonicalVulnerabilityModel",
     "CanonicalVulnerabilityIdentifierModel",
     "CanonicalVulnerabilityEvidenceModel",
+    "CanonicalVulnerabilityWeaknessModel",
 ]

@@ -7,6 +7,9 @@ from datetime import (
 )
 from uuid import UUID
 
+from domain.cwe_identifier import (
+    normalize_cwe_ids,
+)
 from domain.vulnerability_identifier import (
     VulnerabilityIdentifier,
 )
@@ -45,12 +48,10 @@ class GitHubAdvisoryCanonicalCursor:
                 "ghsa_id must be a string"
             )
 
-        storage_ghsa_id = (
-            self.ghsa_id.strip()
-        )
+        storage_ghsa_id = self.ghsa_id.strip()
 
-        # Validation du format sans remplacer la casse
-        # exacte utilisée pour la pagination SQL.
+        # Valide le format sans remplacer la casse exacte
+        # utilisée pour la pagination SQL.
         VulnerabilityIdentifier(
             namespace="GHSA",
             value=storage_ghsa_id,
@@ -70,12 +71,20 @@ class GitHubAdvisoryCanonicalCursor:
 )
 class GitHubAdvisoryCanonicalSourceRecord:
     """
-    Projection minimale d'un GitHub Security Advisory
-    normalisé destiné à la corrélation canonique.
+    Projection minimale d'un GitHub Security Advisory normalisé.
+
+    Cette projection est utilisée pour :
+    - la corrélation canonique ;
+    - l'enrichissement relationnel CWE.
 
     ghsa_id contient l'identifiant canonique uppercase.
+
     source_ghsa_id conserve la valeur exacte provenant
     de PostgreSQL pour construire le curseur keyset.
+
+    Les identifiants CWE sont uniquement des références
+    fournisseur. Leur présence dans le catalogue officiel
+    doit être validée séparément par CWELookupService.
     """
 
     normalized_record_id: UUID
@@ -83,6 +92,8 @@ class GitHubAdvisoryCanonicalSourceRecord:
     normalized_at: datetime
 
     cve_id: str | None = None
+    cwe_ids: tuple[str, ...] = ()
+
     published_at: datetime | None = None
     updated_at: datetime | None = None
     withdrawn_at: datetime | None = None
@@ -148,6 +159,10 @@ class GitHubAdvisoryCanonicalSourceRecord:
             ).value
         )
 
+        normalized_cwe_ids = normalize_cwe_ids(
+            self.cwe_ids
+        )
+
         normalized_at = (
             self._normalize_datetime(
                 self.normalized_at,
@@ -192,6 +207,12 @@ class GitHubAdvisoryCanonicalSourceRecord:
             self,
             "cve_id",
             normalized_cve_id,
+        )
+
+        object.__setattr__(
+            self,
+            "cwe_ids",
+            normalized_cwe_ids,
         )
 
         object.__setattr__(

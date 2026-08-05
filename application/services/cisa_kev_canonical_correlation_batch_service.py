@@ -8,6 +8,10 @@ from application.models.cisa_kev_canonical_source_record import (
 from application.ports.outbound.cisa_kev_canonical_source import (
     CisaKevCanonicalSource,
 )
+from application.services.canonical_cwe_enrichment_service import (
+    CanonicalCWEEnrichmentResult,
+    CanonicalCWEEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalCorrelationResult,
     CanonicalVulnerabilityCorrelationService,
@@ -23,29 +27,45 @@ from application.services.cisa_kev_canonical_observation_builder import (
 )
 class CisaKevCanonicalCorrelationBatchResult:
     """
-    Résultat d'un lot de corrélation CISA KEV.
+    Résultat du traitement canonique d'un lot CISA KEV.
 
     Le curseur ne doit être sauvegardé par l'appelant
     qu'après le retour réussi de process_batch().
     """
 
     records_read: int
-    next_cursor: CisaKevCanonicalCursor | None
+
+    next_cursor: (
+        CisaKevCanonicalCursor
+        | None
+    )
+
     source_exhausted: bool
+
     correlation: CanonicalCorrelationResult
+
+    cwe_enrichment: (
+        CanonicalCWEEnrichmentResult
+    )
 
 
 class CisaKevCanonicalCorrelationBatchService:
     """
-    Orchestre la corrélation des lignes CISA KEV
-    normalisées vers la couche canonique.
+    Orchestre les lignes CISA KEV normalisées vers
+    la couche canonique.
+
+    Étapes :
+    - lecture keyset d'un lot normalisé ;
+    - construction des observations canoniques ;
+    - corrélation exacte par CVE ;
+    - enrichissement relationnel CWE ;
+    - retour du curseur après réussite complète.
 
     Le service :
-
     - ne lit aucun payload brut ;
     - ne conserve aucun état de pagination ;
-    - ne duplique pas la gestion transactionnelle ;
-    - traite un nombre borné d'observations.
+    - utilise des opérations groupées et bornées ;
+    - permet un rejeu idempotent du lot.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -58,6 +78,9 @@ class CisaKevCanonicalCorrelationBatchService:
         builder: CisaKevCanonicalObservationBuilder,
         correlation_service: (
             CanonicalVulnerabilityCorrelationService
+        ),
+        cwe_enrichment_service: (
+            CanonicalCWEEnrichmentService
         ),
     ) -> None:
         if source is None:
@@ -76,10 +99,21 @@ class CisaKevCanonicalCorrelationBatchService:
                 "must not be None"
             )
 
+        if cwe_enrichment_service is None:
+            raise ValueError(
+                "cwe_enrichment_service "
+                "must not be None"
+            )
+
         self._source = source
         self._builder = builder
+
         self._correlation_service = (
             correlation_service
+        )
+
+        self._cwe_enrichment_service = (
+            cwe_enrichment_service
         )
 
     def process_batch(
@@ -90,7 +124,9 @@ class CisaKevCanonicalCorrelationBatchService:
             | None
         ) = None,
         limit: int = DEFAULT_BATCH_SIZE,
-    ) -> CisaKevCanonicalCorrelationBatchResult:
+    ) -> (
+        CisaKevCanonicalCorrelationBatchResult
+    ):
         normalized_limit = (
             self._validate_limit(
                 limit
@@ -123,6 +159,16 @@ class CisaKevCanonicalCorrelationBatchService:
             )
         )
 
+        cwe_enrichment_result = (
+            self._cwe_enrichment_service
+            .enrich(
+                records=records,
+                aggregates=(
+                    correlation_result.aggregates
+                ),
+            )
+        )
+
         next_cursor = (
             records[-1].cursor
             if records
@@ -137,6 +183,9 @@ class CisaKevCanonicalCorrelationBatchService:
                 < normalized_limit
             ),
             correlation=correlation_result,
+            cwe_enrichment=(
+                cwe_enrichment_result
+            ),
         )
 
     @classmethod

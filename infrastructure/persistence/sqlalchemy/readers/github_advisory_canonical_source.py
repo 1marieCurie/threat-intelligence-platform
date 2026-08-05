@@ -23,14 +23,14 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
     GitHubAdvisoryCanonicalSource
 ):
     """
-    Reader PostgreSQL des advisories GitHub
-    destinés à la corrélation canonique.
+    Reader PostgreSQL des advisories GitHub destinés
+    à la couche canonique.
 
     La requête :
-
     - utilise une pagination keyset ;
     - filtre les advisories retirés en SQL ;
-    - sélectionne uniquement six colonnes ;
+    - sélectionne uniquement sept colonnes ;
+    - transporte les références CWE normalisées ;
     - n'accède jamais au schéma raw.
     """
 
@@ -81,6 +81,8 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
                 GitHubAdvisoryVulnerabilityModel
                 .cve_id,
                 GitHubAdvisoryVulnerabilityModel
+                .cwe_ids,
+                GitHubAdvisoryVulnerabilityModel
                 .published_at,
                 GitHubAdvisoryVulnerabilityModel
                 .updated_at,
@@ -107,7 +109,8 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
                         normalized_cursor.ghsa_id
                     ),
                     literal(
-                        normalized_cursor.normalized_record_id
+                        normalized_cursor
+                        .normalized_record_id
                     ),
                 )
             )
@@ -142,6 +145,9 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
                 ghsa_id=ghsa_id,
                 source_ghsa_id=ghsa_id,
                 cve_id=cve_id,
+                cwe_ids=tuple(
+                    cwe_ids or ()
+                ),
                 published_at=published_at,
                 updated_at=updated_at,
                 withdrawn_at=None,
@@ -151,6 +157,7 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
                 normalized_record_id,
                 ghsa_id,
                 cve_id,
+                cwe_ids,
                 published_at,
                 updated_at,
                 normalized_at,

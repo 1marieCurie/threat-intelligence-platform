@@ -407,3 +407,142 @@ class CanonicalVulnerabilityEvidenceModel(
         String(64),
         nullable=True,
     )
+    
+class CanonicalVulnerabilityWeaknessModel(
+    Base
+):
+    """
+    Association canonique entre une vulnérabilité et une CWE.
+
+    Cette table conserve uniquement la relation et sa provenance.
+    Les informations descriptives restent dans
+    normalized.cwe_weakness.
+    """
+
+    __tablename__ = (
+        "canonical_vulnerability_weakness"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "source_record_key",
+            "cwe_id",
+            name=(
+                "canonical_weakness_"
+                "source_record_cwe"
+            ),
+        ),
+        CheckConstraint(
+            "cwe_id ~ '^CWE-[1-9][0-9]*$'",
+            name="cwe_id_valid",
+        ),
+        CheckConstraint(
+            "source ~ '^[a-z][a-z0-9_]*$'",
+            name="source_format_valid",
+        ),
+        CheckConstraint(
+            "btrim(source_record_key) <> ''",
+            name="source_record_key_not_empty",
+        ),
+        CheckConstraint(
+            "btrim(normalized_record_id) <> ''",
+            name="normalized_record_id_not_empty",
+        ),
+        CheckConstraint(
+            "last_observed_at >= observed_at",
+            name="observation_dates_order",
+        ),
+        Index(
+            "ix_canonical_weakness_"
+            "vulnerability_id",
+            "vulnerability_id",
+        ),
+        Index(
+            "ix_canonical_weakness_cwe_id",
+            "cwe_id",
+        ),
+        Index(
+            "ix_canonical_weakness_"
+            "last_observed_at",
+            "last_observed_at",
+        ),
+        {
+            "schema": "canonical",
+        },
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(
+            as_uuid=True,
+        ),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    vulnerability_id: Mapped[
+        uuid.UUID
+    ] = mapped_column(
+        UUID(
+            as_uuid=True,
+        ),
+        ForeignKey(
+            "canonical."
+            "canonical_vulnerability.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    cwe_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey(
+            "normalized.cwe_weakness.cwe_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    source_record_key: Mapped[str] = (
+        mapped_column(
+            String(255),
+            nullable=False,
+        )
+    )
+
+    normalized_record_id: Mapped[str] = (
+        mapped_column(
+            String(255),
+            nullable=False,
+        )
+    )
+
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(
+            timezone=True,
+        ),
+        nullable=False,
+    )
+
+    last_observed_at: Mapped[
+        datetime
+    ] = mapped_column(
+        DateTime(
+            timezone=True,
+        ),
+        nullable=False,
+    )
+
+    source_modified_at: Mapped[
+        datetime | None
+    ] = mapped_column(
+        DateTime(
+            timezone=True,
+        ),
+        nullable=True,
+    )
