@@ -38,6 +38,8 @@ CANONICAL_TABLES = (
     "canonical_vulnerability_identifier",
     "canonical_vulnerability_evidence",
     "canonical_vulnerability_weakness",
+    "canonical_web_indicator",
+    "canonical_web_indicator_observation",
 )
 
 
@@ -1083,44 +1085,52 @@ def test_ingestion_role_has_least_privilege(
                         table_name,
                         has_table_privilege(
                             current_user,
-                            'canonical.' || table_name,
+                            format(
+                                '%I.%I',
+                                table_schema,
+                                table_name
+                            ),
                             'SELECT'
                         ) AS can_select,
                         has_table_privilege(
                             current_user,
-                            'canonical.' || table_name,
+                            format(
+                                '%I.%I',
+                                table_schema,
+                                table_name
+                            ),
                             'INSERT'
                         ) AS can_insert,
                         has_table_privilege(
                             current_user,
-                            'canonical.' || table_name,
+                            format(
+                                '%I.%I',
+                                table_schema,
+                                table_name
+                            ),
                             'UPDATE'
                         ) AS can_update,
                         has_table_privilege(
                             current_user,
-                            'canonical.' || table_name,
+                            format(
+                                '%I.%I',
+                                table_schema,
+                                table_name
+                            ),
                             'DELETE'
                         ) AS can_delete,
                         has_table_privilege(
                             current_user,
-                            'canonical.' || table_name,
+                            format(
+                                '%I.%I',
+                                table_schema,
+                                table_name
+                            ),
                             'TRUNCATE'
                         ) AS can_truncate
-                    FROM (
-                        VALUES
-                            (
-                                'canonical_vulnerability'
-                            ),
-                            (
-                                'canonical_vulnerability_identifier'
-                            ),
-                            (
-                                'canonical_vulnerability_evidence'
-                            ),
-                            (
-                                'canonical_vulnerability_weakness'
-                            )
-                    ) AS tables(table_name)
+                    FROM information_schema.tables
+                    WHERE table_schema = 'canonical'
+                      AND table_type = 'BASE TABLE'
                     ORDER BY table_name
                     """
                 )
@@ -1137,6 +1147,18 @@ def test_ingestion_role_has_least_privilege(
         "can_create"
     ] is False
 
+    actual_table_names = {
+        permissions[
+            "table_name"
+        ]
+        for permissions
+        in table_permissions
+    }
+
+    assert actual_table_names == set(
+        CANONICAL_TABLES
+    )
+
     assert len(
         table_permissions
     ) == len(
@@ -1144,22 +1166,31 @@ def test_ingestion_role_has_least_privilege(
     )
 
     for permissions in table_permissions:
+        table_name = permissions[
+            "table_name"
+        ]
+
+        assert isinstance(
+            table_name,
+            str,
+        )
+
         assert permissions[
             "can_select"
-        ] is True
+        ] is True, table_name
 
         assert permissions[
             "can_insert"
-        ] is True
+        ] is True, table_name
 
         assert permissions[
             "can_update"
-        ] is True
+        ] is True, table_name
 
         assert permissions[
             "can_delete"
-        ] is False
+        ] is False, table_name
 
         assert permissions[
             "can_truncate"
-        ] is False
+        ] is False, table_name
