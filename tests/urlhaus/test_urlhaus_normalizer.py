@@ -519,3 +519,14 @@ def test_normalize_rejects_non_mapping_payload(
             raw_payload_id=uuid4(),
             payload=[],  # type: ignore[arg-type]
         )
+        
+def test_normalize_converts_null_tags_to_empty_collection(
+) -> None:
+    result = URLhausNormalizer().normalize(
+        raw_payload_id=uuid4(),
+        payload=build_payload(
+            tags=None
+        ),
+    )
+
+    assert result.tags == ()
