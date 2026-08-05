@@ -7,6 +7,10 @@ from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityModel,
     CanonicalVulnerabilityWeaknessModel,
 )
+from infrastructure.persistence.models.canonical_web import (
+    CanonicalWebIndicatorModel,
+    CanonicalWebIndicatorObservationModel,
+)
 from infrastructure.persistence.models.normalized import (
     CisaKevVulnerabilityModel,
     EPSSScoreModel,
@@ -45,4 +49,6 @@ __all__ = [
     "CanonicalVulnerabilityIdentifierModel",
     "CanonicalVulnerabilityEvidenceModel",
     "CanonicalVulnerabilityWeaknessModel",
+    "CanonicalWebIndicatorModel",
+    "CanonicalWebIndicatorObservationModel",
 ]
