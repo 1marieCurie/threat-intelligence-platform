@@ -11,6 +11,12 @@ from sqlalchemy.orm import (
 from application.ports.outbound.canonical_vulnerability_repository import (
     CanonicalVulnerabilityRepository,
 )
+from application.ports.outbound.canonical_vulnerability_weakness_repository import (
+    CanonicalVulnerabilityWeaknessRepository,
+)
+from application.ports.outbound.canonical_web_indicator_repository import (
+    CanonicalWebIndicatorRepository,
+)
 from application.ports.outbound.cisa_kev_vulnerability_repository import (
     CisaKevVulnerabilityRepository,
 )
@@ -47,6 +53,12 @@ from application.ports.outbound.urlhaus_url_repository import (
 from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_repository import (
     SqlAlchemyCanonicalVulnerabilityRepository,
 )
+from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_weakness_repository import (
+    SqlAlchemyCanonicalVulnerabilityWeaknessRepository,
+)
+from infrastructure.persistence.sqlalchemy.repositories.canonical_web_indicator_repository import (
+    SqlAlchemyCanonicalWebIndicatorRepository,
+)
 from infrastructure.persistence.sqlalchemy.repositories.cisa_kev_vulnerability_repository import (
     SqlAlchemyCisaKevVulnerabilityRepository,
 )
@@ -79,12 +91,6 @@ from infrastructure.persistence.sqlalchemy.repositories.sync_state_repository im
 )
 from infrastructure.persistence.sqlalchemy.repositories.urlhaus_url_repository import (
     SqlAlchemyURLhausURLRepository,
-)
-from application.ports.outbound.canonical_vulnerability_weakness_repository import (
-    CanonicalVulnerabilityWeaknessRepository,
-)
-from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_weakness_repository import (
-    SqlAlchemyCanonicalVulnerabilityWeaknessRepository,
 )
 
 
@@ -137,9 +143,13 @@ class SqlAlchemyUnitOfWork:
         self.canonical_vulnerabilities: (
             CanonicalVulnerabilityRepository
         )
-        
+
         self.canonical_vulnerability_weaknesses: (
             CanonicalVulnerabilityWeaknessRepository
+        )
+
+        self.canonical_web_indicators: (
+            CanonicalWebIndicatorRepository
         )
 
         self.phishtank_phishing: (
@@ -213,9 +223,15 @@ class SqlAlchemyUnitOfWork:
                 session=self._session,
             )
         )
-        
+
         self.canonical_vulnerability_weaknesses = (
             SqlAlchemyCanonicalVulnerabilityWeaknessRepository(
+                session=self._session,
+            )
+        )
+
+        self.canonical_web_indicators = (
+            SqlAlchemyCanonicalWebIndicatorRepository(
                 session=self._session,
             )
         )
@@ -265,8 +281,6 @@ class SqlAlchemyUnitOfWork:
                 self.rollback()
 
             elif self._session is not None:
-                # Toute transaction non explicitement validée
-                # est annulée à la sortie du contexte.
                 self.rollback()
 
         finally:
