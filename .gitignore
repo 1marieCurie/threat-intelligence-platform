@@ -40,3 +40,6 @@ Thumbs.db
 
 # data
 data/
+
+# Documentation locale
+docs/
