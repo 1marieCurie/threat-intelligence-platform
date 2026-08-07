@@ -8,6 +8,9 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
+from application.ports.outbound.canonical_vulnerability_epss_repository import (
+    CanonicalVulnerabilityEPSSRepository,
+)
 from application.ports.outbound.canonical_vulnerability_repository import (
     CanonicalVulnerabilityRepository,
 )
@@ -49,6 +52,10 @@ from application.ports.outbound.sync_state_repository import (
 )
 from application.ports.outbound.urlhaus_url_repository import (
     URLhausURLRepository,
+)
+
+from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_epss_repository import (
+    SqlAlchemyCanonicalVulnerabilityEPSSRepository,
 )
 from infrastructure.persistence.sqlalchemy.repositories.canonical_vulnerability_repository import (
     SqlAlchemyCanonicalVulnerabilityRepository,
@@ -144,6 +151,10 @@ class SqlAlchemyUnitOfWork:
             CanonicalVulnerabilityRepository
         )
 
+        self.canonical_vulnerability_epss: (
+            CanonicalVulnerabilityEPSSRepository
+        )
+
         self.canonical_vulnerability_weaknesses: (
             CanonicalVulnerabilityWeaknessRepository
         )
@@ -220,6 +231,12 @@ class SqlAlchemyUnitOfWork:
 
         self.canonical_vulnerabilities = (
             SqlAlchemyCanonicalVulnerabilityRepository(
+                session=self._session,
+            )
+        )
+
+        self.canonical_vulnerability_epss = (
+            SqlAlchemyCanonicalVulnerabilityEPSSRepository(
                 session=self._session,
             )
         )

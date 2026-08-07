@@ -19,6 +19,9 @@ from application.models.epss_snapshot import (
 from application.ports.outbound.epss_canonical_source import (
     EPSSCanonicalSource,
 )
+from application.services.canonical_epss_enrichment_service import (
+    CanonicalEPSSEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalCorrelationResult,
     CanonicalVulnerabilityCorrelationService,
@@ -113,10 +116,34 @@ def _build_correlation_mock(
     )
 
 
+def _build_enrichment_mock(
+) -> tuple[
+    Mock,
+    CanonicalEPSSEnrichmentService,
+]:
+    mock = Mock(
+        spec=(
+            CanonicalEPSSEnrichmentService
+        ),
+    )
+
+    return (
+        mock,
+        cast(
+            CanonicalEPSSEnrichmentService,
+            mock,
+        ),
+    )
+
+
 def test_constructor_rejects_missing_source(
 ) -> None:
-    correlation_mock, correlation = (
+    _, correlation = (
         _build_correlation_mock()
+    )
+
+    _, enrichment = (
+        _build_enrichment_mock()
     )
 
     with pytest.raises(
@@ -129,16 +156,20 @@ def test_constructor_rejects_missing_source(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
-
-    correlation_mock.assert_not_called()
 
 
 def test_constructor_rejects_missing_builder(
 ) -> None:
     _, source = _build_source_mock()
+
     _, correlation = (
         _build_correlation_mock()
+    )
+
+    _, enrichment = (
+        _build_enrichment_mock()
     )
 
     with pytest.raises(
@@ -149,12 +180,17 @@ def test_constructor_rejects_missing_builder(
             source=source,
             builder=None,  # type: ignore[arg-type]
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
 
 
 def test_constructor_rejects_missing_correlation_service(
 ) -> None:
     _, source = _build_source_mock()
+
+    _, enrichment = (
+        _build_enrichment_mock()
+    )
 
     with pytest.raises(
         ValueError,
@@ -169,10 +205,36 @@ def test_constructor_rejects_missing_correlation_service(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=None,  # type: ignore[arg-type]
+            epss_enrichment_service=enrichment,
         )
 
 
-def test_process_batch_builds_and_correlates_once(
+def test_constructor_rejects_missing_enrichment_service(
+) -> None:
+    _, source = _build_source_mock()
+
+    _, correlation = (
+        _build_correlation_mock()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "epss_enrichment_service "
+            "must not be None"
+        ),
+    ):
+        EPSSCanonicalCorrelationBatchService(
+            source=source,
+            builder=(
+                EPSSCanonicalObservationBuilder()
+            ),
+            correlation_service=correlation,
+            epss_enrichment_service=None,  # type: ignore[arg-type]
+        )
+
+
+def test_process_batch_builds_correlates_and_enriches_once(
 ) -> None:
     source_mock, source = (
         _build_source_mock()
@@ -182,7 +244,11 @@ def test_process_batch_builds_and_correlates_once(
         _build_correlation_mock()
     )
 
-    source_mock.read_batch.return_value = (
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
+    )
+
+    records = (
         _record(
             cve_id="CVE-2026-10001",
             day=3,
@@ -191,6 +257,10 @@ def test_process_batch_builds_and_correlates_once(
             cve_id="CVE-2026-10002",
             day=4,
         ),
+    )
+
+    source_mock.read_batch.return_value = (
+        records
     )
 
     expected_correlation = (
@@ -204,6 +274,14 @@ def test_process_batch_builds_and_correlates_once(
         expected_correlation
     )
 
+    expected_enrichment = Mock(
+        name="epss_enrichment_result",
+    )
+
+    enrichment_mock.enrich.return_value = (
+        expected_enrichment
+    )
+
     service = (
         EPSSCanonicalCorrelationBatchService(
             source=source,
@@ -211,6 +289,7 @@ def test_process_batch_builds_and_correlates_once(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -263,6 +342,14 @@ def test_process_batch_builds_and_correlates_once(
         ),
     ]
 
+    enrichment_mock.enrich \
+        .assert_called_once_with(
+            records=records,
+            aggregates=(
+                expected_correlation.aggregates
+            ),
+        )
+
     assert result.records_read == 2
 
     assert (
@@ -277,6 +364,11 @@ def test_process_batch_builds_and_correlates_once(
         is expected_correlation
     )
 
+    assert (
+        result.epss_enrichment
+        is expected_enrichment
+    )
+
 
 def test_process_batch_handles_empty_source(
 ) -> None:
@@ -286,6 +378,10 @@ def test_process_batch_handles_empty_source(
 
     correlation_mock, correlation = (
         _build_correlation_mock()
+    )
+
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
     )
 
     source_mock.read_batch.return_value = ()
@@ -300,6 +396,14 @@ def test_process_batch_handles_empty_source(
         empty_correlation
     )
 
+    empty_enrichment = Mock(
+        name="empty_epss_enrichment_result",
+    )
+
+    enrichment_mock.enrich.return_value = (
+        empty_enrichment
+    )
+
     result = (
         EPSSCanonicalCorrelationBatchService(
             source=source,
@@ -307,6 +411,7 @@ def test_process_batch_handles_empty_source(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
         .process_batch(
             after_cve_id=(
@@ -321,10 +426,25 @@ def test_process_batch_handles_empty_source(
             ()
         )
 
+    enrichment_mock.enrich \
+        .assert_called_once_with(
+            records=(),
+            aggregates=(),
+        )
+
     assert result.records_read == 0
     assert result.next_cursor is None
     assert result.source_exhausted is True
-    assert result.correlation is empty_correlation
+
+    assert (
+        result.correlation
+        is empty_correlation
+    )
+
+    assert (
+        result.epss_enrichment
+        is empty_enrichment
+    )
 
 
 @pytest.mark.parametrize(
@@ -346,6 +466,10 @@ def test_process_batch_rejects_non_integer_limit(
         _build_correlation_mock()
     )
 
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
+    )
+
     service = (
         EPSSCanonicalCorrelationBatchService(
             source=source,
@@ -353,6 +477,7 @@ def test_process_batch_rejects_non_integer_limit(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -366,6 +491,7 @@ def test_process_batch_rejects_non_integer_limit(
 
     source_mock.read_batch.assert_not_called()
     correlation_mock.correlate.assert_not_called()
+    enrichment_mock.enrich.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -387,6 +513,10 @@ def test_process_batch_rejects_out_of_range_limit(
         _build_correlation_mock()
     )
 
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
+    )
+
     service = (
         EPSSCanonicalCorrelationBatchService(
             source=source,
@@ -394,6 +524,7 @@ def test_process_batch_rejects_out_of_range_limit(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -410,6 +541,7 @@ def test_process_batch_rejects_out_of_range_limit(
 
     source_mock.read_batch.assert_not_called()
     correlation_mock.correlate.assert_not_called()
+    enrichment_mock.enrich.assert_not_called()
 
 
 def test_process_batch_rejects_source_overflow(
@@ -420,6 +552,10 @@ def test_process_batch_rejects_source_overflow(
 
     correlation_mock, correlation = (
         _build_correlation_mock()
+    )
+
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
     )
 
     source_mock.read_batch.return_value = (
@@ -440,6 +576,7 @@ def test_process_batch_rejects_source_overflow(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -455,9 +592,10 @@ def test_process_batch_rejects_source_overflow(
         )
 
     correlation_mock.correlate.assert_not_called()
+    enrichment_mock.enrich.assert_not_called()
 
 
-def test_process_batch_does_not_advance_after_builder_failure(
+def test_process_batch_does_not_enrich_after_builder_failure(
 ) -> None:
     source_mock, source = (
         _build_source_mock()
@@ -465,6 +603,10 @@ def test_process_batch_does_not_advance_after_builder_failure(
 
     correlation_mock, correlation = (
         _build_correlation_mock()
+    )
+
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
     )
 
     builder_mock = Mock(
@@ -496,6 +638,7 @@ def test_process_batch_does_not_advance_after_builder_failure(
             source=source,
             builder=builder,
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -508,9 +651,10 @@ def test_process_batch_does_not_advance_after_builder_failure(
         )
 
     correlation_mock.correlate.assert_not_called()
+    enrichment_mock.enrich.assert_not_called()
 
 
-def test_process_batch_propagates_correlation_failure(
+def test_process_batch_does_not_enrich_after_correlation_failure(
 ) -> None:
     source_mock, source = (
         _build_source_mock()
@@ -518,6 +662,10 @@ def test_process_batch_propagates_correlation_failure(
 
     correlation_mock, correlation = (
         _build_correlation_mock()
+    )
+
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
     )
 
     source_mock.read_batch.return_value = (
@@ -540,6 +688,7 @@ def test_process_batch_propagates_correlation_failure(
                 EPSSCanonicalObservationBuilder()
             ),
             correlation_service=correlation,
+            epss_enrichment_service=enrichment,
         )
     )
 
@@ -556,3 +705,78 @@ def test_process_batch_propagates_correlation_failure(
 
     correlation_mock.correlate \
         .assert_called_once()
+
+    enrichment_mock.enrich.assert_not_called()
+
+
+def test_process_batch_propagates_enrichment_failure(
+) -> None:
+    source_mock, source = (
+        _build_source_mock()
+    )
+
+    correlation_mock, correlation = (
+        _build_correlation_mock()
+    )
+
+    enrichment_mock, enrichment = (
+        _build_enrichment_mock()
+    )
+
+    records = (
+        _record(
+            cve_id="CVE-2026-50001",
+            day=4,
+        ),
+    )
+
+    source_mock.read_batch.return_value = (
+        records
+    )
+
+    correlation_result = (
+        _correlation_result(
+            observations=1,
+            created=1,
+        )
+    )
+
+    correlation_mock.correlate.return_value = (
+        correlation_result
+    )
+
+    enrichment_mock.enrich.side_effect = (
+        RuntimeError(
+            "enrichment failure"
+        )
+    )
+
+    service = (
+        EPSSCanonicalCorrelationBatchService(
+            source=source,
+            builder=(
+                EPSSCanonicalObservationBuilder()
+            ),
+            correlation_service=correlation,
+            epss_enrichment_service=enrichment,
+        )
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="enrichment failure",
+    ):
+        service.process_batch(
+            limit=10
+        )
+
+    correlation_mock.correlate \
+        .assert_called_once()
+
+    enrichment_mock.enrich \
+        .assert_called_once_with(
+            records=records,
+            aggregates=(
+                correlation_result.aggregates
+            ),
+        )

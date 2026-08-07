@@ -14,6 +14,7 @@ from uuid import (
 
 from dotenv import load_dotenv
 
+
 PROJECT_ROOT = (
     Path(__file__)
     .resolve()
@@ -24,6 +25,7 @@ load_dotenv(
     dotenv_path=PROJECT_ROOT / ".env",
     override=False,
 )
+
 
 import pytest
 from sqlalchemy import (
@@ -37,6 +39,9 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
+from application.services.canonical_epss_enrichment_service import (
+    CanonicalEPSSEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalVulnerabilityCorrelationService,
 )
@@ -50,6 +55,9 @@ from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
     CanonicalVulnerabilityModel,
+)
+from infrastructure.persistence.models.canonical_epss import (
+    CanonicalVulnerabilityEPSSModel,
 )
 from infrastructure.persistence.models.normalized import (
     EPSSScoreModel,
@@ -67,7 +75,7 @@ from infrastructure.persistence.sqlalchemy.readers.epss_canonical_source import 
 pytestmark = pytest.mark.integration
 
 
-def test_correlates_epss_batches_with_real_postgresql(
+def test_correlates_and_enriches_epss_batches_with_real_postgresql(
 ) -> None:
     database_url = os.environ.get(
         "MIGRATION_DATABASE_URL"
@@ -176,6 +184,19 @@ def test_correlates_epss_batches_with_real_postgresql(
             )
         )
 
+        epss_enrichment_service = (
+            CanonicalEPSSEnrichmentService(
+                unit_of_work=(
+                    SqlAlchemyUnitOfWork(
+                        session_factory=(
+                            ingestion_session_factory
+                        ),
+                    )
+                ),
+                max_records=2,
+            )
+        )
+
         with ingestion_session_factory() as session:
             batch_service = (
                 EPSSCanonicalCorrelationBatchService(
@@ -189,6 +210,9 @@ def test_correlates_epss_batches_with_real_postgresql(
                     ),
                     correlation_service=(
                         correlation_service
+                    ),
+                    epss_enrichment_service=(
+                        epss_enrichment_service
                     ),
                 )
             )
@@ -234,6 +258,34 @@ def test_correlates_epss_batches_with_real_postgresql(
                 == 0
             )
 
+            assert (
+                first_batch
+                .epss_enrichment
+                .records_received
+                == 2
+            )
+
+            assert (
+                first_batch
+                .epss_enrichment
+                .records_matched
+                == 2
+            )
+
+            assert (
+                first_batch
+                .epss_enrichment
+                .records_without_canonical_match
+                == 0
+            )
+
+            assert (
+                first_batch
+                .epss_enrichment
+                .persisted
+                == 2
+            )
+
             canonical_ids.update(
                 aggregate.id
                 for aggregate
@@ -269,6 +321,27 @@ def test_correlates_epss_batches_with_real_postgresql(
                 == 1
             )
 
+            assert (
+                second_batch
+                .epss_enrichment
+                .records_received
+                == 1
+            )
+
+            assert (
+                second_batch
+                .epss_enrichment
+                .records_matched
+                == 1
+            )
+
+            assert (
+                second_batch
+                .epss_enrichment
+                .persisted
+                == 1
+            )
+
             canonical_ids.update(
                 aggregate.id
                 for aggregate
@@ -301,6 +374,22 @@ def test_correlates_epss_batches_with_real_postgresql(
             assert (
                 replay.correlation.persisted
                 == 2
+            )
+
+            assert (
+                replay
+                .epss_enrichment
+                .records_matched
+                == 2
+            )
+
+            # Rejeu strictement identique :
+            # aucune écriture EPSS supplémentaire.
+            assert (
+                replay
+                .epss_enrichment
+                .persisted
+                == 0
             )
 
         with ingestion_session_factory() as session:
@@ -396,6 +485,68 @@ def test_correlates_epss_batches_with_real_postgresql(
                 row.status == "provisional"
                 for row in vulnerability_rows
             )
+
+            epss_rows = (
+                session.execute(
+                    select(
+                        CanonicalVulnerabilityEPSSModel
+                    )
+                    .where(
+                        CanonicalVulnerabilityEPSSModel
+                        .cve_id
+                        .in_(cve_ids)
+                    )
+                    .order_by(
+                        CanonicalVulnerabilityEPSSModel
+                        .cve_id
+                        .asc()
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            assert len(epss_rows) == 3
+
+            epss_by_cve = {
+                row.cve_id: row
+                for row in epss_rows
+            }
+
+            assert set(
+                epss_by_cve
+            ) == set(cve_ids)
+
+            for index, cve_id in enumerate(
+                cve_ids
+            ):
+                row = epss_by_cve[cve_id]
+
+                assert (
+                    row.vulnerability_id
+                    in canonical_ids
+                )
+
+                assert row.score == pytest.approx(
+                    0.20
+                    + index * 0.10
+                )
+
+                assert (
+                    row.percentile
+                    == pytest.approx(
+                        0.70
+                        + index * 0.05
+                    )
+                )
+
+                assert row.score_date == date(
+                    2026,
+                    8,
+                    2 + index,
+                )
+
+                assert row.api_version == "v1"
 
     finally:
         with owner_session_factory() as session:

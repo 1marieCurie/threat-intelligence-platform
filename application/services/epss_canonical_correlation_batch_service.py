@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from application.ports.outbound.epss_canonical_source import (
     EPSSCanonicalSource,
 )
+from application.services.canonical_epss_enrichment_service import (
+    CanonicalEPSSEnrichmentResult,
+    CanonicalEPSSEnrichmentService,
+)
 from application.services.canonical_vulnerability_correlation_service import (
     CanonicalCorrelationResult,
     CanonicalVulnerabilityCorrelationService,
@@ -20,16 +24,23 @@ from application.services.epss_canonical_observation_builder import (
 )
 class EPSSCanonicalCorrelationBatchResult:
     """
-    Résultat d'un lot de corrélation EPSS.
+    Résultat d'un lot de corrélation et
+    d'enrichissement EPSS.
 
     next_cursor ne doit être persisté par l'appelant
-    qu'après le retour réussi de process_batch().
+    qu'après la réussite de la corrélation et de
+    l'enrichissement.
     """
 
     records_read: int
     next_cursor: str | None
     source_exhausted: bool
+
     correlation: CanonicalCorrelationResult
+
+    epss_enrichment: (
+        CanonicalEPSSEnrichmentResult
+    )
 
 
 class EPSSCanonicalCorrelationBatchService:
@@ -42,10 +53,14 @@ class EPSSCanonicalCorrelationBatchService:
         -> projection paginée
         -> observation canonique
         -> corrélation exacte par CVE
-        -> transaction canonique unique
+        -> création éventuelle d'une CVE provisoire
+        -> enrichissement du dernier snapshot EPSS
 
-    Le service est sans état : le curseur reste sous
-    la responsabilité du job ou du scheduler appelant.
+    Une vulnérabilité ne possédant aucun score EPSS
+    n'est jamais supprimée ou exclue.
+
+    Le service est sans état. La progression du curseur
+    reste sous la responsabilité du job appelant.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -58,6 +73,9 @@ class EPSSCanonicalCorrelationBatchService:
         builder: EPSSCanonicalObservationBuilder,
         correlation_service: (
             CanonicalVulnerabilityCorrelationService
+        ),
+        epss_enrichment_service: (
+            CanonicalEPSSEnrichmentService
         ),
     ) -> None:
         if source is None:
@@ -75,10 +93,21 @@ class EPSSCanonicalCorrelationBatchService:
                 "correlation_service must not be None"
             )
 
+        if epss_enrichment_service is None:
+            raise ValueError(
+                "epss_enrichment_service "
+                "must not be None"
+            )
+
         self._source = source
         self._builder = builder
+
         self._correlation_service = (
             correlation_service
+        )
+
+        self._epss_enrichment_service = (
+            epss_enrichment_service
         )
 
     def process_batch(
@@ -122,6 +151,16 @@ class EPSSCanonicalCorrelationBatchService:
             )
         )
 
+        epss_enrichment_result = (
+            self._epss_enrichment_service
+            .enrich(
+                records=records,
+                aggregates=(
+                    correlation_result.aggregates
+                ),
+            )
+        )
+
         next_cursor = (
             records[-1].cve_id
             if records
@@ -136,6 +175,9 @@ class EPSSCanonicalCorrelationBatchService:
                 < normalized_limit
             ),
             correlation=correlation_result,
+            epss_enrichment=(
+                epss_enrichment_result
+            ),
         )
 
     @classmethod

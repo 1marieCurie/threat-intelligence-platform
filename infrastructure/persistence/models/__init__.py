@@ -7,6 +7,9 @@ from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityModel,
     CanonicalVulnerabilityWeaknessModel,
 )
+from infrastructure.persistence.models.canonical_epss import (
+    CanonicalVulnerabilityEPSSModel,
+)
 from infrastructure.persistence.models.canonical_web import (
     CanonicalWebIndicatorModel,
     CanonicalWebIndicatorObservationModel,
@@ -49,6 +52,7 @@ __all__ = [
     "CanonicalVulnerabilityIdentifierModel",
     "CanonicalVulnerabilityEvidenceModel",
     "CanonicalVulnerabilityWeaknessModel",
+    "CanonicalVulnerabilityEPSSModel",
     "CanonicalWebIndicatorModel",
     "CanonicalWebIndicatorObservationModel",
 ]
