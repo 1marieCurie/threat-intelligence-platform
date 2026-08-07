@@ -8,6 +8,9 @@ from application.models.phishtank_canonical_source_record import (
 from application.ports.outbound.phishtank_canonical_source import (
     PhishTankCanonicalSource,
 )
+from application.services.canonical_url_normalizer import (
+    CanonicalURLNormalizationError,
+)
 from application.services.canonical_web_indicator_correlation_service import (
     CanonicalWebCorrelationResult,
     CanonicalWebIndicatorCorrelationService,
@@ -39,8 +42,13 @@ class PhishTankCanonicalCorrelationBatchService:
     Orchestre un lot PhishTank normalisé vers la couche
     canonique Web.
 
-    Le curseur retourné ne doit être sauvegardé qu'après
-    le retour réussi de cette méthode.
+    Une observation contenant une URL qui ne peut pas être
+    canonicalisée est rejetée individuellement.
+
+    Le rejet ne bloque pas les autres observations du lot.
+
+    Les erreurs inattendues continuent volontairement à
+    interrompre le traitement.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -108,17 +116,32 @@ class PhishTankCanonicalCorrelationBatchService:
                 "than requested"
             )
 
-        observations = tuple(
-            self._builder.build(
-                record=record
+        observations = []
+
+        for record in records:
+            try:
+                observation = (
+                    self._builder.build(
+                        record=record
+                    )
+                )
+
+            except CanonicalURLNormalizationError:
+                # La donnée normalisée reste conservée.
+                #
+                # On ne journalise ni l'URL ni le détail
+                # de l'erreur afin d'éviter l'exposition
+                # d'IOC ou de credentials.
+                continue
+
+            observations.append(
+                observation
             )
-            for record in records
-        )
 
         correlation = (
             self._correlation_service
             .correlate(
-                observations
+                tuple(observations)
             )
         )
 

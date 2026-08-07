@@ -8,6 +8,9 @@ from application.models.urlhaus_canonical_source_record import (
 from application.ports.outbound.urlhaus_canonical_source import (
     URLhausCanonicalSource,
 )
+from application.services.canonical_url_normalizer import (
+    CanonicalURLNormalizationError,
+)
 from application.services.canonical_web_indicator_correlation_service import (
     CanonicalWebCorrelationResult,
     CanonicalWebIndicatorCorrelationService,
@@ -38,6 +41,9 @@ class URLhausCanonicalCorrelationBatchService:
     """
     Orchestre un lot URLhaus normalisé vers la couche
     canonique Web.
+
+    Les URLs non canonicalisables sont rejetées
+    individuellement sans bloquer le reste du lot.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -105,17 +111,27 @@ class URLhausCanonicalCorrelationBatchService:
                 "than requested"
             )
 
-        observations = tuple(
-            self._builder.build(
-                record=record
+        observations = []
+
+        for record in records:
+            try:
+                observation = (
+                    self._builder.build(
+                        record=record
+                    )
+                )
+
+            except CanonicalURLNormalizationError:
+                continue
+
+            observations.append(
+                observation
             )
-            for record in records
-        )
 
         correlation = (
             self._correlation_service
             .correlate(
-                observations
+                tuple(observations)
             )
         )
 
