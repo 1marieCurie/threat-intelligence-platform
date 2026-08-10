@@ -34,6 +34,13 @@ from infrastructure.persistence.models.raw import (
     IngestionRunPayloadModel,
     SourcePayloadModel,
 )
+from infrastructure.persistence.models.ml import (
+    MLDatasetMemberModel,
+    MLDatasetSnapshotModel,
+    MLURLProjectionModel,
+    MLURLSampleLabelModel,
+    MLURLSampleModel,
+)
 
 
 __all__ = [
@@ -55,4 +62,9 @@ __all__ = [
     "CanonicalVulnerabilityEPSSModel",
     "CanonicalWebIndicatorModel",
     "CanonicalWebIndicatorObservationModel",
+    "MLURLSampleModel",
+    "MLURLProjectionModel",
+    "MLURLSampleLabelModel",
+    "MLDatasetSnapshotModel",
+    "MLDatasetMemberModel",
 ]
