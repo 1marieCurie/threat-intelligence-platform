@@ -41,6 +41,9 @@ from infrastructure.persistence.models.ml import (
     MLURLSampleLabelModel,
     MLURLSampleModel,
 )
+from infrastructure.persistence.models.normalized_http_archive import (
+    HTTPArchivePageModel,
+)
 
 
 __all__ = [
@@ -67,4 +70,5 @@ __all__ = [
     "MLURLSampleLabelModel",
     "MLDatasetSnapshotModel",
     "MLDatasetMemberModel",
+    "HTTPArchivePageModel",
 ]

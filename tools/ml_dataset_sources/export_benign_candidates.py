@@ -20,99 +20,159 @@ load_dotenv(
 import csv
 import os
 import sys
+from datetime import date, datetime, time, timezone
 
 from google.cloud import bigquery
 
 
+HTTP_ARCHIVE_SNAPSHOT = date(
+    2026,
+    7,
+    1,
+)
+
+HTTP_ARCHIVE_CLIENT = "mobile"
+
+MAX_SOURCE_RANK = 300_000
+MAX_PAGES_PER_DOMAIN = 5
+CANDIDATE_LIMIT = 90_000
+
+SOURCE_SNAPSHOT = (
+    "http-archive-"
+    f"{HTTP_ARCHIVE_SNAPSHOT.isoformat()}"
+    f"-{HTTP_ARCHIVE_CLIENT}"
+    "-secondary"
+)
+
+OBSERVED_AT = datetime.combine(
+    HTTP_ARCHIVE_SNAPSHOT,
+    time.min,
+    tzinfo=timezone.utc,
+)
+
 OUTPUT_PATH = (
     PROJECT_ROOT
     / ".ml-data"
-    / "benign_candidates.csv"
+    / (
+        "benign_candidates_"
+        "http_archive_2026_07.csv"
+    )
 )
-
-MAX_TRANCO_RANK = 100_000
-MAX_ORIGINS_PER_DOMAIN = 5
-CANDIDATE_LIMIT = 90_000
-
-CRUX_SNAPSHOT = "2026-06"
 
 
 QUERY = """
-WITH latest_tranco_date AS (
+WITH source_pages AS (
     SELECT
-        MAX(date) AS list_date
-    FROM `tranco.daily.daily`
-),
+        page AS url,
+        NET.REG_DOMAIN(page)
+            AS registered_domain,
+        rank AS source_rank
 
-tranco_candidates AS (
-    SELECT
-        t.domain AS registered_domain,
-        t.rank AS tranco_rank,
-        latest.list_date AS tranco_date
-    FROM `tranco.daily.daily` AS t
-    CROSS JOIN latest_tranco_date AS latest
-    WHERE
-        t.date = latest.list_date
-        AND t.rank <= @max_tranco_rank
-),
-
-crux_origins AS (
-    SELECT DISTINCT
-        origin AS url,
-        NET.REG_DOMAIN(origin)
-            AS registered_domain
     FROM
-        `chrome-ux-report.materialized.origin_summary`
+        `httparchive.crawl.pages`
+
     WHERE
-        NET.REG_DOMAIN(origin) IS NOT NULL
+        date = @snapshot_date
+        AND client = @client
+        AND is_root_page = FALSE
+
+        AND rank IS NOT NULL
+        AND rank BETWEEN
+            1 AND @max_source_rank
+
         AND (
-            STARTS_WITH(origin, 'https://')
-            OR STARTS_WITH(origin, 'http://')
+            STARTS_WITH(page, 'https://')
+            OR STARTS_WITH(page, 'http://')
         )
+
+        AND NET.REG_DOMAIN(page)
+            IS NOT NULL
+
+        AND LENGTH(page)
+            BETWEEN 1 AND 4096
+),
+
+deduplicated AS (
+    SELECT
+        url,
+        registered_domain,
+        MIN(source_rank)
+            AS source_rank
+
+    FROM source_pages
+
+    GROUP BY
+        url,
+        registered_domain
 ),
 
 ranked AS (
     SELECT
-        crux.url,
-        crux.registered_domain,
-        tranco.tranco_rank,
-        tranco.tranco_date,
+        url,
+        registered_domain,
+        source_rank,
 
         ROW_NUMBER() OVER (
             PARTITION BY
-                crux.registered_domain
+                registered_domain
             ORDER BY
-                FARM_FINGERPRINT(crux.url)
+                FARM_FINGERPRINT(url)
         ) AS domain_position
 
-    FROM crux_origins AS crux
-
-    INNER JOIN tranco_candidates AS tranco
-        ON (
-            tranco.registered_domain
-            =
-            crux.registered_domain
-        )
+    FROM deduplicated
 )
 
 SELECT
     url,
     registered_domain,
-    tranco_rank,
-    tranco_date
+    source_rank
 
 FROM ranked
 
 WHERE
-    domain_position <= @max_origins_per_domain
+    domain_position
+        <= @max_pages_per_domain
 
 ORDER BY
-    tranco_rank,
+    source_rank,
     registered_domain,
     domain_position
 
 LIMIT @candidate_limit
 """
+
+
+def _build_job_config(
+) -> bigquery.QueryJobConfig:
+    return bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter(
+                "snapshot_date",
+                "DATE",
+                HTTP_ARCHIVE_SNAPSHOT,
+            ),
+            bigquery.ScalarQueryParameter(
+                "client",
+                "STRING",
+                HTTP_ARCHIVE_CLIENT,
+            ),
+            bigquery.ScalarQueryParameter(
+                "max_source_rank",
+                "INT64",
+                MAX_SOURCE_RANK,
+            ),
+            bigquery.ScalarQueryParameter(
+                "max_pages_per_domain",
+                "INT64",
+                MAX_PAGES_PER_DOMAIN,
+            ),
+            bigquery.ScalarQueryParameter(
+                "candidate_limit",
+                "INT64",
+                CANDIDATE_LIMIT,
+            ),
+        ]
+    )
 
 
 def main() -> int:
@@ -121,7 +181,10 @@ def main() -> int:
     )
 
     if (
-        not isinstance(project_id, str)
+        not isinstance(
+            project_id,
+            str,
+        )
         or not project_id.strip()
     ):
         print(
@@ -141,36 +204,13 @@ def main() -> int:
             project=project_id.strip()
         )
 
-        job_config = (
-            bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter(
-                        "max_tranco_rank",
-                        "INT64",
-                        MAX_TRANCO_RANK,
-                    ),
-                    bigquery.ScalarQueryParameter(
-                        "max_origins_per_domain",
-                        "INT64",
-                        MAX_ORIGINS_PER_DOMAIN,
-                    ),
-                    bigquery.ScalarQueryParameter(
-                        "candidate_limit",
-                        "INT64",
-                        CANDIDATE_LIMIT,
-                    ),
-                ]
-            )
-        )
-
         result = client.query(
             QUERY,
-            job_config=job_config,
+            job_config=_build_job_config(),
         ).result()
 
         rows_written = 0
         domains: set[str] = set()
-        source_snapshot: str | None = None
 
         with OUTPUT_PATH.open(
             "w",
@@ -185,8 +225,9 @@ def main() -> int:
                 [
                     "url",
                     "registered_domain",
-                    "tranco_rank",
+                    "source_rank",
                     "source_snapshot",
+                    "observed_at",
                 ]
             )
 
@@ -199,22 +240,14 @@ def main() -> int:
                     row.registered_domain
                 ).strip().lower()
 
-                tranco_rank = int(
-                    row.tranco_rank
-                )
-
-                tranco_date = str(
-                    row.tranco_date
-                )
-
-                snapshot = (
-                    f"tranco-{tranco_date}"
-                    f"+crux-{CRUX_SNAPSHOT}"
+                source_rank = int(
+                    row.source_rank
                 )
 
                 if (
                     not url
                     or not registered_domain
+                    or source_rank <= 0
                 ):
                     continue
 
@@ -222,8 +255,9 @@ def main() -> int:
                     [
                         url,
                         registered_domain,
-                        tranco_rank,
-                        snapshot,
+                        source_rank,
+                        SOURCE_SNAPSHOT,
+                        OBSERVED_AT.isoformat(),
                     ]
                 )
 
@@ -231,20 +265,22 @@ def main() -> int:
                     registered_domain
                 )
 
-                source_snapshot = snapshot
                 rows_written += 1
 
         print(
             "Benign candidate export completed: "
             f"rows={rows_written}, "
             f"domains={len(domains)}, "
-            "source_snapshot="
-            f"{source_snapshot}"
+            f"source_snapshot={SOURCE_SNAPSHOT}"
         )
 
         return 0
 
     except Exception as error:
+        # Ne jamais afficher str(error) :
+        # une erreur provider peut contenir
+        # des informations de requête ou
+        # des données externes.
         print(
             "Benign candidate export failed: "
             f"{type(error).__name__}",

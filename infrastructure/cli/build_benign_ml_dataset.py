@@ -5,9 +5,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = Path(
-    __file__
-).resolve().parents[2]
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
 
 ENV_FILE = (
     PROJECT_ROOT
@@ -58,13 +60,17 @@ DEFAULT_MAX_PER_DOMAIN = 4
 
 MAX_TARGET_SIZE = 100_000
 MAX_PER_DOMAIN = 10
-
-MAX_TRANCO_RANK = 100_000
+MAX_SOURCE_RANK = 300_000
 
 DATASET_NAME = "benign_pool"
 
 SELECTION_ALGORITHM_VERSION = (
-    "1.0.0"
+    "2.0.0"
+)
+
+SOURCE_NAME = "http_archive"
+SOURCE_DATASET = (
+    "httparchive.crawl.pages"
 )
 
 
@@ -74,7 +80,8 @@ def _parse_arguments(
     parser = argparse.ArgumentParser(
         description=(
             "Build the privacy-safe benign "
-            "URL ML dataset."
+            "URL ML dataset from HTTP Archive "
+            "candidates."
         ),
     )
 
@@ -83,7 +90,7 @@ def _parse_arguments(
         type=Path,
         required=True,
         help=(
-            "Temporary local Tranco + CrUX "
+            "Temporary local HTTP Archive "
             "candidate CSV."
         ),
     )
@@ -100,7 +107,8 @@ def _parse_arguments(
         "--source-snapshot",
         required=True,
         help=(
-            "Expected source snapshot identifier."
+            "Expected HTTP Archive snapshot "
+            "identifier."
         ),
     )
 
@@ -235,8 +243,10 @@ def _compute_sha256(
 def main(
     argv: Sequence[str] | None = None,
 ) -> int:
-    arguments = _parse_arguments(
-        argv
+    arguments = (
+        _parse_arguments(
+            argv
+        )
     )
 
     engine = None
@@ -246,7 +256,9 @@ def main(
             arguments
         )
 
-        started_at = perf_counter()
+        started_at = (
+            perf_counter()
+        )
 
         candidate_file_hash = (
             _compute_sha256(
@@ -255,11 +267,15 @@ def main(
         )
 
         dataset_version = (
-            arguments.dataset_version.strip()
+            arguments
+            .dataset_version
+            .strip()
         )
 
         source_snapshot = (
-            arguments.source_snapshot.strip()
+            arguments
+            .source_snapshot
+            .strip()
         )
 
         projector = (
@@ -287,14 +303,19 @@ def main(
                     "selection_algorithm_version": (
                         SELECTION_ALGORITHM_VERSION
                     ),
+                    "candidate_source": (
+                        SOURCE_NAME
+                    ),
+                    "source_dataset": (
+                        SOURCE_DATASET
+                    ),
+                    "secondary_pages_only": True,
+                    "max_source_rank": (
+                        MAX_SOURCE_RANK
+                    ),
                     "max_per_registered_domain": (
                         arguments.max_per_domain
                     ),
-                    "max_tranco_rank": (
-                        MAX_TRANCO_RANK
-                    ),
-                    "requires_tranco": True,
-                    "requires_crux": True,
                     "exclude_canonical_threats": True,
                     "network_access": False,
                 },
@@ -338,7 +359,8 @@ def main(
         source = (
             BenignCandidateCSVSource(
                 path=(
-                    arguments.candidates_file
+                    arguments
+                    .candidates_file
                 )
             )
         )
@@ -365,6 +387,9 @@ def main(
                 max_per_domain=(
                     arguments.max_per_domain
                 ),
+                max_source_rank=(
+                    MAX_SOURCE_RANK
+                ),
             )
         )
 
@@ -378,36 +403,34 @@ def main(
         )
 
         print(
-            (
-                "Benign ML dataset build completed: "
-                f"dataset_id={result.dataset_id}, "
-                f"candidates_read="
-                f"{result.candidates_read}, "
-                f"normalized="
-                f"{result.candidates_normalized}, "
-                f"normalization_rejected="
-                f"{result.normalization_rejected}, "
-                f"source_rejected="
-                f"{result.source_rejected}, "
-                f"duplicate_rejected="
-                f"{result.duplicate_rejected}, "
-                f"threat_rejected="
-                f"{result.threat_rejected}, "
-                f"domain_quota_rejected="
-                f"{result.domain_quota_rejected}, "
-                f"starting_members="
-                f"{result.starting_members}, "
-                f"inserted_members="
-                f"{result.inserted_members}, "
-                f"final_members="
-                f"{result.final_members}, "
-                f"target="
-                f"{result.target_size}, "
-                f"target_reached="
-                f"{result.target_reached}, "
-                f"duration_seconds="
-                f"{duration_seconds:.3f}"
-            )
+            "Benign ML dataset build completed: "
+            f"dataset_id={result.dataset_id}, "
+            f"candidates_read="
+            f"{result.candidates_read}, "
+            f"normalized="
+            f"{result.candidates_normalized}, "
+            f"normalization_rejected="
+            f"{result.normalization_rejected}, "
+            f"source_rejected="
+            f"{result.source_rejected}, "
+            f"duplicate_rejected="
+            f"{result.duplicate_rejected}, "
+            f"threat_rejected="
+            f"{result.threat_rejected}, "
+            f"domain_quota_rejected="
+            f"{result.domain_quota_rejected}, "
+            f"starting_members="
+            f"{result.starting_members}, "
+            f"inserted_members="
+            f"{result.inserted_members}, "
+            f"final_members="
+            f"{result.final_members}, "
+            f"target="
+            f"{result.target_size}, "
+            f"target_reached="
+            f"{result.target_reached}, "
+            f"duration_seconds="
+            f"{duration_seconds:.3f}"
         )
 
         return (
@@ -417,15 +440,13 @@ def main(
         )
 
     except Exception as error:
-        # Important :
-        # pas de str(error), car une exception provider,
-        # CSV ou SQL pourrait contenir un chemin ou
-        # potentiellement une donnée brute.
+        # Ne pas utiliser str(error) :
+        # une exception CSV/SQL/provider
+        # pourrait contenir une URL ou
+        # une donnée externe.
         print(
-            (
-                "Benign ML dataset build failed: "
-                f"{type(error).__name__}"
-            ),
+            "Benign ML dataset build failed: "
+            f"{type(error).__name__}",
             file=sys.stderr,
         )
 

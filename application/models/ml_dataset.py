@@ -12,16 +12,17 @@ from uuid import UUID
 )
 class BenignURLCandidate:
     """
-    Candidat benign provenant de notre sélection Tranco + CrUX.
+    Candidat benign provenant d'un snapshot HTTP Archive.
 
-    L'URL brute reste uniquement en mémoire pendant la préparation.
-    Elle ne doit jamais être journalisée.
+    L'URL originale reste uniquement en mémoire pendant
+    la préparation et ne doit jamais être journalisée.
     """
 
     url: str
     registered_domain: str
-    tranco_rank: int
+    source_rank: int
     source_snapshot: str
+    observed_at: datetime
 
 
 @dataclass(

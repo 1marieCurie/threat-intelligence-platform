@@ -27,11 +27,14 @@ from application.services.ml_url_training_projector import (
 )
 
 
-class BenignCandidateValidationError(ValueError):
+class BenignCandidateValidationError(
+    ValueError
+):
     """
     Rejet fonctionnel d'un candidat benign.
 
-    Les messages ne doivent jamais contenir l'URL brute.
+    Les messages ne doivent jamais contenir
+    l'URL originale.
     """
 
 
@@ -49,9 +52,11 @@ class BenignDatasetSelectionService:
     """
 
     LABEL_CODE = "benign"
-    LABEL_SOURCE = "benign_selection_v1"
+    LABEL_SOURCE = (
+        "http_archive_selection_v1"
+    )
 
-    SOURCE = "crux_tranco"
+    SOURCE = "http_archive"
 
     CONFIDENCE = Decimal("0.9000")
 
@@ -62,7 +67,7 @@ class BenignDatasetSelectionService:
     MAX_BATCH_SIZE = 1_000
 
     DEFAULT_MAX_CANDIDATES = 120_000
-    DEFAULT_MAX_TRANCO_RANK = 100_000
+    DEFAULT_MAX_SOURCE_RANK = 300_000
 
     def __init__(
         self,
@@ -77,7 +82,7 @@ class BenignDatasetSelectionService:
         max_per_domain: int = DEFAULT_MAX_PER_DOMAIN,
         batch_size: int = DEFAULT_BATCH_SIZE,
         max_candidates: int = DEFAULT_MAX_CANDIDATES,
-        max_tranco_rank: int = DEFAULT_MAX_TRANCO_RANK,
+        max_source_rank: int = DEFAULT_MAX_SOURCE_RANK,
     ) -> None:
         if not isinstance(
             expected_source_snapshot,
@@ -114,8 +119,8 @@ class BenignDatasetSelectionService:
         )
 
         self._validate_positive_integer(
-            name="max_tranco_rank",
-            value=max_tranco_rank,
+            name="max_source_rank",
+            value=max_source_rank,
         )
 
         self._validate_batch_size(
@@ -123,7 +128,6 @@ class BenignDatasetSelectionService:
         )
 
         self._store = store
-
         self._threat_identity_reader = (
             threat_identity_reader
         )
@@ -132,18 +136,17 @@ class BenignDatasetSelectionService:
         self._projector = projector
 
         self._snapshot_spec = snapshot_spec
-
         self._expected_source_snapshot = (
             normalized_snapshot
         )
 
         self._target_size = target_size
         self._max_per_domain = max_per_domain
-
         self._batch_size = batch_size
         self._max_candidates = max_candidates
-
-        self._max_tranco_rank = max_tranco_rank
+        self._max_source_rank = (
+            max_source_rank
+        )
 
     def run(
         self,
@@ -164,7 +167,10 @@ class BenignDatasetSelectionService:
             )
         )
 
-        if starting_members >= self._target_size:
+        if (
+            starting_members
+            >= self._target_size
+        ):
             return BenignDatasetBuildResult(
                 dataset_id=dataset_id,
                 candidates_read=0,
@@ -174,9 +180,13 @@ class BenignDatasetSelectionService:
                 duplicate_rejected=0,
                 threat_rejected=0,
                 domain_quota_rejected=0,
-                starting_members=starting_members,
+                starting_members=(
+                    starting_members
+                ),
                 inserted_members=0,
-                final_members=starting_members,
+                final_members=(
+                    starting_members
+                ),
                 target_size=self._target_size,
                 target_reached=True,
             )
@@ -220,10 +230,16 @@ class BenignDatasetSelectionService:
                 + inserted_members
             )
 
-            if current_members >= self._target_size:
+            if (
+                current_members
+                >= self._target_size
+            ):
                 break
 
-            if candidates_read >= self._max_candidates:
+            if (
+                candidates_read
+                >= self._max_candidates
+            ):
                 break
 
             candidates_read += 1
@@ -249,18 +265,26 @@ class BenignDatasetSelectionService:
             )
 
             if (
-                identity_key in existing_identity_keys
-                or identity_key in pending_identity_keys
+                identity_key
+                in existing_identity_keys
+                or identity_key
+                in pending_identity_keys
             ):
                 duplicate_rejected += 1
                 continue
 
-            pending.append(prepared)
+            pending.append(
+                prepared
+            )
+
             pending_identity_keys.add(
                 identity_key
             )
 
-            if len(pending) >= self._batch_size:
+            if (
+                len(pending)
+                >= self._batch_size
+            ):
                 (
                     persisted,
                     rejected_threats,
@@ -279,10 +303,17 @@ class BenignDatasetSelectionService:
                     ),
                 )
 
-                inserted_members += persisted
+                inserted_members += (
+                    persisted
+                )
 
-                threat_rejected += rejected_threats
-                domain_quota_rejected += rejected_quota
+                threat_rejected += (
+                    rejected_threats
+                )
+
+                domain_quota_rejected += (
+                    rejected_quota
+                )
 
                 pending.clear()
                 pending_identity_keys.clear()
@@ -293,7 +324,10 @@ class BenignDatasetSelectionService:
             - inserted_members
         )
 
-        if pending and remaining_target > 0:
+        if (
+            pending
+            and remaining_target > 0
+        ):
             (
                 persisted,
                 rejected_threats,
@@ -305,13 +339,20 @@ class BenignDatasetSelectionService:
                 existing_identity_keys=(
                     existing_identity_keys
                 ),
-                remaining_target=remaining_target,
+                remaining_target=(
+                    remaining_target
+                ),
             )
 
             inserted_members += persisted
 
-            threat_rejected += rejected_threats
-            domain_quota_rejected += rejected_quota
+            threat_rejected += (
+                rejected_threats
+            )
+
+            domain_quota_rejected += (
+                rejected_quota
+            )
 
         final_members = (
             starting_members
@@ -320,21 +361,37 @@ class BenignDatasetSelectionService:
 
         return BenignDatasetBuildResult(
             dataset_id=dataset_id,
-            candidates_read=candidates_read,
-            candidates_normalized=candidates_normalized,
+            candidates_read=(
+                candidates_read
+            ),
+            candidates_normalized=(
+                candidates_normalized
+            ),
             normalization_rejected=(
                 normalization_rejected
             ),
-            source_rejected=source_rejected,
-            duplicate_rejected=duplicate_rejected,
-            threat_rejected=threat_rejected,
+            source_rejected=(
+                source_rejected
+            ),
+            duplicate_rejected=(
+                duplicate_rejected
+            ),
+            threat_rejected=(
+                threat_rejected
+            ),
             domain_quota_rejected=(
                 domain_quota_rejected
             ),
-            starting_members=starting_members,
-            inserted_members=inserted_members,
+            starting_members=(
+                starting_members
+            ),
+            inserted_members=(
+                inserted_members
+            ),
             final_members=final_members,
-            target_size=self._target_size,
+            target_size=(
+                self._target_size
+            ),
             target_reached=(
                 final_members
                 >= self._target_size
@@ -351,18 +408,18 @@ class BenignDatasetSelectionService:
             )
         )
 
-        if (
-            candidate.tranco_rank < 1
-            or candidate.tranco_rank
-            > self._max_tranco_rank
-        ):
-            raise BenignCandidateValidationError(
-                "candidate Tranco rank "
-                "is outside the allowed range"
+        self._validate_source_rank(
+            candidate.source_rank
+        )
+
+        source_snapshot = (
+            self._normalize_source_snapshot(
+                candidate.source_snapshot
             )
+        )
 
         if (
-            candidate.source_snapshot.strip()
+            source_snapshot
             != self._expected_source_snapshot
         ):
             raise BenignCandidateValidationError(
@@ -370,21 +427,35 @@ class BenignDatasetSelectionService:
                 "does not match dataset snapshot"
             )
 
-        identity = self._normalizer.normalize(
-            candidate.url
+        observed_at = (
+            self._normalize_observed_at(
+                candidate.observed_at
+            )
         )
 
-        if not self._hostname_belongs_to_domain(
-            hostname=identity.hostname,
-            registered_domain=registered_domain,
+        identity = (
+            self._normalizer.normalize(
+                candidate.url
+            )
+        )
+
+        if not (
+            self._hostname_belongs_to_domain(
+                hostname=identity.hostname,
+                registered_domain=(
+                    registered_domain
+                ),
+            )
         ):
             raise BenignCandidateValidationError(
                 "candidate hostname does not "
                 "belong to registered domain"
             )
 
-        model_value = self._projector.project(
-            identity.canonical_value
+        model_value = (
+            self._projector.project(
+                identity.canonical_value
+            )
         )
 
         if (
@@ -413,20 +484,20 @@ class BenignDatasetSelectionService:
                 "registered_domain": (
                     registered_domain
                 ),
-                "tranco_rank": (
-                    candidate.tranco_rank
+                "source_rank": (
+                    candidate.source_rank
                 ),
                 "source_snapshot": (
-                    candidate.source_snapshot
+                    source_snapshot
                 ),
             },
             label_code=self.LABEL_CODE,
-            label_source=self.LABEL_SOURCE,
+            label_source=(
+                self.LABEL_SOURCE
+            ),
             confidence=self.CONFIDENCE,
             group_key=registered_domain,
-            observed_at=datetime.now(
-                timezone.utc
-            ),
+            observed_at=observed_at,
         )
 
     def _flush(
@@ -441,20 +512,12 @@ class BenignDatasetSelectionService:
             MLURLIdentityKey
         ],
         remaining_target: int,
-    ) -> tuple[
-        int,
-        int,
-        int,
-    ]:
+    ) -> tuple[int, int, int]:
         if (
             not samples
             or remaining_target <= 0
         ):
-            return (
-                0,
-                0,
-                0,
-            )
+            return 0, 0, 0
 
         identities = tuple(
             (
@@ -475,15 +538,18 @@ class BenignDatasetSelectionService:
             PreparedMLURLSample
         ] = []
 
-        threat_rejected = 0
-        domain_quota_rejected = 0
-
         accepted_identity_keys: list[
             MLURLIdentityKey
         ] = []
 
+        threat_rejected = 0
+        domain_quota_rejected = 0
+
         for sample in samples:
-            if len(accepted) >= remaining_target:
+            if (
+                len(accepted)
+                >= remaining_target
+            ):
                 break
 
             identity_key: MLURLIdentityKey = (
@@ -491,7 +557,10 @@ class BenignDatasetSelectionService:
                 sample.value_hash,
             )
 
-            if identity_key in threat_identity_keys:
+            if (
+                identity_key
+                in threat_identity_keys
+            ):
                 threat_rejected += 1
                 continue
 
@@ -504,14 +573,16 @@ class BenignDatasetSelectionService:
                 domain_quota_rejected += 1
                 continue
 
-            accepted.append(sample)
+            accepted.append(
+                sample
+            )
 
             accepted_identity_keys.append(
                 identity_key
             )
 
             # Réservation locale du quota.
-            # Le CLI est mono-processus.
+            # Le CLI reste mono-processus.
             group_counts[
                 sample.group_key
             ] += 1
@@ -523,23 +594,26 @@ class BenignDatasetSelectionService:
                 domain_quota_rejected,
             )
 
-        result = self._store.persist_benign_batch(
-            dataset_id=dataset_id,
-            samples=accepted,
+        result = (
+            self._store.persist_benign_batch(
+                dataset_id=dataset_id,
+                samples=accepted,
+            )
         )
 
         if (
             result.inserted_members
             != len(accepted)
         ):
-            # Un conflit concurrent/idempotent est possible.
-            # On relit l'état depuis les méthodes du contrat
-            # MLDatasetStore au lieu d'utiliser une méthode
-            # inexistante ou non typée.
+            # Conflit concurrent/idempotent :
+            # relire l'état réel depuis le store.
             refreshed_group_counts = Counter(
-                self._store.get_member_group_counts(
+                self._store
+                .get_member_group_counts(
                     dataset_id=dataset_id,
-                    label_code=self.LABEL_CODE,
+                    label_code=(
+                        self.LABEL_CODE
+                    ),
                 )
             )
 
@@ -549,9 +623,12 @@ class BenignDatasetSelectionService:
             )
 
             refreshed_identity_keys = (
-                self._store.get_member_identity_keys(
+                self._store
+                .get_member_identity_keys(
                     dataset_id=dataset_id,
-                    label_code=self.LABEL_CODE,
+                    label_code=(
+                        self.LABEL_CODE
+                    ),
                 )
             )
 
@@ -571,11 +648,81 @@ class BenignDatasetSelectionService:
             domain_quota_rejected,
         )
 
+    def _validate_source_rank(
+        self,
+        value: int,
+    ) -> None:
+        self._validate_positive_integer(
+            name="source_rank",
+            value=value,
+        )
+
+        if (
+            value
+            > self._max_source_rank
+        ):
+            raise BenignCandidateValidationError(
+                "candidate source rank "
+                "is outside the allowed range"
+            )
+
+    @staticmethod
+    def _normalize_source_snapshot(
+        value: str,
+    ) -> str:
+        if not isinstance(
+            value,
+            str,
+        ):
+            raise BenignCandidateValidationError(
+                "source snapshot must "
+                "be a string"
+            )
+
+        normalized = value.strip()
+
+        if not normalized:
+            raise BenignCandidateValidationError(
+                "source snapshot must "
+                "not be empty"
+            )
+
+        return normalized
+
+    @staticmethod
+    def _normalize_observed_at(
+        value: datetime,
+    ) -> datetime:
+        if not isinstance(
+            value,
+            datetime,
+        ):
+            raise BenignCandidateValidationError(
+                "observed_at must "
+                "be a datetime"
+            )
+
+        if (
+            value.tzinfo is None
+            or value.utcoffset() is None
+        ):
+            raise BenignCandidateValidationError(
+                "observed_at must "
+                "be timezone-aware"
+            )
+
+        return value.astimezone(
+            timezone.utc
+        )
+
     @staticmethod
     def _normalize_registered_domain(
         value: str,
     ) -> str:
-        if not isinstance(value, str):
+        if not isinstance(
+            value,
+            str,
+        ):
             raise BenignCandidateValidationError(
                 "registered domain must "
                 "be a string"
@@ -595,7 +742,9 @@ class BenignDatasetSelectionService:
             )
 
         try:
-            ip_address(candidate)
+            ip_address(
+                candidate
+            )
 
         except ValueError:
             pass
@@ -620,7 +769,9 @@ class BenignDatasetSelectionService:
                 "is invalid"
             ) from None
 
-        labels = normalized.split(".")
+        labels = normalized.split(
+            "."
+        )
 
         if (
             len(labels) < 2
@@ -644,7 +795,8 @@ class BenignDatasetSelectionService:
         registered_domain: str,
     ) -> bool:
         return (
-            hostname == registered_domain
+            hostname
+            == registered_domain
             or hostname.endswith(
                 f".{registered_domain}"
             )
@@ -660,7 +812,10 @@ class BenignDatasetSelectionService:
             value=value,
         )
 
-        if value > cls.MAX_BATCH_SIZE:
+        if (
+            value
+            > cls.MAX_BATCH_SIZE
+        ):
             raise ValueError(
                 "batch_size must not exceed "
                 f"{cls.MAX_BATCH_SIZE}"
@@ -674,7 +829,10 @@ class BenignDatasetSelectionService:
     ) -> None:
         if (
             isinstance(value, bool)
-            or not isinstance(value, int)
+            or not isinstance(
+                value,
+                int,
+            )
         ):
             raise TypeError(
                 f"{name} must be an integer"

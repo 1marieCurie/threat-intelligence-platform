@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from pathlib import Path
 
 from application.models.ml_dataset import (
@@ -13,31 +14,30 @@ class BenignCandidateCSVError(RuntimeError):
     """
     Erreur de lecture du fichier candidat.
 
-    Le message ne contient volontairement ni URL,
+    Les messages ne contiennent volontairement ni URL,
     ni contenu de ligne afin d'éviter toute fuite.
     """
 
 
 class BenignCandidateCSVSource:
     """
-    Lit en streaming le CSV temporaire Tranco + CrUX.
+    Lit en streaming un CSV de candidats benign.
 
-    Le fichier actuellement généré utilise encore les colonnes
-    historiques `crux_present` et `crawl_id`.
-
-    Elles sont confinées ici :
-        crawl_id -> source_snapshot
-
-    La couche application ne connaît donc pas Common Crawl.
+    Le contrat CSV est indépendant du fournisseur :
+    - url
+    - registered_domain
+    - source_rank
+    - source_snapshot
+    - observed_at
     """
 
     REQUIRED_FIELDS = frozenset(
         {
             "url",
             "registered_domain",
-            "tranco_rank",
-            "crux_present",
-            "crawl_id",
+            "source_rank",
+            "source_snapshot",
+            "observed_at",
         }
     )
 
@@ -90,19 +90,7 @@ class BenignCandidateCSVSource:
                 start=2,
             ):
                 try:
-                    crux_present = (
-                        row["crux_present"]
-                        .strip()
-                        .lower()
-                    )
-
-                    if crux_present != "true":
-                        continue
-
-                    url = (
-                        row["url"]
-                        .strip()
-                    )
+                    url = row["url"].strip()
 
                     registered_domain = (
                         row["registered_domain"]
@@ -110,28 +98,60 @@ class BenignCandidateCSVSource:
                         .lower()
                     )
 
-                    tranco_rank = int(
-                        row["tranco_rank"]
+                    source_rank = int(
+                        row["source_rank"]
                     )
 
                     source_snapshot = (
-                        row["crawl_id"]
+                        row["source_snapshot"]
                         .strip()
+                    )
+
+                    raw_observed_at = (
+                        row["observed_at"]
+                        .strip()
+                    )
+
+                    observed_at = (
+                        datetime.fromisoformat(
+                            raw_observed_at.replace(
+                                "Z",
+                                "+00:00",
+                            )
+                        )
+                    )
+
+                    if (
+                        observed_at.tzinfo is None
+                        or observed_at.utcoffset()
+                        is None
+                    ):
+                        raise ValueError
+
+                    observed_at = (
+                        observed_at.astimezone(
+                            timezone.utc
+                        )
                     )
 
                     if (
                         not url
                         or not registered_domain
                         or not source_snapshot
-                        or tranco_rank <= 0
+                        or source_rank <= 0
                     ):
                         raise ValueError
 
                     yield BenignURLCandidate(
                         url=url,
-                        registered_domain=registered_domain,
-                        tranco_rank=tranco_rank,
-                        source_snapshot=source_snapshot,
+                        registered_domain=(
+                            registered_domain
+                        ),
+                        source_rank=source_rank,
+                        source_snapshot=(
+                            source_snapshot
+                        ),
+                        observed_at=observed_at,
                     )
 
                 except (
@@ -139,8 +159,7 @@ class BenignCandidateCSVSource:
                     TypeError,
                     ValueError,
                 ):
-                    # Important :
-                    # ne jamais inclure row ou url
+                    # Ne jamais inclure row ou url
                     # dans le message d'erreur.
                     raise BenignCandidateCSVError(
                         "Invalid benign candidate "
