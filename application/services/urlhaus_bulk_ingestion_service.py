@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 from collections.abc import (
-    Iterable,
-    Iterator,
+Iterable,
+Iterator,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,48 +8,38 @@ from typing import Protocol
 from uuid import UUID
 
 from application.ports.outbound.ingestion_run_payload_repository import (
-    IngestionRunPayloadLink,
+IngestionRunPayloadLink,
 )
 from application.ports.outbound.ingestion_run_repository import (
-    IngestionRunData,
+IngestionRunData,
 )
 from application.ports.outbound.payload_hasher import (
-    PayloadHasher,
+PayloadHasher,
 )
 from application.ports.outbound.raw_payload_repository import (
-    RawPayloadData,
+RawPayloadData,
 )
 from application.ports.outbound.unit_of_work import (
-    UnitOfWork,
+UnitOfWork,
 )
 
+DEFAULT_DUMP_SCOPE = (
+"active_or_last_90_days"
+)
 
-class URLhausBulkRecord(
-    Protocol
-):
-    @property
-    def external_record_id(
-        self,
-    ) -> str:
-        ...
+SUPPORTED_DUMP_SCOPES = frozenset(
+{
+"active_only",
+"active_or_last_90_days",
+}
+)
 
-    @property
-    def payload(
-        self,
-    ) -> dict[str, object]:
-        ...
+class URLhausBulkRecord(Protocol):
+    external_record_id: str
+    payload: dict[str, object]
+    retrieved_at: datetime
+    source_url: str
 
-    @property
-    def retrieved_at(
-        self,
-    ) -> datetime:
-        ...
-
-    @property
-    def source_url(
-        self,
-    ) -> str:
-        ...
 
 @dataclass(
     frozen=True,
@@ -69,6 +57,7 @@ class URLhausBulkIngestionService:
     """
     Persiste un dump URLhaus en streaming.
 
+    ```
     Chaque batch possède une transaction PostgreSQL courte.
     Le run n'est marqué completed qu'après consommation
     complète du dump.
@@ -78,7 +67,7 @@ class URLhausBulkIngestionService:
     MAX_BATCH_SIZE = 5_000
 
     CONNECTOR_VERSION = (
-        "urlhaus-dump-csv/1.0.0"
+        "urlhaus-dump-csv/2.1.0"
     )
 
     def __init__(
@@ -86,9 +75,7 @@ class URLhausBulkIngestionService:
         *,
         unit_of_work: UnitOfWork,
         payload_hasher: PayloadHasher,
-        batch_size: int = (
-            DEFAULT_BATCH_SIZE
-        ),
+        batch_size: int = DEFAULT_BATCH_SIZE,
     ) -> None:
         if unit_of_work is None:
             raise ValueError(
@@ -138,6 +125,7 @@ class URLhausBulkIngestionService:
         records: Iterable[
             URLhausBulkRecord
         ],
+        dump_scope: str = DEFAULT_DUMP_SCOPE,
     ) -> URLhausBulkIngestionResult:
         if not isinstance(
             source_id,
@@ -147,8 +135,17 @@ class URLhausBulkIngestionService:
                 "source_id must be a UUID"
             )
 
+        normalized_dump_scope = (
+            self._validate_dump_scope(
+                dump_scope
+            )
+        )
+
         run_id = self._start_run(
-            source_id=source_id
+            source_id=source_id,
+            dump_scope=(
+                normalized_dump_scope
+            ),
         )
 
         records_received = 0
@@ -180,6 +177,9 @@ class URLhausBulkIngestionService:
 
             self._complete_run(
                 run_id=run_id,
+                dump_scope=(
+                    normalized_dump_scope
+                ),
                 records_received=(
                     records_received
                 ),
@@ -227,6 +227,7 @@ class URLhausBulkIngestionService:
         self,
         *,
         source_id: UUID,
+        dump_scope: str,
     ) -> UUID:
         with self._unit_of_work as uow:
             run_id = (
@@ -242,7 +243,7 @@ class URLhausBulkIngestionService:
                                 "database_dump"
                             ),
                             "dump_scope": (
-                                "active_or_last_90_days"
+                                dump_scope
                             ),
                             "historical_complete": (
                                 False
@@ -342,6 +343,7 @@ class URLhausBulkIngestionService:
         self,
         *,
         run_id: UUID,
+        dump_scope: str,
         records_received: int,
         records_succeeded: int,
         records_inserted: int,
@@ -357,7 +359,7 @@ class URLhausBulkIngestionService:
                 "database_dump"
             ),
             "dump_scope": (
-                "active_or_last_90_days"
+                dump_scope
             ),
             "historical_complete": False,
             "window_complete": True,
@@ -453,9 +455,7 @@ class URLhausBulkIngestionService:
         ] = []
 
         for record in records:
-            batch.append(
-                record
-            )
+            batch.append(record)
 
             if (
                 len(batch)
@@ -466,3 +466,30 @@ class URLhausBulkIngestionService:
 
         if batch:
             yield tuple(batch)
+
+    @staticmethod
+    def _validate_dump_scope(
+        value: str,
+    ) -> str:
+        if not isinstance(
+            value,
+            str,
+        ):
+            raise TypeError(
+                "dump_scope must be a string"
+            )
+
+        normalized = value.strip()
+
+        if (
+            normalized
+            not in SUPPORTED_DUMP_SCOPES
+        ):
+            raise ValueError(
+                "dump_scope must be one of: "
+                "active_only, "
+                "active_or_last_90_days"
+            )
+
+        return normalized
+

@@ -1,31 +1,19 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from uuid import UUID
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import Engine
-
-
-PROJECT_ROOT = (
-    Path(__file__)
-    .resolve()
-    .parents[2]
-)
-
-load_dotenv(
-    dotenv_path=PROJECT_ROOT / ".env",
-    override=False,
-)
-
-
-import os
-from uuid import UUID
 
 from application.services.urlhaus_bulk_ingestion_service import (
     URLhausBulkIngestionService,
 )
 from infrastructure.adapters.outbound.urlhaus.urlhaus_database_dump_connector import (
+    DEFAULT_DUMP_SCOPE,
     URLhausDatabaseDumpConnector,
+    parse_urlhaus_dump_scope,
 )
 from infrastructure.persistence.sqlalchemy.engine import (
     create_ingestion_engine,
@@ -41,26 +29,55 @@ from infrastructure.security.sha256_payload_hasher import (
 )
 
 
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
+
+load_dotenv(
+    dotenv_path=PROJECT_ROOT / ".env",
+    override=False,
+)
+
+
 def build_urlhaus_bulk_ingestion(
     *,
     batch_size: int = 500,
+    dump_scope: str = (
+        DEFAULT_DUMP_SCOPE
+    ),
 ) -> tuple[
     URLhausDatabaseDumpConnector,
     URLhausBulkIngestionService,
     UUID,
     Engine,
 ]:
+    normalized_dump_scope = (
+        parse_urlhaus_dump_scope(
+            dump_scope
+        )
+    )
+
     auth_key = os.environ.get(
         "URLHAUS_AUTH_KEY"
     )
 
     if (
-        not isinstance(auth_key, str)
-        or not auth_key.strip()
+        normalized_dump_scope
+        == "active_or_last_90_days"
     ):
-        raise RuntimeError(
-            "URLHAUS_AUTH_KEY is required"
-        )
+        if (
+            not isinstance(
+                auth_key,
+                str,
+            )
+            or not auth_key.strip()
+        ):
+            raise RuntimeError(
+                "URLHAUS_AUTH_KEY is required "
+                "for active_or_last_90_days"
+            )
 
     source_id_value = os.environ.get(
         "URLHAUS_SOURCE_ID"
@@ -88,7 +105,9 @@ def build_urlhaus_bulk_ingestion(
             "must be a valid UUID"
         ) from error
 
-    engine = create_ingestion_engine()
+    engine = (
+        create_ingestion_engine()
+    )
 
     session_factory = (
         create_session_factory(
@@ -98,18 +117,25 @@ def build_urlhaus_bulk_ingestion(
 
     connector = (
         URLhausDatabaseDumpConnector(
-            auth_key=auth_key
+            auth_key=auth_key,
+            dump_scope=(
+                normalized_dump_scope
+            ),
         )
     )
 
-    service = URLhausBulkIngestionService(
-        unit_of_work=SqlAlchemyUnitOfWork(
-            session_factory
-        ),
-        payload_hasher=(
-            Sha256PayloadHasher()
-        ),
-        batch_size=batch_size,
+    service = (
+        URLhausBulkIngestionService(
+            unit_of_work=(
+                SqlAlchemyUnitOfWork(
+                    session_factory
+                )
+            ),
+            payload_hasher=(
+                Sha256PayloadHasher()
+            ),
+            batch_size=batch_size,
+        )
     )
 
     return (

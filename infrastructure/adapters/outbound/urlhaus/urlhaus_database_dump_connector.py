@@ -3,11 +3,52 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Iterator
+from typing import Iterator, Literal
 from urllib.parse import quote
 
 import requests
 from requests import Session
+
+
+URLhausDumpScope = Literal[
+    "active_only",
+    "active_or_last_90_days",
+]
+
+DEFAULT_DUMP_SCOPE: URLhausDumpScope = (
+    "active_or_last_90_days"
+)
+
+
+def parse_urlhaus_dump_scope(
+    value: str,
+) -> URLhausDumpScope:
+    if not isinstance(
+        value,
+        str,
+    ):
+        raise TypeError(
+            "dump_scope must be a string"
+        )
+
+    normalized = value.strip()
+
+    if normalized == "active_only":
+        return "active_only"
+
+    if (
+        normalized
+        == "active_or_last_90_days"
+    ):
+        return (
+            "active_or_last_90_days"
+        )
+
+    raise ValueError(
+        "dump_scope must be one of: "
+        "active_only, "
+        "active_or_last_90_days"
+    )
 
 
 class URLhausDatabaseDumpError(
@@ -34,22 +75,29 @@ class URLhausDatabaseDumpRecord:
 
 class URLhausDatabaseDumpConnector:
     """
-    Stream le dump URLhaus actif + 90 jours.
+    Stream un dump URLhaus sans charger le fichier complet
+    en mémoire.
 
-    Garanties :
-    - pas de chargement complet en mémoire ;
-    - Auth-Key jamais exposée dans les logs ;
-    - parsing CSV borné ;
-    - aucune URL malveillante journalisée.
+    active_only:
+        Feed public officiel des URLs actuellement online.
+
+    active_or_last_90_days:
+        Dump API URLhaus contenant les URLs actives
+        ou ajoutées dans les 90 derniers jours.
     """
 
-    VERSION = "1.0.0"
+    VERSION = "2.1.0"
 
     BASE_URL = (
         "https://urlhaus-api.abuse.ch"
     )
 
-    SAFE_SOURCE_URL = (
+    ACTIVE_ONLY_URL = (
+        "https://urlhaus.abuse.ch/"
+        "downloads/csv_online/"
+    )
+
+    RECENT_90_DAYS_URL = (
         "https://urlhaus-api.abuse.ch/"
         "v2/files/exports/recent.csv"
     )
@@ -64,18 +112,26 @@ class URLhausDatabaseDumpConnector:
     def __init__(
         self,
         *,
-        auth_key: str,
+        auth_key: str | None = None,
+        dump_scope: str = (
+            DEFAULT_DUMP_SCOPE
+        ),
         session: Session | None = None,
     ) -> None:
-        normalized_auth_key = (
-            self._validate_auth_key(
-                auth_key
+        self._dump_scope = (
+            parse_urlhaus_dump_scope(
+                dump_scope
             )
         )
 
-        self._auth_key = (
-            normalized_auth_key
-        )
+        if auth_key is None:
+            self._auth_key = None
+        else:
+            self._auth_key = (
+                self._validate_auth_key(
+                    auth_key
+                )
+            )
 
         self._session = (
             session
@@ -88,7 +144,10 @@ class URLhausDatabaseDumpConnector:
     ) -> Iterator[
         URLhausDatabaseDumpRecord
     ]:
-        request_url = self._build_request_url()
+        (
+            request_url,
+            safe_source_url,
+        ) = self._request_configuration()
 
         try:
             with self._session.get(
@@ -96,7 +155,8 @@ class URLhausDatabaseDumpConnector:
                 headers={
                     "Accept": (
                         "text/csv,"
-                        "application/octet-stream"
+                        "application/octet-stream,"
+                        "text/plain"
                     ),
                     "User-Agent": (
                         "threat-intelligence-engine/0.1"
@@ -138,6 +198,9 @@ class URLhausDatabaseDumpConnector:
                     retrieved_at=(
                         retrieved_at
                     ),
+                    safe_source_url=(
+                        safe_source_url
+                    ),
                 )
 
         except URLhausDatabaseDumpError:
@@ -156,6 +219,7 @@ class URLhausDatabaseDumpConnector:
         *,
         response: requests.Response,
         retrieved_at: datetime,
+        safe_source_url: str,
     ) -> Iterator[
         URLhausDatabaseDumpRecord
     ]:
@@ -190,12 +254,15 @@ class URLhausDatabaseDumpConnector:
 
                 if (
                     not first_value
-                    or first_value.startswith("#")
+                    or first_value.startswith(
+                        "#"
+                    )
                 ):
                     continue
 
                 if (
-                    first_value.lower() == "id"
+                    first_value.lower()
+                    == "id"
                     and len(row) > 1
                     and row[1]
                     .strip()
@@ -215,8 +282,9 @@ class URLhausDatabaseDumpConnector:
                 ):
                     raise (
                         URLhausDatabaseDumpError(
-                            "URLhaus dump exceeds "
-                            "configured row limit"
+                            "URLhaus dump "
+                            "exceeds configured "
+                            "row limit"
                         )
                     )
 
@@ -239,14 +307,16 @@ class URLhausDatabaseDumpConnector:
                             retrieved_at
                         ),
                         source_url=(
-                            self.SAFE_SOURCE_URL
+                            safe_source_url
                         ),
                     )
                 )
 
         except csv.Error:
-            raise URLhausDatabaseDumpError(
-                "URLhaus dump CSV is invalid"
+            raise (
+                URLhausDatabaseDumpError(
+                    "URLhaus dump CSV is invalid"
+                )
             ) from None
 
     @classmethod
@@ -256,15 +326,6 @@ class URLhausDatabaseDumpConnector:
         row: list[str],
         row_number: int,
     ) -> dict[str, object]:
-        # Format actuel :
-        #
-        # id,dateadded,url,url_status,
-        # last_online,threat,tags,
-        # urlhaus_link,reporter
-        #
-        # L'ancien export pouvait contenir
-        # huit colonnes sans last_online.
-
         if len(row) == 9:
             (
                 urlhaus_id,
@@ -293,10 +354,12 @@ class URLhausDatabaseDumpConnector:
             last_online = ""
 
         else:
-            raise URLhausDatabaseDumpError(
-                "URLhaus dump row "
-                f"{row_number} has an "
-                "unsupported column count"
+            raise (
+                URLhausDatabaseDumpError(
+                    "URLhaus dump row "
+                    f"{row_number} has an "
+                    "unsupported column count"
+                )
             )
 
         normalized_id = (
@@ -309,9 +372,12 @@ class URLhausDatabaseDumpConnector:
             or not normalized_id.isdigit()
             or int(normalized_id) <= 0
         ):
-            raise URLhausDatabaseDumpError(
-                "URLhaus dump contains "
-                "an invalid record identifier"
+            raise (
+                URLhausDatabaseDumpError(
+                    "URLhaus dump contains "
+                    "an invalid record "
+                    "identifier"
+                )
             )
 
         normalized_tags = [
@@ -337,9 +403,7 @@ class URLhausDatabaseDumpConnector:
             "urlhaus_reference": (
                 urlhaus_link.strip()
             ),
-            "reporter": (
-                reporter.strip()
-            ),
+            "reporter": reporter.strip(),
         }
 
         if last_online.strip():
@@ -360,11 +424,6 @@ class URLhausDatabaseDumpConnector:
         if not normalized:
             return ""
 
-        # Le CSV URLhaus utilise historiquement
-        # YYYY-MM-DD HH:MM:SS sans suffixe.
-        #
-        # Le normalizer interne exige une timezone.
-
         try:
             datetime.strptime(
                 normalized,
@@ -378,18 +437,37 @@ class URLhausDatabaseDumpConnector:
             f"{normalized} UTC"
         )
 
-    def _build_request_url(
+    def _request_configuration(
         self,
-    ) -> str:
+    ) -> tuple[str, str]:
+        if self._dump_scope == (
+            "active_only"
+        ):
+            return (
+                self.ACTIVE_ONLY_URL,
+                self.ACTIVE_ONLY_URL,
+            )
+
+        if not self._auth_key:
+            raise URLhausDatabaseDumpError(
+                "URLhaus Auth-Key is required "
+                "for the selected dump"
+            )
+
         encoded_key = quote(
             self._auth_key,
             safe="",
         )
 
-        return (
+        request_url = (
             f"{self.BASE_URL}/"
             "v2/files/exports/"
             f"{encoded_key}/recent.csv"
+        )
+
+        return (
+            request_url,
+            self.RECENT_90_DAYS_URL,
         )
 
     @staticmethod
@@ -415,7 +493,8 @@ class URLhausDatabaseDumpConnector:
             character.isspace()
             or ord(character) < 32
             or ord(character) == 127
-            for character in normalized
+            for character
+            in normalized
         ):
             raise ValueError(
                 "auth_key contains "
