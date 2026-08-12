@@ -5,6 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
+from application.models.url_features import (
+    URLFeatureValue,
+)
+
 
 @dataclass(
     frozen=True,
@@ -35,6 +39,9 @@ class PreparedMLURLSample:
 
     model_value contient la projection privacy-safe utilisée
     ultérieurement pour l'entraînement.
+
+    features contient uniquement le Feature Set numérique
+    explicitement autorisé par URLFeatureVector.
     """
 
     value_hash: str
@@ -43,6 +50,12 @@ class PreparedMLURLSample:
 
     projection_version: str
     model_value: str
+
+    feature_set_version: str
+    features: dict[
+        str,
+        URLFeatureValue,
+    ]
 
     source: str
     source_metadata: dict[str, object]
@@ -62,7 +75,9 @@ class PreparedMLURLSample:
 class MLDatasetSnapshotSpec:
     name: str
     version: str
+
     projection_version: str
+    feature_set_version: str
 
     class_targets: dict[str, object]
     label_mapping: dict[str, object]

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 
+URLFeatureValue = int | float
+
+
 @dataclass(
     frozen=True,
     slots=True,
@@ -20,7 +23,9 @@ class URLFeatureVector:
     l'EDA ne font pas partie de ce contrat.
     """
 
-    FEATURE_NAMES: ClassVar[tuple[str, ...]] = (
+    FEATURE_NAMES: ClassVar[
+        tuple[str, ...]
+    ] = (
         "url_length",
         "hostname_length",
         "dot_count",
@@ -56,3 +61,26 @@ class URLFeatureVector:
     # Validated interactions.
     path_length_special_char_ratio_product: float
     path_segment_count_special_char_ratio_product: float
+
+    def to_mapping(
+        self,
+    ) -> dict[
+        str,
+        URLFeatureValue,
+    ]:
+        """
+        Retourne uniquement les features autorisées
+        pour la persistance et l'entraînement.
+
+        feature_set_version n'est volontairement pas
+        dupliquée dans le document JSON.
+        """
+
+        return {
+            feature_name: getattr(
+                self,
+                feature_name,
+            )
+            for feature_name
+            in self.FEATURE_NAMES
+        }

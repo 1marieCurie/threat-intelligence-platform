@@ -30,6 +30,7 @@ from infrastructure.persistence.models.canonical_web import (
 from infrastructure.persistence.models.ml import (
     MLDatasetMemberModel,
     MLDatasetSnapshotModel,
+    MLURLFeatureVectorModel,
     MLURLProjectionModel,
     MLURLSampleLabelModel,
     MLURLSampleModel,
@@ -49,6 +50,12 @@ class MLDatasetLabelConflict(
 
 
 class MLDatasetProjectionConflict(
+    RuntimeError
+):
+    pass
+
+
+class MLDatasetFeatureConflict(
     RuntimeError
 ):
     pass
@@ -151,6 +158,9 @@ class SqlAlchemyMLDatasetStore:
                         projection_version=(
                             spec.projection_version
                         ),
+                        feature_set_version=(
+                            spec.feature_set_version
+                        ),
                         class_targets=dict(
                             spec.class_targets
                         ),
@@ -166,7 +176,10 @@ class SqlAlchemyMLDatasetStore:
                     )
                 )
 
-                session.add(snapshot)
+                session.add(
+                    snapshot
+                )
+
                 session.flush()
 
                 return snapshot.id
@@ -179,7 +192,9 @@ class SqlAlchemyMLDatasetStore:
     ) -> int:
         with self._session_factory() as session:
             value = session.execute(
-                select(func.count())
+                select(
+                    func.count()
+                )
                 .select_from(
                     MLDatasetMemberModel
                 )
@@ -191,7 +206,9 @@ class SqlAlchemyMLDatasetStore:
                 )
             ).scalar_one()
 
-        return int(value)
+        return int(
+            value
+        )
 
     def get_member_group_counts(
         self,
@@ -217,7 +234,9 @@ class SqlAlchemyMLDatasetStore:
             ).all()
 
         return {
-            row.group_key: int(row[1])
+            row.group_key: int(
+                row[1]
+            )
             for row in rows
         }
 
@@ -232,7 +251,8 @@ class SqlAlchemyMLDatasetStore:
                 select(
                     MLURLSampleModel
                     .canonicalization_version,
-                    MLURLSampleModel.value_hash,
+                    MLURLSampleModel
+                    .value_hash,
                 )
                 .join(
                     MLDatasetMemberModel,
@@ -263,13 +283,67 @@ class SqlAlchemyMLDatasetStore:
             PreparedMLURLSample
         ],
     ) -> MLDatasetBatchPersistResult:
-        submitted = tuple(samples)
+        submitted = tuple(
+            samples
+        )
 
         if not submitted:
-            return MLDatasetBatchPersistResult(
-                inserted_samples=0,
-                inserted_members=0,
+            return (
+                MLDatasetBatchPersistResult(
+                    inserted_samples=0,
+                    inserted_members=0,
+                )
             )
+
+        projection_versions = {
+            sample.projection_version
+            for sample in submitted
+        }
+
+        feature_set_versions = {
+            sample.feature_set_version
+            for sample in submitted
+        }
+
+        if (
+            len(projection_versions)
+            != 1
+        ):
+            raise (
+                MLDatasetConfigurationConflict(
+                    "ML batch mixes "
+                    "projection versions"
+                )
+            )
+
+        if (
+            len(feature_set_versions)
+            != 1
+        ):
+            raise (
+                MLDatasetConfigurationConflict(
+                    "ML batch mixes "
+                    "feature set versions"
+                )
+            )
+
+        projection_version = next(
+            iter(
+                projection_versions
+            )
+        )
+
+        feature_set_version = next(
+            iter(
+                feature_set_versions
+            )
+        )
+
+        for sample in submitted:
+            if not sample.features:
+                raise MLDatasetFeatureConflict(
+                    "Feature vector is empty"
+                )
 
         identity_values = [
             (
@@ -281,17 +355,68 @@ class SqlAlchemyMLDatasetStore:
 
         with self._session_factory() as session:
             with session.begin():
+                snapshot = (
+                    session.execute(
+                        select(
+                            MLDatasetSnapshotModel
+                        )
+                        .where(
+                            MLDatasetSnapshotModel.id
+                            == dataset_id
+                        )
+                    )
+                    .scalar_one()
+                )
+
+                if (
+                    snapshot.status
+                    != "draft"
+                ):
+                    raise (
+                        MLDatasetConfigurationConflict(
+                            "Dataset snapshot is frozen"
+                        )
+                    )
+
+                if (
+                    snapshot.projection_version
+                    != projection_version
+                ):
+                    raise (
+                        MLDatasetConfigurationConflict(
+                            "Projection version does "
+                            "not match dataset snapshot"
+                        )
+                    )
+
+                if (
+                    snapshot.feature_set_version
+                    != feature_set_version
+                ):
+                    raise (
+                        MLDatasetConfigurationConflict(
+                            "Feature set version does "
+                            "not match dataset snapshot"
+                        )
+                    )
+
                 sample_values = [
                     {
                         "id": uuid4(),
                         "canonical_web_indicator_id": None,
-                        "value_hash": sample.value_hash,
-                        "hostname": sample.hostname,
+                        "value_hash": (
+                            sample.value_hash
+                        ),
+                        "hostname": (
+                            sample.hostname
+                        ),
                         "canonicalization_version": (
                             sample
                             .canonicalization_version
                         ),
-                        "source": sample.source,
+                        "source": (
+                            sample.source
+                        ),
                         "source_metadata": dict(
                             sample.source_metadata
                         ),
@@ -304,7 +429,9 @@ class SqlAlchemyMLDatasetStore:
                         pg_insert(
                             MLURLSampleModel
                         )
-                        .values(sample_values)
+                        .values(
+                            sample_values
+                        )
                         .on_conflict_do_nothing(
                             index_elements=[
                                 "canonicalization_version",
@@ -351,8 +478,14 @@ class SqlAlchemyMLDatasetStore:
                 }
 
                 if (
-                    len(ids_by_identity)
-                    != len(set(identity_values))
+                    len(
+                        ids_by_identity
+                    )
+                    != len(
+                        set(
+                            identity_values
+                        )
+                    )
                 ):
                     raise RuntimeError(
                         "Unable to resolve all "
@@ -385,13 +518,17 @@ class SqlAlchemyMLDatasetStore:
                 )
 
                 if conflicts:
-                    raise MLDatasetLabelConflict(
-                        "ML sample already has "
-                        "a non-benign label"
+                    raise (
+                        MLDatasetLabelConflict(
+                            "ML sample already has "
+                            "a non-benign label"
+                        )
                     )
 
                 existing_projections = {
-                    row.sample_id: row.model_value
+                    row.sample_id: (
+                        row.model_value
+                    )
                     for row in session.execute(
                         select(
                             MLURLProjectionModel
@@ -406,14 +543,36 @@ class SqlAlchemyMLDatasetStore:
                             ),
                             MLURLProjectionModel
                             .projection_version
-                            == submitted[
-                                0
-                            ].projection_version,
+                            == projection_version,
+                        )
+                    ).all()
+                }
+
+                existing_features = {
+                    row.sample_id: dict(
+                        row.features
+                    )
+                    for row in session.execute(
+                        select(
+                            MLURLFeatureVectorModel
+                            .sample_id,
+                            MLURLFeatureVectorModel
+                            .features,
+                        )
+                        .where(
+                            MLURLFeatureVectorModel
+                            .sample_id.in_(
+                                sample_ids
+                            ),
+                            MLURLFeatureVectorModel
+                            .feature_set_version
+                            == feature_set_version,
                         )
                     ).all()
                 }
 
                 projection_values = []
+                feature_values = []
 
                 for sample in submitted:
                     identity = (
@@ -428,15 +587,16 @@ class SqlAlchemyMLDatasetStore:
                         ]
                     )
 
-                    existing_value = (
+                    existing_projection = (
                         existing_projections.get(
                             sample_id
                         )
                     )
 
                     if (
-                        existing_value is not None
-                        and existing_value
+                        existing_projection
+                        is not None
+                        and existing_projection
                         != sample.model_value
                     ):
                         raise (
@@ -446,15 +606,55 @@ class SqlAlchemyMLDatasetStore:
                             )
                         )
 
+                    existing_feature_vector = (
+                        existing_features.get(
+                            sample_id
+                        )
+                    )
+
+                    supplied_features = dict(
+                        sample.features
+                    )
+
+                    if (
+                        existing_feature_vector
+                        is not None
+                        and existing_feature_vector
+                        != supplied_features
+                    ):
+                        raise (
+                            MLDatasetFeatureConflict(
+                                "Feature extraction is "
+                                "not deterministic"
+                            )
+                        )
+
                     projection_values.append(
                         {
-                            "sample_id": sample_id,
+                            "sample_id": (
+                                sample_id
+                            ),
                             "projection_version": (
                                 sample
                                 .projection_version
                             ),
                             "model_value": (
                                 sample.model_value
+                            ),
+                        }
+                    )
+
+                    feature_values.append(
+                        {
+                            "sample_id": (
+                                sample_id
+                            ),
+                            "feature_set_version": (
+                                sample
+                                .feature_set_version
+                            ),
+                            "features": (
+                                supplied_features
                             ),
                         }
                     )
@@ -474,8 +674,114 @@ class SqlAlchemyMLDatasetStore:
                     )
                 )
 
-                label_values = []
+                session.execute(
+                    pg_insert(
+                        MLURLFeatureVectorModel
+                    )
+                    .values(
+                        feature_values
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=[
+                            "sample_id",
+                            "feature_set_version",
+                        ]
+                    )
+                )
 
+                # Relecture après les INSERT.
+                #
+                # Elle protège également contre un conflit
+                # concurrent qui serait apparu entre la
+                # première lecture et ON CONFLICT DO NOTHING.
+                persisted_projections = {
+                    row.sample_id: (
+                        row.model_value
+                    )
+                    for row in session.execute(
+                        select(
+                            MLURLProjectionModel
+                            .sample_id,
+                            MLURLProjectionModel
+                            .model_value,
+                        )
+                        .where(
+                            MLURLProjectionModel
+                            .sample_id.in_(
+                                sample_ids
+                            ),
+                            MLURLProjectionModel
+                            .projection_version
+                            == projection_version,
+                        )
+                    ).all()
+                }
+
+                persisted_features = {
+                    row.sample_id: dict(
+                        row.features
+                    )
+                    for row in session.execute(
+                        select(
+                            MLURLFeatureVectorModel
+                            .sample_id,
+                            MLURLFeatureVectorModel
+                            .features,
+                        )
+                        .where(
+                            MLURLFeatureVectorModel
+                            .sample_id.in_(
+                                sample_ids
+                            ),
+                            MLURLFeatureVectorModel
+                            .feature_set_version
+                            == feature_set_version,
+                        )
+                    ).all()
+                }
+
+                for sample in submitted:
+                    identity = (
+                        sample
+                        .canonicalization_version,
+                        sample.value_hash,
+                    )
+
+                    sample_id = (
+                        ids_by_identity[
+                            identity
+                        ]
+                    )
+
+                    if (
+                        persisted_projections.get(
+                            sample_id
+                        )
+                        != sample.model_value
+                    ):
+                        raise (
+                            MLDatasetProjectionConflict(
+                                "Projection is not "
+                                "deterministic"
+                            )
+                        )
+
+                    if (
+                        persisted_features.get(
+                            sample_id
+                        )
+                        != dict(
+                            sample.features
+                        )
+                    ):
+                        raise (
+                            MLDatasetFeatureConflict(
+                                "Feature extraction is "
+                                "not deterministic"
+                            )
+                        )
+
+                label_values = []
                 member_values = []
 
                 for sample in submitted:
@@ -494,7 +800,9 @@ class SqlAlchemyMLDatasetStore:
                     label_values.append(
                         {
                             "id": uuid4(),
-                            "sample_id": sample_id,
+                            "sample_id": (
+                                sample_id
+                            ),
                             "label_code": (
                                 sample.label_code
                             ),
@@ -512,8 +820,12 @@ class SqlAlchemyMLDatasetStore:
 
                     member_values.append(
                         {
-                            "dataset_id": dataset_id,
-                            "sample_id": sample_id,
+                            "dataset_id": (
+                                dataset_id
+                            ),
+                            "sample_id": (
+                                sample_id
+                            ),
                             "label_code": (
                                 sample.label_code
                             ),
@@ -528,7 +840,9 @@ class SqlAlchemyMLDatasetStore:
                     pg_insert(
                         MLURLSampleLabelModel
                     )
-                    .values(label_values)
+                    .values(
+                        label_values
+                    )
                     .on_conflict_do_nothing(
                         index_elements=[
                             "sample_id",
@@ -561,13 +875,15 @@ class SqlAlchemyMLDatasetStore:
                     .all()
                 )
 
-        return MLDatasetBatchPersistResult(
-            inserted_samples=len(
-                inserted_samples
-            ),
-            inserted_members=len(
-                inserted_members
-            ),
+        return (
+            MLDatasetBatchPersistResult(
+                inserted_samples=len(
+                    inserted_samples
+                ),
+                inserted_members=len(
+                    inserted_members
+                ),
+            )
         )
 
     @staticmethod
@@ -576,13 +892,19 @@ class SqlAlchemyMLDatasetStore:
         existing: MLDatasetSnapshotModel,
         spec: MLDatasetSnapshotSpec,
     ) -> None:
-        if existing.status != "draft":
-            raise MLDatasetConfigurationConflict(
-                "Dataset snapshot is frozen"
+        if (
+            existing.status
+            != "draft"
+        ):
+            raise (
+                MLDatasetConfigurationConflict(
+                    "Dataset snapshot is frozen"
+                )
             )
 
         expected = (
             existing.projection_version,
+            existing.feature_set_version,
             existing.class_targets,
             existing.label_mapping,
             existing.selection_config,
@@ -591,6 +913,7 @@ class SqlAlchemyMLDatasetStore:
 
         supplied = (
             spec.projection_version,
+            spec.feature_set_version,
             spec.class_targets,
             spec.label_mapping,
             spec.selection_config,
@@ -598,7 +921,9 @@ class SqlAlchemyMLDatasetStore:
         )
 
         if expected != supplied:
-            raise MLDatasetConfigurationConflict(
-                "Dataset snapshot configuration "
-                "does not match"
+            raise (
+                MLDatasetConfigurationConflict(
+                    "Dataset snapshot configuration "
+                    "does not match"
+                )
             )
