@@ -3,23 +3,40 @@ from __future__ import annotations
 import os
 from collections.abc import MutableMapping
 from logging.config import fileConfig
-from typing import Literal, TypeAlias
 from pathlib import Path
-from infrastructure.persistence.models import Base
+from typing import Literal, TypeAlias
 
 from dotenv import load_dotenv
 
-from alembic import context
-from sqlalchemy import engine_from_config, pool, text
 
-#charger le fichiers des variables d'environnement
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ENV_FILE = PROJECT_ROOT / ".env"
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[1]
+)
+
+ENV_FILE = (
+    PROJECT_ROOT
+    / ".env"
+)
 
 load_dotenv(
     dotenv_path=ENV_FILE,
     override=False,
 )
+
+
+from alembic import context
+from sqlalchemy import (
+    engine_from_config,
+    pool,
+    text,
+)
+
+from infrastructure.persistence.models import (
+    Base,
+)
+
 
 # ============================================================
 # Types du callback include_name
@@ -47,13 +64,15 @@ ParentNames: TypeAlias = MutableMapping[
 
 
 # ============================================================
-# Configuration générale d’Alembic
+# Configuration générale d'Alembic
 # ============================================================
 
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(
+        config.config_file_name
+    )
 
 
 migration_database_url = os.environ.get(
@@ -71,13 +90,10 @@ config.set_main_option(
 )
 
 
-# Temporaire tant que les vrais modèles SQLAlchemy
-# ne sont pas encore créés.
-#
-# Plus tard :
-# from infrastructure.persistence.models.base import Base
-# target_metadata = Base.metadata
-target_metadata = Base.metadata
+target_metadata = (
+    Base.metadata
+)
+
 
 # ============================================================
 # Schémas gérés par le projet
@@ -89,6 +105,7 @@ MANAGED_SCHEMAS: set[str] = {
     "raw",
     "normalized",
     "canonical",
+    "ml",
 }
 
 
@@ -98,19 +115,23 @@ def include_name(
     parent_names: ParentNames,
 ) -> bool:
     """
-    Limite l’inspection Alembic aux schémas du projet.
+    Limite l'inspection Alembic aux schémas
+    explicitement gérés par la plateforme.
     """
 
     del parent_names
 
     if type_ == "schema":
-        return name in MANAGED_SCHEMAS
+        return (
+            name
+            in MANAGED_SCHEMAS
+        )
 
     return True
 
 
 # ============================================================
-# Mode hors ligne : génération SQL avec --sql
+# Mode hors ligne
 # ============================================================
 
 def run_migrations_offline() -> None:
@@ -121,7 +142,9 @@ def run_migrations_offline() -> None:
         python -m alembic upgrade head --sql
     """
 
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option(
+        "sqlalchemy.url"
+    )
 
     context.configure(
         url=url,
@@ -151,15 +174,15 @@ def run_migrations_offline() -> None:
 
 
 # ============================================================
-# Mode en ligne : exécution réelle sur PostgreSQL
+# Mode en ligne
 # ============================================================
 
 def run_migrations_online() -> None:
     """
-    Exécute réellement les migrations sur PostgreSQL.
+    Exécute réellement les migrations PostgreSQL.
 
-    La connexion est ouverte avec threat_intel_migrator,
-    puis les opérations sont réalisées comme
+    La connexion est ouverte avec le rôle migrator,
+    puis les opérations sont exécutées comme
     threat_intel_owner.
     """
 
@@ -176,10 +199,12 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         connection.execute(
-            text("SET ROLE threat_intel_owner")
+            text(
+                "SET ROLE threat_intel_owner"
+            )
         )
 
-        # Le premier execute() déclenche une transaction
+        # Le premier execute() ouvre une transaction
         # implicite avec SQLAlchemy.
         connection.commit()
 
@@ -200,16 +225,20 @@ def run_migrations_online() -> None:
 
         finally:
             connection.execute(
-                text("RESET ROLE")
+                text(
+                    "RESET ROLE"
+                )
             )
+
             connection.commit()
 
 
 # ============================================================
-# Point d’entrée
+# Point d'entrée
 # ============================================================
 
 if context.is_offline_mode():
     run_migrations_offline()
+
 else:
     run_migrations_online()

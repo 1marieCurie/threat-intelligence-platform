@@ -5,6 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
+from application.models.url_features import (
+    URLFeatureValue,
+)
+
 
 @dataclass(
     frozen=True,
@@ -31,10 +35,14 @@ class BenignURLCandidate:
 )
 class PreparedMLURLSample:
     """
-    Échantillon prêt à être persisté dans le schéma ML.
+    Échantillon URL prêt à être persisté dans le schéma ML.
 
-    model_value contient la projection privacy-safe utilisée
-    ultérieurement pour l'entraînement.
+    canonical_web_indicator_id :
+    - None pour HTTP Archive ;
+    - UUID canonique pour PhishTank et URLhaus.
+
+    L'URL canonique elle-même n'est volontairement pas
+    conservée dans cet objet persistable.
     """
 
     value_hash: str
@@ -43,6 +51,12 @@ class PreparedMLURLSample:
 
     projection_version: str
     model_value: str
+
+    feature_set_version: str
+    features: dict[
+        str,
+        URLFeatureValue,
+    ]
 
     source: str
     source_metadata: dict[str, object]
@@ -54,6 +68,8 @@ class PreparedMLURLSample:
     group_key: str
     observed_at: datetime
 
+    canonical_web_indicator_id: UUID | None = None
+
 
 @dataclass(
     frozen=True,
@@ -62,7 +78,9 @@ class PreparedMLURLSample:
 class MLDatasetSnapshotSpec:
     name: str
     version: str
+
     projection_version: str
+    feature_set_version: str
 
     class_targets: dict[str, object]
     label_mapping: dict[str, object]
@@ -102,3 +120,4 @@ class BenignDatasetBuildResult:
 
     target_size: int
     target_reached: bool
+    canonical_web_indicator_id: UUID | None = None

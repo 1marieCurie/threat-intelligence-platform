@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
-from ipaddress import ip_address
+import math
+from collections import Counter
 from urllib.parse import urlsplit
 
 from application.models.url_features import (
@@ -22,24 +22,24 @@ class URLFeatureExtractionError(
 
 class URLFeatureExtractor:
     """
-    Extrait des features lexicales numériques
-    depuis une URL déjà canonicalisée.
+    Extrait le Feature Set V1 depuis une URL
+    déjà canonicalisée.
 
-    Aucun réseau.
-    Aucun DNS.
-    Aucun WHOIS.
-    Aucun service externe.
+    Contraintes :
+    - aucun réseau ;
+    - aucun DNS ;
+    - aucun WHOIS ;
+    - aucun service externe ;
+    - calcul déterministe ;
+    - complexité O(n) sur la longueur de l'URL.
 
-    L'extraction est déterministe et locale.
+    Les features sont calculées sur l'URL canonique,
+    avant toute projection privacy-safe.
     """
 
-    VERSION = "1.0.0"
+    VERSION = "2.0.0"
 
     MAX_URL_LENGTH = 4_096
-
-    _PERCENT_ENCODING_PATTERN = re.compile(
-        r"%[0-9A-Fa-f]{2}"
-    )
 
     def extract(
         self,
@@ -72,7 +72,11 @@ class URLFeatureExtractor:
                 canonical_value
             )
 
-            port = parsed.port
+            # Force la validation du port même si celui-ci
+            # n'est plus une feature ML.
+            _ = parsed.port
+
+            hostname = parsed.hostname
 
         except (
             UnicodeError,
@@ -92,8 +96,6 @@ class URLFeatureExtractor:
                 "canonical URL scheme is invalid"
             )
 
-        hostname = parsed.hostname
-
         if not hostname:
             raise URLFeatureExtractionError(
                 "canonical URL hostname is missing"
@@ -106,22 +108,41 @@ class URLFeatureExtractor:
             or "/"
         )
 
-        query = parsed.query
-        fragment = parsed.fragment
+        url_length = len(
+            canonical_value
+        )
 
-        has_ip_address = (
-            self._is_ip_address(
-                hostname
+        hostname_length = len(
+            hostname
+        )
+
+        path_length = len(
+            path
+        )
+
+        dot_count = (
+            canonical_value.count(
+                "."
             )
         )
 
-        has_punycode = any(
-            label.startswith(
-                "xn--"
+        hyphen_count = (
+            canonical_value.count(
+                "-"
             )
-            for label in hostname.split(
-                "."
-            )
+        )
+
+        digit_count = sum(
+            character.isdigit()
+            for character in canonical_value
+        )
+
+        # Important :
+        # cette définition conserve exactement la
+        # sémantique utilisée pendant l'EDA.
+        special_char_count = sum(
+            not character.isalnum()
+            for character in canonical_value
         )
 
         path_segment_count = sum(
@@ -132,25 +153,39 @@ class URLFeatureExtractor:
             if segment
         )
 
-        query_parameter_count = (
-            0
-            if not query
-            else query.count("&") + 1
+        hostname_entropy = (
+            self._shannon_entropy(
+                hostname
+            )
         )
 
-        digit_count = sum(
-            character.isdigit()
-            for character in canonical_value
+        mean_hostname_label_length = (
+            self._mean_hostname_label_length(
+                hostname
+            )
         )
 
-        special_char_count = sum(
-            not character.isalnum()
-            for character in canonical_value
+        path_to_url_length_ratio = (
+            path_length
+            / url_length
         )
 
-        has_percent_encoding = bool(
-            self._PERCENT_ENCODING_PATTERN.search(
-                canonical_value
+        special_char_ratio = (
+            special_char_count
+            / url_length
+        )
+
+        path_length_special_char_ratio_product = (
+            self._normalized_product(
+                path_length,
+                special_char_ratio,
+            )
+        )
+
+        path_segment_count_special_char_ratio_product = (
+            self._normalized_product(
+                path_segment_count,
+                special_char_ratio,
             )
         )
 
@@ -158,30 +193,17 @@ class URLFeatureExtractor:
             feature_set_version=(
                 self.VERSION
             ),
-            url_length=len(
-                canonical_value
+            url_length=(
+                url_length
             ),
-            hostname_length=len(
-                hostname
-            ),
-            path_length=len(
-                path
-            ),
-            query_length=len(
-                query
-            ),
-            fragment_length=len(
-                fragment
+            hostname_length=(
+                hostname_length
             ),
             dot_count=(
-                canonical_value.count(
-                    "."
-                )
+                dot_count
             ),
             hyphen_count=(
-                canonical_value.count(
-                    "-"
-                )
+                hyphen_count
             ),
             digit_count=(
                 digit_count
@@ -192,36 +214,98 @@ class URLFeatureExtractor:
             path_segment_count=(
                 path_segment_count
             ),
-            query_parameter_count=(
-                query_parameter_count
+            hostname_entropy=(
+                hostname_entropy
             ),
-            has_ip_address=(
-                has_ip_address
+            mean_hostname_label_length=(
+                mean_hostname_label_length
             ),
-            has_https=(
-                scheme == "https"
+            path_to_url_length_ratio=(
+                path_to_url_length_ratio
             ),
-            has_non_default_port=(
-                port is not None
+            special_char_ratio=(
+                special_char_ratio
             ),
-            has_punycode=(
-                has_punycode
+            path_length_special_char_ratio_product=(
+                path_length_special_char_ratio_product
             ),
-            has_percent_encoding=(
-                has_percent_encoding
+            path_segment_count_special_char_ratio_product=(
+                path_segment_count_special_char_ratio_product
             ),
         )
 
     @staticmethod
-    def _is_ip_address(
-        hostname: str,
-    ) -> bool:
-        try:
-            ip_address(
-                hostname
+    def _shannon_entropy(
+        value: str,
+    ) -> float:
+        if not value:
+            return 0.0
+
+        value_length = len(
+            value
+        )
+
+        frequencies = Counter(
+            value
+        )
+
+        return -sum(
+            (
+                count
+                / value_length
             )
+            * math.log2(
+                count
+                / value_length
+            )
+            for count in frequencies.values()
+        )
 
-        except ValueError:
-            return False
+    @staticmethod
+    def _mean_hostname_label_length(
+        hostname: str,
+    ) -> float:
+        labels = [
+            label
+            for label in hostname.split(
+                "."
+            )
+            if label
+        ]
 
-        return True
+        if not labels:
+            return 0.0
+
+        return (
+            sum(
+                len(label)
+                for label in labels
+            )
+            / len(labels)
+        )
+
+    @staticmethod
+    def _normalized_product(
+        left: int | float,
+        right: int | float,
+    ) -> float:
+        normalized_left = (
+            left
+            / (
+                1.0
+                + abs(left)
+            )
+        )
+
+        normalized_right = (
+            right
+            / (
+                1.0
+                + abs(right)
+            )
+        )
+
+        return (
+            normalized_left
+            * normalized_right
+        )

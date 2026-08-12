@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from uuid import UUID, uuid4
+
+import pytest
 
 from application.models.ml_dataset import (
     BenignURLCandidate,
@@ -16,6 +17,9 @@ from application.models.url_features import (
 )
 from application.ports.outbound.ml_dataset import (
     MLURLIdentityKey,
+)
+from application.services.benign_dataset_selection_service import (
+    BenignDatasetSelectionService,
 )
 from application.services.canonical_url_normalizer import (
     CanonicalURLNormalizer,
@@ -31,76 +35,6 @@ from application.services.url_feature_extractor import (
 SOURCE_SNAPSHOT = (
     "http-archive-2026-07-01-mobile-secondary"
 )
-
-
-class BenignDatasetSelectionService:
-    def __init__(
-        self,
-        *,
-        store,
-        threat_identity_reader,
-        normalizer,
-        feature_extractor,
-        projector,
-        snapshot_spec: MLDatasetSnapshotSpec,
-        expected_source_snapshot: str,
-        target_size: int,
-        batch_size: int = 100,
-        max_source_rank: int = 100_000,
-    ) -> None:
-        if snapshot_spec.feature_set_version != feature_extractor.VERSION:
-            raise ValueError(
-                "snapshot feature set version does not match extractor version"
-            )
-
-        self.store = store
-        self.threat_identity_reader = threat_identity_reader
-        self.normalizer = normalizer
-        self.feature_extractor = feature_extractor
-        self.projector = projector
-        self.snapshot_spec = snapshot_spec
-        self.expected_source_snapshot = expected_source_snapshot
-        self.target_size = target_size
-        self.batch_size = batch_size
-        self.max_source_rank = max_source_rank
-
-    def run(self, candidates):
-        dataset_id = self.store.ensure_draft_snapshot(spec=self.snapshot_spec)
-        selected: list[object] = []
-
-        for candidate in candidates:
-            if candidate.source_snapshot != self.expected_source_snapshot:
-                continue
-            if candidate.source_rank > self.max_source_rank:
-                continue
-
-            features = {
-                name: float(index + 1)
-                for index, name in enumerate(URLFeatureVector.FEATURE_NAMES)
-            }
-            sample = SimpleNamespace(
-                url=candidate.url,
-                canonical_url=self.normalizer.normalize(candidate.url),
-                registered_domain=candidate.registered_domain,
-                source_rank=candidate.source_rank,
-                source_snapshot=candidate.source_snapshot,
-                observed_at=candidate.observed_at,
-                feature_set_version=self.feature_extractor.VERSION,
-                projection_version=self.projector.VERSION,
-                features=features,
-            )
-            selected.append(sample)
-            if len(selected) >= self.target_size:
-                break
-
-        persist_result = self.store.persist_benign_batch(
-            dataset_id=dataset_id,
-            samples=selected,
-        )
-        return SimpleNamespace(
-            target_reached=len(selected) >= self.target_size,
-            inserted_members=persist_result.inserted_members,
-        )
 
 
 class RecordingMLDatasetStore:
@@ -352,7 +286,13 @@ def test_rejects_snapshot_feature_version_mismatch(
         source_manifest={},
     )
 
-    try:
+    with pytest.raises(
+        ValueError,
+        match=(
+            "snapshot feature set version "
+            "does not match extractor version"
+        ),
+    ):
         BenignDatasetSelectionService(
             store=RecordingMLDatasetStore(),
             threat_identity_reader=(
@@ -368,18 +308,4 @@ def test_rejects_snapshot_feature_version_mismatch(
                 SOURCE_SNAPSHOT
             ),
             target_size=1,
-        )
-
-    except ValueError as error:
-        assert (
-            str(error)
-            == (
-                "snapshot feature set version "
-                "does not match extractor version"
-            )
-        )
-
-    else:
-        raise AssertionError(
-            "Version mismatch was not rejected"
         )

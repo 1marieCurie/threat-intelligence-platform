@@ -8,12 +8,14 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import (
     JSONB,
@@ -60,6 +62,14 @@ class MLURLSampleModel(Base):
             "= 'object'",
             name="metadata_object",
         ),
+        Index(
+            "ix_ml_url_sample_hostname",
+            "hostname",
+        ),
+        Index(
+            "ix_ml_url_sample_canonical_indicator",
+            "canonical_web_indicator_id",
+        ),
         {"schema": "ml"},
     )
 
@@ -79,7 +89,6 @@ class MLURLSampleModel(Base):
             ondelete="SET NULL",
         ),
         nullable=True,
-        index=True,
     )
 
     value_hash: Mapped[str] = mapped_column(
@@ -90,7 +99,6 @@ class MLURLSampleModel(Base):
     hostname: Mapped[str] = mapped_column(
         String(253),
         nullable=False,
-        index=True,
     )
 
     canonicalization_version: Mapped[int] = (
@@ -110,7 +118,9 @@ class MLURLSampleModel(Base):
     ] = mapped_column(
         JSONB,
         nullable=False,
-        default=dict,
+        server_default=text(
+            "'{}'::jsonb"
+        ),
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -122,6 +132,7 @@ class MLURLSampleModel(Base):
 
 class MLURLProjectionModel(Base):
     __tablename__ = "url_projection"
+
     __table_args__ = (
         CheckConstraint(
             "char_length(projection_version) "
@@ -164,6 +175,56 @@ class MLURLProjectionModel(Base):
     )
 
 
+class MLURLFeatureVectorModel(Base):
+    __tablename__ = "url_feature_vector"
+
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(feature_set_version) "
+            "BETWEEN 1 AND 30",
+            name="feature_set_version_valid",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(features) = 'object'",
+            name="features_object",
+        ),
+        CheckConstraint(
+            "features <> '{}'::jsonb",
+            name="features_not_empty",
+        ),
+        {"schema": "ml"},
+    )
+
+    sample_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "ml.url_sample.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+
+    feature_set_version: Mapped[str] = (
+        mapped_column(
+            String(30),
+            primary_key=True,
+        )
+    )
+
+    features: Mapped[
+        dict[str, int | float]
+    ] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class MLURLSampleLabelModel(Base):
     __tablename__ = "url_sample_label"
 
@@ -189,6 +250,10 @@ class MLURLSampleLabelModel(Base):
             "AND confidence <= 1",
             name="confidence_valid",
         ),
+        Index(
+            "ix_ml_sample_label_code",
+            "label_code",
+        ),
         {"schema": "ml"},
     )
 
@@ -210,7 +275,6 @@ class MLURLSampleLabelModel(Base):
     label_code: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        index=True,
     )
 
     label_source: Mapped[str] = mapped_column(
@@ -247,6 +311,12 @@ class MLDatasetSnapshotModel(Base):
         CheckConstraint(
             "status IN ('draft', 'frozen')",
             name="status_valid",
+        ),
+        CheckConstraint(
+            "feature_set_version IS NULL "
+            "OR char_length(feature_set_version) "
+            "BETWEEN 1 AND 30",
+            name="feature_set_version_valid",
         ),
         CheckConstraint(
             "jsonb_typeof(class_targets) "
@@ -290,7 +360,9 @@ class MLDatasetSnapshotModel(Base):
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default="draft",
+        server_default=text(
+            "'draft'"
+        ),
     )
 
     projection_version: Mapped[str] = (
@@ -298,6 +370,13 @@ class MLDatasetSnapshotModel(Base):
             String(30),
             nullable=False,
         )
+    )
+
+    feature_set_version: Mapped[
+        str | None
+    ] = mapped_column(
+        String(30),
+        nullable=True,
     )
 
     class_targets: Mapped[
@@ -360,6 +439,16 @@ class MLDatasetMemberModel(Base):
             "char_length(group_key) "
             "BETWEEN 1 AND 253",
             name="group_key_valid",
+        ),
+        Index(
+            "ix_ml_member_label",
+            "dataset_id",
+            "label_code",
+        ),
+        Index(
+            "ix_ml_member_group",
+            "dataset_id",
+            "group_key",
         ),
         {"schema": "ml"},
     )

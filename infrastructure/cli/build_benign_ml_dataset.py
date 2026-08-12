@@ -40,6 +40,9 @@ from application.services.canonical_url_normalizer import (
 from application.services.ml_url_training_projector import (
     MLURLTrainingProjector,
 )
+from application.services.url_feature_extractor import (
+    URLFeatureExtractor,
+)
 from infrastructure.adapters.inbound.benign_candidate_csv_source import (
     BenignCandidateCSVSource,
 )
@@ -60,7 +63,9 @@ DEFAULT_MAX_PER_DOMAIN = 4
 
 MAX_TARGET_SIZE = 100_000
 MAX_PER_DOMAIN = 10
-MAX_SOURCE_RANK = 300_000
+
+# Politique figée pendant l'EDA HTTP Archive.
+MAX_SOURCE_RANK = 100_000
 
 DATASET_NAME = "benign_pool"
 
@@ -69,6 +74,7 @@ SELECTION_ALGORITHM_VERSION = (
 )
 
 SOURCE_NAME = "http_archive"
+
 SOURCE_DATASET = (
     "httparchive.crawl.pages"
 )
@@ -282,12 +288,19 @@ def main(
             MLURLTrainingProjector()
         )
 
+        feature_extractor = (
+            URLFeatureExtractor()
+        )
+
         snapshot_spec = (
             MLDatasetSnapshotSpec(
                 name=DATASET_NAME,
                 version=dataset_version,
                 projection_version=(
                     projector.VERSION
+                ),
+                feature_set_version=(
+                    feature_extractor.VERSION
                 ),
                 class_targets={
                     "benign": (
@@ -297,7 +310,7 @@ def main(
                 label_mapping={
                     "benign": 0,
                     "phishing": 1,
-                    "malware_distribution": 2,
+                    "malware": 2,
                 },
                 selection_config={
                     "selection_algorithm_version": (
@@ -374,6 +387,9 @@ def main(
                 normalizer=(
                     CanonicalURLNormalizer()
                 ),
+                feature_extractor=(
+                    feature_extractor
+                ),
                 projector=projector,
                 snapshot_spec=(
                     snapshot_spec
@@ -384,7 +400,7 @@ def main(
                 target_size=(
                     arguments.target_size
                 ),
-                max_per_domain=(
+                max_per_domain=( # type: ignore
                     arguments.max_per_domain
                 ),
                 max_source_rank=(
