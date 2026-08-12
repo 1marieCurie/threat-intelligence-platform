@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 from collections import Counter
 from collections.abc import Sequence
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 PROJECT_ROOT = (
@@ -45,6 +48,10 @@ REQUIRED_FIELDS = frozenset(
         "source_snapshot",
         "observed_at",
     }
+)
+
+_PERCENT_ENCODING_PATTERN = re.compile(
+    r"%[0-9A-Fa-f]{2}"
 )
 
 
@@ -167,6 +174,20 @@ def _print_distribution(
     )
 
 
+def _is_ip_address(
+    hostname: str,
+) -> bool:
+    try:
+        ip_address(
+            hostname
+        )
+
+    except ValueError:
+        return False
+
+    return True
+
+
 def main(
     argv: Sequence[str] | None = None,
 ) -> int:
@@ -202,6 +223,7 @@ def main(
 
     rows_read = 0
     normalized = 0
+    accepted_rows = 0
 
     normalization_rejected = 0
     feature_rejected = 0
@@ -375,6 +397,38 @@ def main(
                     feature_rejected += 1
                     continue
 
+                # Les métriques ci-dessous sont des diagnostics
+                # d'audit de source. Elles ne font volontairement
+                # pas partie du Feature Set ML V1.
+                try:
+                    parsed = urlsplit(
+                        identity.canonical_value
+                    )
+
+                    port = parsed.port
+
+                except (
+                    UnicodeError,
+                    ValueError,
+                ):
+                    feature_rejected += 1
+                    continue
+
+                path = (
+                    parsed.path
+                    or "/"
+                )
+
+                query = (
+                    parsed.query
+                )
+
+                fragment = (
+                    parsed.fragment
+                )
+
+                accepted_rows += 1
+
                 if (
                     identity.value_hash
                     in canonical_hashes
@@ -402,6 +456,8 @@ def main(
                     source_rank
                 )
 
+                # Features réellement exposées par
+                # URLFeatureVector V1.
                 url_lengths.append(
                     features.url_length
                 )
@@ -410,56 +466,78 @@ def main(
                     features.hostname_length
                 )
 
-                path_lengths.append(
-                    features.path_length
-                )
-
-                query_lengths.append(
-                    features.query_length
-                )
-
-                fragment_lengths.append(
-                    features.fragment_length
-                )
-
                 path_segment_counts.append(
                     features.path_segment_count
                 )
 
+                # Diagnostics de source uniquement.
+                path_lengths.append(
+                    len(path)
+                )
+
+                query_lengths.append(
+                    len(query)
+                )
+
+                fragment_lengths.append(
+                    len(fragment)
+                )
+
                 query_parameter_counts.append(
-                    features.query_parameter_count
+                    (
+                        0
+                        if not query
+                        else query.count("&") + 1
+                    )
                 )
 
                 https_count += int(
-                    features.has_https
+                    parsed.scheme.lower()
+                    == "https"
                 )
 
                 ip_count += int(
-                    features.has_ip_address
+                    _is_ip_address(
+                        hostname
+                    )
                 )
 
+                # Le CanonicalURLNormalizer retire les ports
+                # par défaut. Tout port restant est donc
+                # non-default dans la valeur canonique.
                 non_default_port_count += int(
-                    features.has_non_default_port
+                    port is not None
                 )
 
                 punycode_count += int(
-                    features.has_punycode
+                    any(
+                        label.startswith(
+                            "xn--"
+                        )
+                        for label in hostname.split(
+                            "."
+                        )
+                    )
                 )
 
                 percent_encoding_count += int(
-                    features.has_percent_encoding
+                    bool(
+                        _PERCENT_ENCODING_PATTERN.search(
+                            identity.canonical_value
+                        )
+                    )
                 )
 
                 non_root_path_count += int(
-                    features.path_length > 1
+                    len(path) > 1
                 )
 
                 query_present_count += int(
-                    features.query_length > 0
+                    bool(query)
                 )
 
                 fragment_present_count += int(
-                    features.fragment_length > 0
+                    bool(fragment)
                 )
 
     except OSError:
@@ -471,7 +549,7 @@ def main(
 
         return 1
 
-    accepted = len(
+    distinct_canonical_urls = len(
         canonical_hashes
     )
 
@@ -505,8 +583,12 @@ def main(
     )
 
     print(
+        f"accepted_rows={accepted_rows}"
+    )
+
+    print(
         "distinct_canonical_urls="
-        f"{accepted}"
+        f"{distinct_canonical_urls}"
     )
 
     print(
@@ -538,49 +620,49 @@ def main(
     print(
         "https="
         f"{https_count} "
-        f"({_percentage(https_count, accepted):.2f}%)"
+        f"({_percentage(https_count, accepted_rows):.2f}%)"
     )
 
     print(
         "non_root_path="
         f"{non_root_path_count} "
-        f"({_percentage(non_root_path_count, accepted):.2f}%)"
+        f"({_percentage(non_root_path_count, accepted_rows):.2f}%)"
     )
 
     print(
         "query_present="
         f"{query_present_count} "
-        f"({_percentage(query_present_count, accepted):.2f}%)"
+        f"({_percentage(query_present_count, accepted_rows):.2f}%)"
     )
 
     print(
         "fragment_present="
         f"{fragment_present_count} "
-        f"({_percentage(fragment_present_count, accepted):.2f}%)"
+        f"({_percentage(fragment_present_count, accepted_rows):.2f}%)"
     )
 
     print(
         "ip_address="
         f"{ip_count} "
-        f"({_percentage(ip_count, accepted):.2f}%)"
+        f"({_percentage(ip_count, accepted_rows):.2f}%)"
     )
 
     print(
         "non_default_port="
         f"{non_default_port_count} "
-        f"({_percentage(non_default_port_count, accepted):.2f}%)"
+        f"({_percentage(non_default_port_count, accepted_rows):.2f}%)"
     )
 
     print(
         "punycode="
         f"{punycode_count} "
-        f"({_percentage(punycode_count, accepted):.2f}%)"
+        f"({_percentage(punycode_count, accepted_rows):.2f}%)"
     )
 
     print(
         "percent_encoding="
         f"{percent_encoding_count} "
-        f"({_percentage(percent_encoding_count, accepted):.2f}%)"
+        f"({_percentage(percent_encoding_count, accepted_rows):.2f}%)"
     )
 
     print(

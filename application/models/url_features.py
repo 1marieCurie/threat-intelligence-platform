@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 
 @dataclass(
@@ -9,31 +10,49 @@ from dataclasses import dataclass
 )
 class URLFeatureVector:
     """
-    Features lexicales déterministes extraites
-    depuis une URL canonique.
+    Feature Set V1 lexical et structurel d'une URL canonique.
 
-    Aucune URL originale ou canonique n'est persistée
-    dans ce vecteur.
+    Le vecteur contient uniquement les features validées
+    pour le modèle ML V1.
+
+    Aucune URL originale ou canonique n'est persistée ici.
+    Les features identifiées comme source proxies pendant
+    l'EDA ne font pas partie de ce contrat.
     """
+
+    FEATURE_NAMES: ClassVar[tuple[str, ...]] = (
+        "url_length",
+        "hostname_length",
+        "dot_count",
+        "hyphen_count",
+        "digit_count",
+        "special_char_count",
+        "path_segment_count",
+        "hostname_entropy",
+        "mean_hostname_label_length",
+        "path_to_url_length_ratio",
+        "special_char_ratio",
+        "path_length_special_char_ratio_product",
+        "path_segment_count_special_char_ratio_product",
+    )
 
     feature_set_version: str
 
+    # Base features.
     url_length: int
     hostname_length: int
-    path_length: int
-    query_length: int
-    fragment_length: int
-
     dot_count: int
     hyphen_count: int
     digit_count: int
     special_char_count: int
-
     path_segment_count: int
-    query_parameter_count: int
 
-    has_ip_address: bool
-    has_https: bool
-    has_non_default_port: bool
-    has_punycode: bool
-    has_percent_encoding: bool
+    # Engineered features.
+    hostname_entropy: float
+    mean_hostname_label_length: float
+    path_to_url_length_ratio: float
+    special_char_ratio: float
+
+    # Validated interactions.
+    path_length_special_char_ratio_product: float
+    path_segment_count_special_char_ratio_product: float
