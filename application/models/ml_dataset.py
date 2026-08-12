@@ -35,13 +35,14 @@ class BenignURLCandidate:
 )
 class PreparedMLURLSample:
     """
-    Échantillon prêt à être persisté dans le schéma ML.
+    Échantillon URL prêt à être persisté dans le schéma ML.
 
-    model_value contient la projection privacy-safe utilisée
-    ultérieurement pour l'entraînement.
+    canonical_web_indicator_id :
+    - None pour HTTP Archive ;
+    - UUID canonique pour PhishTank et URLhaus.
 
-    features contient uniquement le Feature Set numérique
-    explicitement autorisé par URLFeatureVector.
+    L'URL canonique elle-même n'est volontairement pas
+    conservée dans cet objet persistable.
     """
 
     value_hash: str
@@ -66,6 +67,8 @@ class PreparedMLURLSample:
 
     group_key: str
     observed_at: datetime
+
+    canonical_web_indicator_id: UUID | None = None
 
 
 @dataclass(
@@ -117,3 +120,4 @@ class BenignDatasetBuildResult:
 
     target_size: int
     target_reached: bool
+    canonical_web_indicator_id: UUID | None = None

@@ -46,7 +46,7 @@ class MLDatasetStore(Protocol):
     ) -> set[MLURLIdentityKey]:
         ...
 
-    def persist_benign_batch(
+    def persist_batch(
         self,
         *,
         dataset_id: UUID,
