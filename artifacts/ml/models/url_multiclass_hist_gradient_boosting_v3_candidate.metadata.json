@@ -1,0 +1,85 @@
+{
+  "model_name": "url_multiclass_hist_gradient_boosting_v3_candidate",
+  "model_version": "hgb-v3-candidate",
+  "status": "candidate",
+  "created_at_utc": "2026-08-13T18:12:26.963588+00:00",
+  "model_family": "HistGradientBoostingClassifier",
+  "configuration": "HGB_raw_balanced",
+  "dataset": {
+    "name": "url_multiclass_pool",
+    "version": "2026-08-12-v1",
+    "feature_set_version": "2.0.0"
+  },
+  "features": {
+    "representation": "raw",
+    "count": 13,
+    "columns": [
+      "url_length",
+      "hostname_length",
+      "dot_count",
+      "hyphen_count",
+      "digit_count",
+      "special_char_count",
+      "path_segment_count",
+      "hostname_entropy",
+      "mean_hostname_label_length",
+      "path_to_url_length_ratio",
+      "special_char_ratio",
+      "path_length_special_char_ratio_product",
+      "path_segment_count_special_char_ratio_product"
+    ]
+  },
+  "training": {
+    "rows": 114131,
+    "strategy": "full external train",
+    "external_test_used_for_fit": false,
+    "random_seed": 42
+  },
+  "hyperparameters": {
+    "loss": "log_loss",
+    "learning_rate": 0.1,
+    "max_iter": 100,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 20,
+    "l2_regularization": 0.0,
+    "class_weight": "balanced",
+    "early_stopping": false
+  },
+  "selection_protocol": {
+    "cv": "StratifiedGroupKFold",
+    "n_splits": 5,
+    "group_aware": true,
+    "external_test_locked": true
+  },
+  "validated_metrics": {
+    "cv_macro_f1_mean": 0.8609785897001455,
+    "cv_macro_f1_std": 0.0679383717498695,
+    "cv_balanced_accuracy_mean": 0.8584256237676475,
+    "cv_phishing_f1_mean": 0.8680591490927174,
+    "cv_phishing_recall_mean": 0.826858689476353,
+    "oof_macro_f1": 0.8475625790261506,
+    "oof_log_loss": 0.3593483767066319,
+    "oof_phishing_f1": 0.867184753221876,
+    "oof_phishing_recall": 0.8226336975273145,
+    "oof_malware_f1": 0.8142494856213216,
+    "oof_malware_recall": 0.7073616826703246,
+    "oof_phishing_to_benign": 0.16800460034502587
+  },
+  "runtime": {
+    "final_fit_seconds": 13.56790280000132,
+    "n_iter": 100
+  },
+  "environment": {
+    "scikit_learn": "1.6.1"
+  },
+  "integrity": {
+    "sha256": "2389153ba492f4d5add7169c7aed1a734899959e546ab214799f603874db3722"
+  },
+  "limitations": [
+    "Candidate model, not final production model.",
+    "Malware recall remains below LR-V2.",
+    "Cross-validation variance remains elevated.",
+    "Source-label confounding remains unresolved.",
+    "Temporal and independent-source validation remain required."
+  ]
+}
