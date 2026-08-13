@@ -1,0 +1,124 @@
+{
+  "model_name": "url_multiclass_hgb_v3_hardened",
+  "model_version": "hgb-v3-hardened",
+  "status": "selected_hardened_candidate",
+  "created_at_utc": "2026-08-13T18:43:27.007889+00:00",
+  "model_family": "HistGradientBoostingClassifier",
+  "selected_configuration": "HGB_MALWARE_X1_25",
+  "dataset": {
+    "name": "url_multiclass_pool",
+    "version": "2026-08-12-v1",
+    "feature_set_version": "2.0.0"
+  },
+  "features": {
+    "representation": "raw",
+    "count": 13,
+    "columns": [
+      "url_length",
+      "hostname_length",
+      "dot_count",
+      "hyphen_count",
+      "digit_count",
+      "special_char_count",
+      "path_segment_count",
+      "hostname_entropy",
+      "mean_hostname_label_length",
+      "path_to_url_length_ratio",
+      "special_char_ratio",
+      "path_length_special_char_ratio_product",
+      "path_segment_count_special_char_ratio_product"
+    ]
+  },
+  "hyperparameters": {
+    "loss": "log_loss",
+    "learning_rate": 0.1,
+    "max_iter": 100,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 20,
+    "l2_regularization": 0.0,
+    "class_weight": null,
+    "early_stopping": false,
+    "random_state": 42
+  },
+  "weighting": {
+    "strategy": "balanced_sample_weight",
+    "malware_multiplier": 1.25,
+    "computed_from": "external_train labels only",
+    "audit": {
+      "benign": {
+        "rows": 46599,
+        "mean_weight": 0.8164052161348239,
+        "min_weight": 0.8164052161348241,
+        "max_weight": 0.8164052161348241
+      },
+      "phishing": {
+        "rows": 43475,
+        "mean_weight": 0.8750699635806019,
+        "min_weight": 0.8750699635806019,
+        "max_weight": 0.8750699635806019
+      },
+      "malware": {
+        "rows": 24057,
+        "mean_weight": 1.9767461999972296,
+        "min_weight": 1.976746199997229,
+        "max_weight": 1.976746199997229
+      }
+    }
+  },
+  "training": {
+    "rows": 114131,
+    "feature_count": 13,
+    "fit_seconds": 18.532232900000963,
+    "iterations": 100,
+    "external_test_used_for_fit": false
+  },
+  "selection_protocol": {
+    "external_split": "historical_80_20_locked",
+    "internal_cv": "StratifiedGroupKFold",
+    "n_splits": 5,
+    "group_aware": true,
+    "external_test_used_for_selection": false,
+    "tuning_status": "closed"
+  },
+  "validated_metrics": {
+    "cv_macro_f1_mean": 0.8685707943464062,
+    "cv_macro_f1_std": 0.053949180016393004,
+    "cv_macro_f1_min": 0.7920966027393206,
+    "cv_balanced_accuracy_mean": 0.8654893154963847,
+    "cv_phishing_f1_mean": 0.8639862597520074,
+    "cv_phishing_recall_mean": 0.8287223427255285,
+    "cv_malware_f1_mean": 0.8640610218251439,
+    "cv_malware_recall_mean": 0.8076447069667587,
+    "oof_macro_f1": 0.8568459030795209,
+    "oof_balanced_accuracy": 0.8421702993967104,
+    "oof_log_loss": 0.33518444817371984,
+    "oof_roc_auc_macro": 0.9709607661568566,
+    "oof_average_precision_macro": 0.9510919153950089,
+    "oof_multiclass_brier": 0.1924775428471527,
+    "oof_phishing_precision": 0.8998670246129914,
+    "oof_phishing_recall": 0.8249798734905118,
+    "oof_phishing_f1": 0.8607977727643642,
+    "oof_malware_precision": 0.952223349169914,
+    "oof_malware_recall": 0.7414889637111859,
+    "oof_malware_f1": 0.8337462023837345,
+    "oof_phishing_to_benign": 0.16319723979298448,
+    "oof_malware_to_benign": 0.1541754998545122
+  },
+  "environment": {
+    "python": "3.12.6",
+    "scikit_learn": "1.6.1",
+    "numpy": "2.2.6"
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "model_sha256": "257fe44c262c2611bf0d399a92f9beb88386479b2679d69bb3de39c354648b6a"
+  },
+  "limitations": [
+    "Model selected through repeated group-aware CV analysis.",
+    "Temporal robustness validation is still required.",
+    "Independent-source validation is still required.",
+    "Multi-label quarantined groups have not yet been used as stress set.",
+    "Source-label confounding remains a known dataset limitation.",
+    "Artifact is not yet marked production_validated."
+  ]
+}

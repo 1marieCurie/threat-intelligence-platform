@@ -1,0 +1,51 @@
+{
+  "artifact_version": "baseline_v1",
+  "created_at_utc": "2026-08-13T14:36:59.208544+00:00",
+  "model_type": "LogisticRegression",
+  "pipeline": [
+    "StandardScaler",
+    "LogisticRegression"
+  ],
+  "feature_set_version": "2.0.0",
+  "feature_count": 13,
+  "feature_columns": [
+    "url_length",
+    "hostname_length",
+    "dot_count",
+    "hyphen_count",
+    "digit_count",
+    "special_char_count",
+    "path_segment_count",
+    "hostname_entropy",
+    "mean_hostname_label_length",
+    "path_to_url_length_ratio",
+    "special_char_ratio",
+    "path_length_special_char_ratio_product",
+    "path_segment_count_special_char_ratio_product"
+  ],
+  "label_order": [
+    "benign",
+    "phishing",
+    "malware"
+  ],
+  "random_seed": 42,
+  "split_strategy": "StratifiedGroupKFold",
+  "split_target": "80/20",
+  "validation_set": false,
+  "training_strategy": "group-aware downsampling to balanced classes",
+  "train_rows": 72171,
+  "test_rows": 29561,
+  "metrics": {
+    "macro_f1": 0.7282852468184441,
+    "balanced_accuracy": 0.7440119838473026,
+    "accuracy": 0.7019383647373229,
+    "weighted_f1": 0.6921100507024168,
+    "log_loss": 0.5481334237621883
+  },
+  "per_class_f1": {
+    "benign": 0.7164928942569079,
+    "phishing": 0.614728161856362,
+    "malware": 0.8536346843420624
+  },
+  "model_sha256": "78f5c2bedff9c459f8538ab8d4fe5742f411eec12aa611c6b6f261ce10a01048"
+}

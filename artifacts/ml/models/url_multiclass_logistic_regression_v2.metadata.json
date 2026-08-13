@@ -1,0 +1,48 @@
+{
+  "model_name": "url_multiclass_logistic_regression_v2",
+  "model_version": "lr-v2",
+  "created_at_utc": "2026-08-13T17:30:00.766127+00:00",
+  "model_family": "LogisticRegression",
+  "configuration": "D_log1p_full_balanced",
+  "feature_set_version": "2.0.0",
+  "feature_count": 13,
+  "feature_columns": [
+    "log1p_url_length",
+    "hostname_length",
+    "log1p_dot_count",
+    "hyphen_count",
+    "log1p_digit_count",
+    "log1p_special_char_count",
+    "log1p_path_segment_count",
+    "hostname_entropy",
+    "mean_hostname_label_length",
+    "path_to_url_length_ratio",
+    "special_char_ratio",
+    "path_length_special_char_ratio_product",
+    "path_segment_count_special_char_ratio_product"
+  ],
+  "log1p_features": [
+    "url_length",
+    "dot_count",
+    "digit_count",
+    "special_char_count",
+    "path_segment_count"
+  ],
+  "class_weight": "balanced",
+  "scaler": "StandardScaler",
+  "solver": "lbfgs",
+  "C": 1.0,
+  "max_iter": 1000,
+  "random_seed": 42,
+  "training_rows": 114131,
+  "training_strategy": "full external train",
+  "external_test_used_for_fit": false,
+  "selection_protocol": "5-fold StratifiedGroupKFold on external train",
+  "cv_reference": {
+    "macro_f1_mean": 0.8154,
+    "macro_f1_std": 0.0279,
+    "oof_macro_f1": 0.8194,
+    "oof_phishing_to_benign": 0.1814
+  },
+  "model_sha256": "a476e5be571f5ec8d85181d267fc86a9d309319804b4dc9a9967b272587794be"
+}
