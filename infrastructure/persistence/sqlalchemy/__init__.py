@@ -11,10 +11,14 @@ from infrastructure.persistence.sqlalchemy.unit_of_work import (
 from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
     SqlAlchemyAssetInventoryUnitOfWork,
 )
+from infrastructure.persistence.sqlalchemy.asset_engine import (
+    create_asset_engine,
+)
 
 __all__ = [
     "SqlAlchemyUnitOfWork",
     "create_ingestion_engine",
     "create_session_factory",
     "SqlAlchemyAssetInventoryUnitOfWork",
+    "create_asset_engine",
 ]
