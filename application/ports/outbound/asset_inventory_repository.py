@@ -1,31 +1,35 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Protocol, runtime_checkable
+from collections.abc import Sequence
+from typing import Protocol
 from uuid import UUID
 
 from domain.machine import Machine
-from domain.machine_inventory_state import MachineInventoryState
+from domain.machine_inventory_state import (
+    MachineInventoryState,
+)
 from domain.organization import Organization
 from domain.software_component import SoftwareComponent
 
 
-class AssetInventoryRepositoryError(RuntimeError):
-    """Erreur générique exposée par le repository d'inventaire."""
+class AssetInventoryRepositoryError(
+    RuntimeError
+):
+    pass
 
 
 class AssetInventoryConflictError(
     AssetInventoryRepositoryError
 ):
-    """Signale un conflit d'identité ou de concurrence."""
+    pass
 
 
-@runtime_checkable
 class AssetInventoryRepository(Protocol):
     """
-    Port de persistance nécessaire à l'import atomique inventory/v1.
+    Port de persistance de l'inventaire machine.
 
-    Les détails SQLAlchemy/PostgreSQL restent dans infrastructure.
+    Toutes les méthodes d'une même opération d'import
+    utilisent la même transaction via la Unit of Work.
     """
 
     def find_organization_by_id(
@@ -36,15 +40,16 @@ class AssetInventoryRepository(Protocol):
 
     def find_machine_for_inventory_update(
         self,
+        *,
         organization_id: UUID,
         machine_uid: UUID,
     ) -> Machine | None:
         """
-        Retourne la machine ciblée par l'inventaire.
+        Charge la machine dans le tenant demandé.
 
-        L'implémentation doit sérialiser les écritures concurrentes
-        visant une machine déjà existante afin que les contrôles
-        d'idempotence et de stale inventory restent atomiques.
+        Une implémentation SQL doit verrouiller la ligne
+        existante afin de sérialiser deux imports concurrents
+        de la même machine.
         """
         ...
 
@@ -77,35 +82,31 @@ class AssetInventoryRepository(Protocol):
         machine_id: UUID,
     ) -> list[SoftwareComponent]:
         """
-        Charge les composants courants de la machine.
-
-        L'implémentation doit utiliser une seule requête logique,
-        et non une requête par composant.
+        Charge l'inventaire logiciel courant en une
+        requête logique.
         """
         ...
 
     def add_components(
         self,
-        components: Iterable[SoftwareComponent],
-    ) -> int:
+        components: Sequence[
+            SoftwareComponent
+        ],
+    ) -> None:
         ...
 
     def update_components(
         self,
-        components: Iterable[SoftwareComponent],
-    ) -> int:
+        components: Sequence[
+            SoftwareComponent
+        ],
+    ) -> None:
         ...
 
-    def delete_components_by_ids(
+    def delete_components(
         self,
+        *,
         machine_id: UUID,
-        component_ids: Iterable[UUID],
-    ) -> int:
-        """
-        Supprime uniquement des composants de machine_id.
-
-        Le filtre machine_id est volontaire : une erreur applicative
-        ne doit jamais permettre de supprimer un composant appartenant
-        à une autre machine.
-        """
+        component_ids: Sequence[UUID],
+    ) -> None:
         ...

@@ -10,13 +10,17 @@ from application.ports.outbound.asset_inventory_repository import (
 
 class AssetInventoryUnitOfWork(Protocol):
     """
-    Frontière transactionnelle de l'import machine inventory/v1.
+    Frontière transactionnelle du core asset/inventory.
 
-    Machine, état courant et composants doivent être persistés
-    dans la même transaction.
+    Le repository est exposé en lecture seule depuis
+    la perspective du service applicatif.
     """
 
-    asset_inventory: AssetInventoryRepository
+    @property
+    def asset_inventory(
+        self,
+    ) -> AssetInventoryRepository:
+        ...
 
     def __enter__(
         self,
