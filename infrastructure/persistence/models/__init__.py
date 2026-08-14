@@ -1,6 +1,15 @@
 from infrastructure.persistence.models.base import (
     Base,
 )
+from infrastructure.persistence.models.assets import (
+    AlertModel,
+    MachineInventoryStateModel,
+    MachineModel,
+    OrganizationModel,
+    SoftwareComponentModel,
+    UserAccountModel,
+    VulnerabilityExposureModel,
+)
 from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
@@ -71,4 +80,11 @@ __all__ = [
     "MLDatasetSnapshotModel",
     "MLDatasetMemberModel",
     "HTTPArchivePageModel",
+    "OrganizationModel",
+    "UserAccountModel",
+    "MachineModel",
+    "MachineInventoryStateModel",
+    "SoftwareComponentModel",
+    "VulnerabilityExposureModel",
+    "AlertModel",
 ]
