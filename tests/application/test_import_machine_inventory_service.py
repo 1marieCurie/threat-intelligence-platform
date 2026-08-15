@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from uuid import UUID, uuid4
+from dataclasses import replace
 
 import pytest
 
@@ -314,6 +315,21 @@ def test_first_inventory_creates_machine_and_components() -> None:
     assert len(repository.states) == 1
 
     assert unit_of_work.commit_count == 1
+    
+    
+    stored_component = next(
+        iter(repository.components.values())
+    )
+
+    assert (
+        stored_component.normalized_name
+        == "7-zip"
+    )
+
+    assert (
+        stored_component.normalized_vendor
+        == "example vendor"
+    )
 
 
 def test_same_inventory_id_is_idempotent() -> None:
@@ -571,3 +587,120 @@ def test_reconciliation_updates_adds_and_deletes_without_replacing_everything() 
         "registry-7zip",
         "registry-new",
     }
+    
+def test_existing_unnormalized_component_is_backfilled() -> None:
+    organization = _organization()
+
+    repository = (
+        FakeAssetInventoryRepository(
+            organization
+        )
+    )
+
+    unit_of_work = (
+        FakeAssetInventoryUnitOfWork(
+            repository
+        )
+    )
+
+    service = ImportMachineInventoryService(
+        unit_of_work=unit_of_work,  # type: ignore
+        clock=lambda: NOW,
+    )
+
+    machine_uid = uuid4()
+
+    service.import_inventory(
+        organization_id=organization.id,
+        inventory_payload=_payload(
+            machine_uid=machine_uid,
+            collected_at=NOW,
+            components=[
+                _application(
+                    name="Microsoft Edge",
+                    version="140.0",
+                    external_id=(
+                        "registry-microsoft-edge"
+                    ),
+                )
+            ],
+        ),
+    )
+
+    original_component = next(
+        iter(
+            repository.components.values()
+        )
+    )
+
+    # Simule un composant provenant de l'ancien
+    # jalon, avant l'introduction du normalizer.
+    legacy_component = replace(
+        original_component,
+        normalized_name=None,
+        normalized_vendor=None,
+    )
+
+    repository.components[
+        legacy_component.id
+    ] = legacy_component
+
+    later = NOW + timedelta(
+        minutes=10
+    )
+
+    result = service.import_inventory(
+        organization_id=organization.id,
+        inventory_payload=_payload(
+            machine_uid=machine_uid,
+            collected_at=later,
+            components=[
+                _application(
+                    name="Microsoft Edge",
+                    version="140.0",
+                    external_id=(
+                        "registry-microsoft-edge"
+                    ),
+                )
+            ],
+        ),
+    )
+
+    assert result.status == "imported"
+
+    assert (
+        result.inserted_components
+        == 0
+    )
+
+    assert (
+        result.updated_components
+        == 1
+    )
+
+    assert (
+        result.deleted_components
+        == 0
+    )
+
+    updated_component = (
+        repository.components[
+            original_component.id
+        ]
+    )
+
+    # L'identité du SoftwareComponent est conservée.
+    assert (
+        updated_component.id
+        == original_component.id
+    )
+
+    assert (
+        updated_component.normalized_name
+        == "microsoft edge"
+    )
+
+    assert (
+        updated_component.normalized_vendor
+        == "example vendor"
+    )
