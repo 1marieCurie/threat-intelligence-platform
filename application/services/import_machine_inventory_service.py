@@ -12,6 +12,9 @@ from application.models.machine_inventory_v1 import (
 from application.ports.outbound.asset_inventory_unit_of_work import (
     AssetInventoryUnitOfWork,
 )
+from application.services.software_component_normalizer import (
+    SoftwareComponentNormalizer,
+)
 from domain._asset_validation import (
     normalize_datetime_utc,
     validate_uuid,
@@ -99,7 +102,13 @@ class ImportMachineInventoryService:
         self,
         *,
         unit_of_work: AssetInventoryUnitOfWork,
-        clock: Callable[[], datetime] = _utc_now,
+        normalizer: (
+            SoftwareComponentNormalizer | None
+        ) = None,
+        clock: Callable[
+            [],
+            datetime,
+        ] = _utc_now,
     ) -> None:
         if unit_of_work is None:
             raise ValueError(
@@ -112,6 +121,11 @@ class ImportMachineInventoryService:
             )
 
         self._unit_of_work = unit_of_work
+        self._normalizer = (
+            SoftwareComponentNormalizer()
+            if normalizer is None
+            else normalizer
+        )
         self._clock = clock
 
     def import_inventory(
@@ -580,6 +594,17 @@ class ImportMachineInventoryService:
             )
         )
 
+        normalization = (
+            self._normalizer.normalize(
+                component_type=(
+                    values["component_type"]
+                ),
+                name=values["name"],
+                vendor=values["vendor"],
+                ecosystem=values["ecosystem"],
+            )
+        )
+
         return SoftwareComponent(
             id=uuid4(),
             machine_id=machine_id,
@@ -587,18 +612,18 @@ class ImportMachineInventoryService:
                 values["component_type"]
             ),
             name=values["name"],
-            normalized_name=None,
+            normalized_name=(
+                normalization.normalized_name
+            ),
             version=values["version"],
             vendor=values["vendor"],
-            normalized_vendor=None,
+            normalized_vendor=(
+                normalization.normalized_vendor
+            ),
             ecosystem=values["ecosystem"],
-            external_id=(
-                values["external_id"]
-            ),
+            external_id=values["external_id"],
             scope=values["scope"],
-            detected_by=(
-                values["detected_by"]
-            ),
+            detected_by=values["detected_by"],
             created_at=imported_at,
             updated_at=imported_at,
         )
@@ -616,43 +641,45 @@ class ImportMachineInventoryService:
             )
         )
 
-        observed_raw_state = (
+        normalization = (
+            self._normalizer.normalize(
+                component_type=(
+                    values["component_type"]
+                ),
+                name=values["name"],
+                vendor=values["vendor"],
+                ecosystem=values["ecosystem"],
+            )
+        )
+
+        observed_state = (
             values["component_type"],
             values["name"],
+            normalization.normalized_name,
             values["version"],
             values["vendor"],
+            normalization.normalized_vendor,
             values["ecosystem"],
             values["external_id"],
             values["scope"],
             values["detected_by"],
         )
 
-        existing_raw_state = (
+        existing_state = (
             existing.component_type,
             existing.name,
+            existing.normalized_name,
             existing.version,
             existing.vendor,
+            existing.normalized_vendor,
             existing.ecosystem,
             existing.external_id,
             existing.scope,
             existing.detected_by,
         )
 
-        if (
-            observed_raw_state
-            == existing_raw_state
-        ):
+        if observed_state == existing_state:
             return None
-
-        name_changed = (
-            existing.name
-            != values["name"]
-        )
-
-        vendor_changed = (
-            existing.vendor
-            != values["vendor"]
-        )
 
         return replace(
             existing,
@@ -661,16 +688,12 @@ class ImportMachineInventoryService:
             ),
             name=values["name"],
             normalized_name=(
-                None
-                if name_changed
-                else existing.normalized_name
+                normalization.normalized_name
             ),
             version=values["version"],
             vendor=values["vendor"],
             normalized_vendor=(
-                None
-                if vendor_changed
-                else existing.normalized_vendor
+                normalization.normalized_vendor
             ),
             ecosystem=values["ecosystem"],
             external_id=(
