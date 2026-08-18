@@ -37,6 +37,7 @@ CANONICAL_TABLES = (
     "canonical_vulnerability",
     "canonical_vulnerability_identifier",
     "canonical_vulnerability_evidence",
+    "canonical_vulnerability_epss",
     "canonical_vulnerability_weakness",
     "canonical_web_indicator",
     "canonical_web_indicator_observation",
