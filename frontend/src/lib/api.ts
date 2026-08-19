@@ -1,23 +1,66 @@
 import type {
-  URLAnalysisResult,
-} from "../types/urlAnalysis";
-
-import type {
   DashboardSummary,
 } from "../types/dashboard";
 
 import type {
+  MachineDetail,
   MachineListResponse,
 } from "../types/machine";
 
+import type {
+  URLAnalysisResult,
+} from "../types/urlAnalysis";
+
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ??
-  "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_BASE_URL
+  ?? "http://127.0.0.1:8000";
+
+
+const DEV_ORGANIZATION_ID =
+  import.meta.env
+    .VITE_DEV_ORGANIZATION_ID;
 
 
 type ApiErrorPayload = {
   detail?: string;
 };
+
+
+async function readApiError(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  try {
+    const payload: ApiErrorPayload =
+      await response.json();
+
+    if (
+      typeof payload.detail === "string"
+      && payload.detail.trim()
+    ) {
+      return payload.detail;
+    }
+  } catch {
+    // Si la réponse n'est pas du JSON,
+    // on conserve le message générique.
+  }
+
+  return fallback;
+}
+
+
+function requireDevelopmentOrganization(
+): string {
+  if (!DEV_ORGANIZATION_ID) {
+    throw new Error(
+      "L'organisation de développement "
+      + "n'est pas configurée.",
+    );
+  }
+
+  return DEV_ORGANIZATION_ID;
+}
 
 
 export async function analyzeURL(
@@ -27,9 +70,12 @@ export async function analyzeURL(
     `${API_BASE_URL}/api/v1/url-analysis`,
     {
       method: "POST",
+
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
       },
+
       body: JSON.stringify({
         url,
       }),
@@ -37,45 +83,28 @@ export async function analyzeURL(
   );
 
   if (!response.ok) {
-    let message =
-      "Impossible d'analyser cette URL.";
+    const message =
+      await readApiError(
+        response,
+        "Impossible d'analyser cette URL.",
+      );
 
-    try {
-      const payload =
-        (await response.json()) as ApiErrorPayload;
-
-      if (
-        typeof payload.detail === "string"
-        && payload.detail.trim()
-      ) {
-        message = payload.detail;
-      }
-    } catch {
-      // Réponse non JSON :
-      // on conserve le message générique.
-    }
-
-    throw new Error(message);
+    throw new Error(
+      message,
+    );
   }
 
-  return (
-    await response.json()
-  ) as URLAnalysisResult;
-}
+  const payload: URLAnalysisResult =
+    await response.json();
 
-const DEV_ORGANIZATION_ID =
-  import.meta.env
-    .VITE_DEV_ORGANIZATION_ID;
+  return payload;
+}
 
 
 export async function getDashboard(
 ): Promise<DashboardSummary> {
-  if (!DEV_ORGANIZATION_ID) {
-    throw new Error(
-      "L'organisation de développement "
-      + "n'est pas configurée.",
-    );
-  }
+  const organizationId =
+    requireDevelopmentOrganization();
 
   const response = await fetch(
     `${API_BASE_URL}/api/v1/dashboard`,
@@ -84,52 +113,34 @@ export async function getDashboard(
 
       headers: {
         "X-Organization-Id":
-          DEV_ORGANIZATION_ID,
+          organizationId,
       },
     },
   );
 
   if (!response.ok) {
-    let message =
-      "Impossible de charger le dashboard.";
-
-    try {
-      const payload =
-        (await response.json()) as {
-          detail?: string;
-        };
-
-      if (
-        typeof payload.detail
-          === "string"
-        && payload.detail.trim()
-      ) {
-        message =
-          payload.detail;
-      }
-    } catch {
-      // Réponse non JSON :
-      // on conserve le message générique.
-    }
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger le dashboard.",
+      );
 
     throw new Error(
       message,
     );
   }
 
-  return (
-    await response.json()
-  ) as DashboardSummary;
+  const payload: DashboardSummary =
+    await response.json();
+
+  return payload;
 }
+
 
 export async function getMachines(
 ): Promise<MachineListResponse> {
-  if (!DEV_ORGANIZATION_ID) {
-    throw new Error(
-      "L'organisation de développement "
-      + "n'est pas configurée.",
-    );
-  }
+  const organizationId =
+    requireDevelopmentOrganization();
 
   const response = await fetch(
     `${API_BASE_URL}/api/v1/machines`,
@@ -138,40 +149,71 @@ export async function getMachines(
 
       headers: {
         "X-Organization-Id":
-          DEV_ORGANIZATION_ID,
+          organizationId,
       },
     },
   );
 
   if (!response.ok) {
-    let message =
-      "Impossible de charger les machines.";
-
-    try {
-      const payload =
-        (await response.json()) as {
-          detail?: string;
-        };
-
-      if (
-        typeof payload.detail
-          === "string"
-        && payload.detail.trim()
-      ) {
-        message =
-          payload.detail;
-      }
-    } catch {
-      // Réponse non JSON :
-      // message générique conservé.
-    }
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger les machines.",
+      );
 
     throw new Error(
       message,
     );
   }
 
-  return (
-    await response.json()
-  ) as MachineListResponse;
+  const payload: MachineListResponse =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getMachineDetail(
+  machineId: string,
+): Promise<MachineDetail> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    (
+      `${API_BASE_URL}`
+      + `/api/v1/machines/${machineId}`
+    ),
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          organizationId,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(
+        "Machine introuvable.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger cette machine.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: MachineDetail =
+    await response.json();
+
+  return payload;
 }

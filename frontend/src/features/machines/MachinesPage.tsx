@@ -5,6 +5,10 @@ import {
 } from "react";
 
 import {
+  Link,
+} from "react-router";
+
+import {
   Card,
 } from "../../components/ui/Card";
 
@@ -314,6 +318,10 @@ export function MachinesPage() {
                     <th className="table-number">
                       KEV
                     </th>
+
+                    <th>
+                      Détail
+                    </th>
                   </tr>
                 </thead>
 
@@ -327,11 +335,16 @@ export function MachinesPage() {
                       >
                         <td>
                           <div className="machine-name-cell">
-                            <strong>
+                            <Link
+                              to={
+                                `/machines/${machine.machine_id}`
+                              }
+                              className="machine-name-link"
+                            >
                               {
                                 machine.hostname
                               }
-                            </strong>
+                            </Link>
 
                             <span>
                               {
@@ -350,15 +363,13 @@ export function MachinesPage() {
                           <div className="machine-os-cell">
                             <strong>
                               {
-                                machine
-                                  .os_name
+                                machine.os_name
                               }
                             </strong>
 
                             <span>
                               {
-                                machine
-                                  .os_version
+                                machine.os_version
                               }
                             </span>
                           </div>
@@ -366,8 +377,7 @@ export function MachinesPage() {
 
                         <td>
                           {
-                            machine
-                              .architecture
+                            machine.architecture
                           }
                         </td>
 
@@ -380,15 +390,13 @@ export function MachinesPage() {
 
                         <td className="table-number">
                           {
-                            machine
-                              .component_count
+                            machine.component_count
                           }
                         </td>
 
                         <td className="table-number">
                           {
-                            machine
-                              .exposure_count
+                            machine.exposure_count
                           }
                         </td>
 
@@ -430,6 +438,17 @@ export function MachinesPage() {
                                 .kev_exposure_count
                             }
                           </span>
+                        </td>
+
+                        <td>
+                          <Link
+                            to={
+                              `/machines/${machine.machine_id}`
+                            }
+                            className="table-action-link"
+                          >
+                            Ouvrir
+                          </Link>
                         </td>
                       </tr>
                     ),

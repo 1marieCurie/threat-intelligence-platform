@@ -5,22 +5,6 @@ import {
 } from "react-router";
 
 import {
-  URLAnalysisPage,
-} from "./features/url-analysis/URLAnalysisPage";
-
-import {
-  StaffLayout,
-} from "./layouts/StaffLayout";
-
-import {
-  SecurityLayout,
-} from "./layouts/SecurityLayout";
-
-import {
-  SecurityPlaceholderPage,
-} from "./pages/SecurityPlaceholderPage";
-
-import {
   useRole,
 } from "./context/RoleContext";
 
@@ -29,8 +13,29 @@ import {
 } from "./features/dashboard/DashboardPage";
 
 import {
+  MachineDetailPage,
+} from "./features/machines/MachineDetailPage";
+
+import {
   MachinesPage,
 } from "./features/machines/MachinesPage";
+
+import {
+  URLAnalysisPage,
+} from "./features/url-analysis/URLAnalysisPage";
+
+import {
+  SecurityLayout,
+} from "./layouts/SecurityLayout";
+
+import {
+  StaffLayout,
+} from "./layouts/StaffLayout";
+
+import {
+  SecurityPlaceholderPage,
+} from "./pages/SecurityPlaceholderPage";
+
 
 function StaffRoutes() {
   return (
@@ -81,6 +86,13 @@ function SecurityRoutes() {
           path="machines"
           element={
             <MachinesPage />
+          }
+        />
+
+        <Route
+          path="machines/:machineId"
+          element={
+            <MachineDetailPage />
           }
         />
 
