@@ -2,6 +2,9 @@ import type {
   URLAnalysisResult,
 } from "../types/urlAnalysis";
 
+import type {
+  DashboardSummary,
+} from "../types/dashboard";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ??
@@ -54,4 +57,63 @@ export async function analyzeURL(
   return (
     await response.json()
   ) as URLAnalysisResult;
+}
+
+const DEV_ORGANIZATION_ID =
+  import.meta.env
+    .VITE_DEV_ORGANIZATION_ID;
+
+
+export async function getDashboard(
+): Promise<DashboardSummary> {
+  if (!DEV_ORGANIZATION_ID) {
+    throw new Error(
+      "L'organisation de développement "
+      + "n'est pas configurée.",
+    );
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/dashboard`,
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          DEV_ORGANIZATION_ID,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    let message =
+      "Impossible de charger le dashboard.";
+
+    try {
+      const payload =
+        (await response.json()) as {
+          detail?: string;
+        };
+
+      if (
+        typeof payload.detail
+          === "string"
+        && payload.detail.trim()
+      ) {
+        message =
+          payload.detail;
+      }
+    } catch {
+      // Réponse non JSON :
+      // on conserve le message générique.
+    }
+
+    throw new Error(
+      message,
+    );
+  }
+
+  return (
+    await response.json()
+  ) as DashboardSummary;
 }

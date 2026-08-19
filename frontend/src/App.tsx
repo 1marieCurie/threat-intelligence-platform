@@ -24,6 +24,9 @@ import {
   useRole,
 } from "./context/RoleContext";
 
+import {
+  DashboardPage,
+} from "./features/dashboard/DashboardPage";
 
 function StaffRoutes() {
   return (
@@ -66,13 +69,7 @@ function SecurityRoutes() {
         <Route
           path="dashboard"
           element={
-            <SecurityPlaceholderPage
-              title="Dashboard"
-              description={
-                "Vue synthétique de la posture "
-                + "de sécurité de l'organisation."
-              }
-            />
+            <DashboardPage />
           }
         />
 
