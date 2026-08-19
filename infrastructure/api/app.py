@@ -26,6 +26,9 @@ from application.services.list_machines_service import (
 from application.services.list_software_service import (
     ListSoftwareService,
 )
+from application.services.list_vulnerabilities_service import (
+    ListVulnerabilitiesService,
+)
 from infrastructure.api.dashboard_router import (
     create_dashboard_router,
 )
@@ -40,6 +43,9 @@ from infrastructure.api.software_router import (
 )
 from infrastructure.api.url_analysis_router import (
     create_url_analysis_router,
+)
+from infrastructure.api.vulnerabilities_router import (
+    create_vulnerabilities_router,
 )
 
 
@@ -71,6 +77,9 @@ def create_app(
     ) = None,
     software_service: (
         ListSoftwareService | None
+    ) = None,
+    vulnerabilities_service: (
+        ListVulnerabilitiesService | None
     ) = None,
 ) -> FastAPI:
     if import_service is None:
@@ -148,6 +157,18 @@ def create_app(
             create_software_router(
                 service=(
                     software_service
+                )
+            )
+        )
+
+    if (
+        vulnerabilities_service
+        is not None
+    ):
+        app.include_router(
+            create_vulnerabilities_router(
+                service=(
+                    vulnerabilities_service
                 )
             )
         )

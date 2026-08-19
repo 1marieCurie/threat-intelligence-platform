@@ -22,6 +22,9 @@ from application.services.list_machines_service import (
 from application.services.list_software_service import (
     ListSoftwareService,
 )
+from application.services.list_vulnerabilities_service import (
+    ListVulnerabilitiesService,
+)
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -45,6 +48,9 @@ from infrastructure.persistence.sqlalchemy.readers.machine_read_repository impor
 )
 from infrastructure.persistence.sqlalchemy.readers.software_read_repository import (
     SqlAlchemySoftwareReadRepository,
+)
+from infrastructure.persistence.sqlalchemy.readers.vulnerability_read_repository import (
+    SqlAlchemyVulnerabilityReadRepository,
 )
 from infrastructure.persistence.sqlalchemy.session import (
     create_session_factory,
@@ -168,6 +174,20 @@ def build_app() -> FastAPI:
         )
     )
 
+    vulnerability_repository = (
+        SqlAlchemyVulnerabilityReadRepository(
+            session_factory
+        )
+    )
+
+    vulnerabilities_service = (
+        ListVulnerabilitiesService(
+            repository=(
+                vulnerability_repository
+            )
+        )
+    )
+
     app = create_app(
         import_service=(
             import_service
@@ -189,6 +209,9 @@ def build_app() -> FastAPI:
         ),
         software_service=(
             software_service
+        ),
+        vulnerabilities_service=(
+            vulnerabilities_service
         ),
     )
 
