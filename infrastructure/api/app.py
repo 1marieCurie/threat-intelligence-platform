@@ -23,6 +23,9 @@ from application.services.import_machine_inventory_service import (
 from application.services.list_machines_service import (
     ListMachinesService,
 )
+from application.services.list_software_service import (
+    ListSoftwareService,
+)
 from infrastructure.api.dashboard_router import (
     create_dashboard_router,
 )
@@ -31,6 +34,9 @@ from infrastructure.api.inventory_router import (
 )
 from infrastructure.api.machines_router import (
     create_machines_router,
+)
+from infrastructure.api.software_router import (
+    create_software_router,
 )
 from infrastructure.api.url_analysis_router import (
     create_url_analysis_router,
@@ -63,6 +69,9 @@ def create_app(
     machine_detail_service: (
         GetMachineDetailService | None
     ) = None,
+    software_service: (
+        ListSoftwareService | None
+    ) = None,
 ) -> FastAPI:
     if import_service is None:
         raise ValueError(
@@ -79,10 +88,6 @@ def create_app(
         version="0.1.0",
     )
 
-    # =========================================================
-    # CORS développement
-    # =========================================================
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=(
@@ -92,10 +97,6 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # =========================================================
-    # Inventaires machines
-    # =========================================================
 
     app.include_router(
         create_inventory_router(
@@ -108,10 +109,6 @@ def create_app(
         )
     )
 
-    # =========================================================
-    # Analyse URL
-    # =========================================================
-
     if analyze_url_service is not None:
         app.include_router(
             create_url_analysis_router(
@@ -121,10 +118,6 @@ def create_app(
             )
         )
 
-    # =========================================================
-    # Dashboard
-    # =========================================================
-
     if dashboard_service is not None:
         app.include_router(
             create_dashboard_router(
@@ -133,10 +126,6 @@ def create_app(
                 )
             )
         )
-
-    # =========================================================
-    # Machines
-    # =========================================================
 
     if (
         machines_service is not None
@@ -154,9 +143,14 @@ def create_app(
             )
         )
 
-    # =========================================================
-    # Health
-    # =========================================================
+    if software_service is not None:
+        app.include_router(
+            create_software_router(
+                service=(
+                    software_service
+                )
+            )
+        )
 
     @app.get("/health")
     def health() -> dict[

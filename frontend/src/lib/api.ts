@@ -8,6 +8,10 @@ import type {
 } from "../types/machine";
 
 import type {
+  SoftwareListResponse,
+} from "../types/software";
+
+import type {
   URLAnalysisResult,
 } from "../types/urlAnalysis";
 
@@ -42,8 +46,8 @@ async function readApiError(
       return payload.detail;
     }
   } catch {
-    // Si la réponse n'est pas du JSON,
-    // on conserve le message générique.
+    // Réponse non JSON :
+    // conserver le message générique.
   }
 
   return fallback;
@@ -213,6 +217,42 @@ export async function getMachineDetail(
   }
 
   const payload: MachineDetail =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getSoftware(
+): Promise<SoftwareListResponse> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/software`,
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          organizationId,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger les logiciels.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: SoftwareListResponse =
     await response.json();
 
   return payload;

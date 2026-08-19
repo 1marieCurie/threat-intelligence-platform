@@ -2128,3 +2128,194 @@ span {
     width: 100%;
   }
 }
+
+/* =========================================================
+   Software
+   ========================================================= */
+
+.software-summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+
+  gap: 16px;
+
+  margin-bottom: 20px;
+}
+
+.software-summary-grid
+.card {
+  min-height: 112px;
+
+  margin-bottom: 0;
+}
+
+.software-summary-label {
+  display: block;
+
+  margin-bottom: 12px;
+
+  color: #718193;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+}
+
+.software-summary-value {
+  display: block;
+
+  color: #10243a;
+
+  font-size: 28px;
+}
+
+.software-toolbar {
+  display: flex;
+
+  align-items: flex-end;
+
+  gap: 16px;
+}
+
+.software-search {
+  flex: 1;
+
+  min-width: 240px;
+}
+
+.software-filter {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 6px;
+
+  min-width: 170px;
+}
+
+.software-filter > span {
+  color: #718193;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+}
+
+.software-filter select {
+  min-height: 44px;
+
+  padding:
+    0 12px;
+
+  color: #263b50;
+  background: #ffffff;
+
+  border:
+    1px solid #ccd7e1;
+
+  border-radius: 8px;
+
+  font: inherit;
+
+  font-size: 12px;
+
+  outline: none;
+}
+
+.software-filter select:focus {
+  border-color: #4d7fad;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(
+      49,
+      103,
+      153,
+      0.08
+    );
+}
+
+.software-name {
+  color: #263b50;
+}
+
+.software-exposure-count {
+  display: inline-flex;
+
+  min-width: 28px;
+  min-height: 28px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding:
+    0 8px;
+
+  color: #526578;
+  background: #edf1f5;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.software-exposure-count--active {
+  color: #8a5d0d;
+  background: #f8edce;
+}
+
+.software-empty-state {
+  min-height: 150px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.software-empty-state strong {
+  color: #405266;
+
+  font-size: 14px;
+}
+
+.software-empty-state p {
+  margin:
+    6px 0 0;
+
+  color: #8290a0;
+
+  font-size: 12px;
+}
+
+
+@media (
+  max-width: 900px
+) {
+  .software-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .software-toolbar {
+    align-items: stretch;
+
+    flex-direction: column;
+  }
+
+  .software-search,
+  .software-filter {
+    width: 100%;
+
+    min-width: 0;
+  }
+}

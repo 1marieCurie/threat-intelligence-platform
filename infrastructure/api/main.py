@@ -19,6 +19,9 @@ from application.services.import_machine_inventory_service import (
 from application.services.list_machines_service import (
     ListMachinesService,
 )
+from application.services.list_software_service import (
+    ListSoftwareService,
+)
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -39,6 +42,9 @@ from infrastructure.persistence.sqlalchemy.readers.dashboard_read_repository imp
 )
 from infrastructure.persistence.sqlalchemy.readers.machine_read_repository import (
     SqlAlchemyMachineReadRepository,
+)
+from infrastructure.persistence.sqlalchemy.readers.software_read_repository import (
+    SqlAlchemySoftwareReadRepository,
 )
 from infrastructure.persistence.sqlalchemy.session import (
     create_session_factory,
@@ -69,10 +75,6 @@ URL_MODEL_METADATA_PATH = (
 
 
 def build_app() -> FastAPI:
-    # =========================================================
-    # Database
-    # =========================================================
-
     engine = create_asset_engine()
 
     session_factory = (
@@ -80,10 +82,6 @@ def build_app() -> FastAPI:
             engine
         )
     )
-
-    # =========================================================
-    # Inventory import
-    # =========================================================
 
     unit_of_work = (
         SqlAlchemyAssetInventoryUnitOfWork(
@@ -100,10 +98,6 @@ def build_app() -> FastAPI:
     authenticator = (
         load_machine_api_key_authenticator()
     )
-
-    # =========================================================
-    # URL analysis
-    # =========================================================
 
     url_classifier = (
         JoblibURLThreatClassifier(
@@ -124,10 +118,6 @@ def build_app() -> FastAPI:
         )
     )
 
-    # =========================================================
-    # Dashboard
-    # =========================================================
-
     dashboard_repository = (
         SqlAlchemyDashboardReadRepository(
             session_factory
@@ -142,15 +132,11 @@ def build_app() -> FastAPI:
         )
     )
 
-    # =========================================================
-    # Machines
-    # =========================================================
-
     machine_repository = (
         SqlAlchemyMachineReadRepository(
             session_factory
         )
-    ) # type: ignore
+    )
 
     machines_service = (
         ListMachinesService(
@@ -168,9 +154,19 @@ def build_app() -> FastAPI:
         )
     )
 
-    # =========================================================
-    # FastAPI
-    # =========================================================
+    software_repository = (
+        SqlAlchemySoftwareReadRepository(
+            session_factory
+        )
+    )
+
+    software_service = (
+        ListSoftwareService(
+            repository=(
+                software_repository
+            )
+        )
+    )
 
     app = create_app(
         import_service=(
@@ -190,6 +186,9 @@ def build_app() -> FastAPI:
         ),
         machine_detail_service=(
             machine_detail_service
+        ),
+        software_service=(
+            software_service
         ),
     )
 

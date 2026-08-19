@@ -21,6 +21,10 @@ import {
 } from "./features/machines/MachinesPage";
 
 import {
+  SoftwarePage,
+} from "./features/software/SoftwarePage";
+
+import {
   URLAnalysisPage,
 } from "./features/url-analysis/URLAnalysisPage";
 
@@ -99,13 +103,7 @@ function SecurityRoutes() {
         <Route
           path="logiciels"
           element={
-            <SecurityPlaceholderPage
-              title="Logiciels"
-              description={
-                "Composants logiciels détectés "
-                + "sur les machines."
-              }
-            />
+            <SoftwarePage />
           }
         />
 
