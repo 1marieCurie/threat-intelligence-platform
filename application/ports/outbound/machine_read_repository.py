@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from application.models.machine_view import (
+    MachineDetail,
     MachineSummary,
 )
 
@@ -25,4 +26,12 @@ class MachineReadRepository(
         MachineSummary,
         ...,
     ]:
+        ...
+
+    def get_machine_detail(
+        self,
+        *,
+        organization_id: UUID,
+        machine_id: UUID,
+    ) -> MachineDetail | None:
         ...

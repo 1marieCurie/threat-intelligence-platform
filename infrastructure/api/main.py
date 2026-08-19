@@ -7,8 +7,17 @@ from fastapi import FastAPI
 from application.services.analyze_url_service import (
     AnalyzeURLService,
 )
+from application.services.get_dashboard_summary_service import (
+    GetDashboardSummaryService,
+)
+from application.services.get_machine_detail_service import (
+    GetMachineDetailService,
+)
 from application.services.import_machine_inventory_service import (
     ImportMachineInventoryService,
+)
+from application.services.list_machines_service import (
+    ListMachinesService,
 )
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
@@ -25,21 +34,16 @@ from infrastructure.persistence.sqlalchemy.asset_engine import (
 from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
     SqlAlchemyAssetInventoryUnitOfWork,
 )
-from infrastructure.persistence.sqlalchemy.session import (
-    create_session_factory,
-)
-from application.services.get_dashboard_summary_service import (
-    GetDashboardSummaryService,
-)
 from infrastructure.persistence.sqlalchemy.readers.dashboard_read_repository import (
     SqlAlchemyDashboardReadRepository,
-)
-from application.services.list_machines_service import (
-    ListMachinesService,
 )
 from infrastructure.persistence.sqlalchemy.readers.machine_read_repository import (
     SqlAlchemyMachineReadRepository,
 )
+from infrastructure.persistence.sqlalchemy.session import (
+    create_session_factory,
+)
+
 
 REPOSITORY_ROOT = (
     Path(__file__)
@@ -65,6 +69,10 @@ URL_MODEL_METADATA_PATH = (
 
 
 def build_app() -> FastAPI:
+    # =========================================================
+    # Database
+    # =========================================================
+
     engine = create_asset_engine()
 
     session_factory = (
@@ -72,6 +80,10 @@ def build_app() -> FastAPI:
             engine
         )
     )
+
+    # =========================================================
+    # Inventory import
+    # =========================================================
 
     unit_of_work = (
         SqlAlchemyAssetInventoryUnitOfWork(
@@ -89,9 +101,15 @@ def build_app() -> FastAPI:
         load_machine_api_key_authenticator()
     )
 
+    # =========================================================
+    # URL analysis
+    # =========================================================
+
     url_classifier = (
         JoblibURLThreatClassifier(
-            model_path=URL_MODEL_PATH,
+            model_path=(
+                URL_MODEL_PATH
+            ),
             metadata_path=(
                 URL_MODEL_METADATA_PATH
             ),
@@ -100,10 +118,16 @@ def build_app() -> FastAPI:
 
     analyze_url_service = (
         AnalyzeURLService(
-            classifier=url_classifier
+            classifier=(
+                url_classifier
+            )
         )
     )
-    
+
+    # =========================================================
+    # Dashboard
+    # =========================================================
+
     dashboard_repository = (
         SqlAlchemyDashboardReadRepository(
             session_factory
@@ -117,32 +141,61 @@ def build_app() -> FastAPI:
             )
         )
     )
-    
+
+    # =========================================================
+    # Machines
+    # =========================================================
+
     machine_repository = (
         SqlAlchemyMachineReadRepository(
             session_factory
         )
-    )
+    ) # type: ignore
 
     machines_service = (
         ListMachinesService(
-            repository=machine_repository
+            repository=(
+                machine_repository
+            )
         )
     )
 
+    machine_detail_service = (
+        GetMachineDetailService(
+            repository=(
+                machine_repository
+            )
+        )
+    )
+
+    # =========================================================
+    # FastAPI
+    # =========================================================
+
     app = create_app(
-        import_service=import_service,
-        authenticator=authenticator,
+        import_service=(
+            import_service
+        ),
+        authenticator=(
+            authenticator
+        ),
         analyze_url_service=(
             analyze_url_service
         ),
-        dashboard_service=dashboard_service,
-        machines_service=machines_service,
+        dashboard_service=(
+            dashboard_service
+        ),
+        machines_service=(
+            machines_service
+        ),
+        machine_detail_service=(
+            machine_detail_service
+        ),
     )
 
-    # Conserver une référence explicite durant
-    # toute la durée de vie du processus.
-    app.state.asset_engine = engine
+    app.state.asset_engine = (
+        engine
+    )
 
     return app
 

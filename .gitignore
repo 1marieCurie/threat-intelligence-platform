@@ -46,3 +46,7 @@ docs/
 
 #ml data
 .ml-data/
+
+# Local development inventory data
+.dev-agent-state/
+.dev-data/

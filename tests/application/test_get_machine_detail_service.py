@@ -6,14 +6,15 @@ from application.models.machine_view import (
     MachineDetail,
     MachineSummary,
 )
-from application.services.list_machines_service import (
-    ListMachinesService,
+from application.services.get_machine_detail_service import (
+    GetMachineDetailService,
 )
 
 
 class FakeMachineRepository:
     def __init__(self) -> None:
         self.organization_id: UUID | None = None
+        self.machine_id: UUID | None = None
 
     def list_machines(
         self,
@@ -23,9 +24,7 @@ class FakeMachineRepository:
         MachineSummary,
         ...,
     ]:
-        self.organization_id = (
-            organization_id
-        )
+        del organization_id
 
         return ()
 
@@ -35,35 +34,49 @@ class FakeMachineRepository:
         organization_id: UUID,
         machine_id: UUID,
     ) -> MachineDetail | None:
-        del organization_id
-        del machine_id
+        self.organization_id = (
+            organization_id
+        )
+
+        self.machine_id = (
+            machine_id
+        )
 
         return None
 
 
-def test_delegates_with_organization_scope(
+def test_delegates_with_tenant_and_machine_scope(
 ) -> None:
     organization_id = uuid4()
+    machine_id = uuid4()
 
     repository = (
         FakeMachineRepository()
     )
 
     service = (
-        ListMachinesService(
+        GetMachineDetailService(
             repository=repository
         )
     )
 
-    result = service.list_machines(
+    result = service.get_machine(
         organization_id=(
             organization_id
-        )
+        ),
+        machine_id=(
+            machine_id
+        ),
     )
 
-    assert result == ()
+    assert result is None
 
     assert (
         repository.organization_id
         == organization_id
+    )
+
+    assert (
+        repository.machine_id
+        == machine_id
     )

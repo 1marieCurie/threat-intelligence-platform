@@ -11,27 +11,31 @@ from application.security.machine_api_key_authenticator import (
 from application.services.analyze_url_service import (
     AnalyzeURLService,
 )
-from application.services.import_machine_inventory_service import (
-    ImportMachineInventoryService,
-)
-from infrastructure.api.inventory_router import (
-    create_inventory_router,
-)
-from infrastructure.api.url_analysis_router import (
-    create_url_analysis_router,
-)
 from application.services.get_dashboard_summary_service import (
     GetDashboardSummaryService,
 )
-from infrastructure.api.dashboard_router import (
-    create_dashboard_router,
+from application.services.get_machine_detail_service import (
+    GetMachineDetailService,
+)
+from application.services.import_machine_inventory_service import (
+    ImportMachineInventoryService,
 )
 from application.services.list_machines_service import (
     ListMachinesService,
 )
+from infrastructure.api.dashboard_router import (
+    create_dashboard_router,
+)
+from infrastructure.api.inventory_router import (
+    create_inventory_router,
+)
 from infrastructure.api.machines_router import (
     create_machines_router,
 )
+from infrastructure.api.url_analysis_router import (
+    create_url_analysis_router,
+)
+
 
 DEV_FRONTEND_ORIGINS = [
     "http://localhost:5173",
@@ -56,13 +60,28 @@ def create_app(
     machines_service: (
         ListMachinesService | None
     ) = None,
+    machine_detail_service: (
+        GetMachineDetailService | None
+    ) = None,
 ) -> FastAPI:
+    if import_service is None:
+        raise ValueError(
+            "import_service must not be None"
+        )
+
+    if authenticator is None:
+        raise ValueError(
+            "authenticator must not be None"
+        )
+
     app = FastAPI(
-        title=(
-            "Threat Intelligence Platform API"
-        ),
+        title="Threat Intelligence Platform",
         version="0.1.0",
     )
+
+    # =========================================================
+    # CORS développement
+    # =========================================================
 
     app.add_middleware(
         CORSMiddleware,
@@ -74,12 +93,24 @@ def create_app(
         allow_headers=["*"],
     )
 
+    # =========================================================
+    # Inventaires machines
+    # =========================================================
+
     app.include_router(
         create_inventory_router(
-            import_service=import_service,
-            authenticator=authenticator,
+            import_service=(
+                import_service
+            ),
+            authenticator=(
+                authenticator
+            ),
         )
     )
+
+    # =========================================================
+    # Analyse URL
+    # =========================================================
 
     if analyze_url_service is not None:
         app.include_router(
@@ -89,26 +120,49 @@ def create_app(
                 )
             )
         )
-        
+
+    # =========================================================
+    # Dashboard
+    # =========================================================
+
     if dashboard_service is not None:
         app.include_router(
             create_dashboard_router(
-                service=dashboard_service
-            )
-        )
-    
-    if machines_service is not None:
-        app.include_router(
-            create_machines_router(
-                service=machines_service
+                service=(
+                    dashboard_service
+                )
             )
         )
 
-    @app.get(
-        "/health",
-        tags=["system"],
-    )
-    def health() -> dict[str, str]:
+    # =========================================================
+    # Machines
+    # =========================================================
+
+    if (
+        machines_service is not None
+        and machine_detail_service
+        is not None
+    ):
+        app.include_router(
+            create_machines_router(
+                list_service=(
+                    machines_service
+                ),
+                detail_service=(
+                    machine_detail_service
+                ),
+            )
+        )
+
+    # =========================================================
+    # Health
+    # =========================================================
+
+    @app.get("/health")
+    def health() -> dict[
+        str,
+        str,
+    ]:
         return {
             "status": "ok",
         }
