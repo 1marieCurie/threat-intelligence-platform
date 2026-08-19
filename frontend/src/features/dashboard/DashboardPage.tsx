@@ -19,6 +19,21 @@ import type {
   DashboardSummary,
 } from "../../types/dashboard";
 
+import {
+  ChartContainer,
+} from "../../components/ui/ChartContainer";
+
+import {
+  ApplicabilityChart,
+} from "./ApplicabilityChart";
+
+import {
+  PriorityDonut,
+} from "./PriorityDonut";
+
+import {
+  TopMachinesChart,
+} from "./TopMachinesChart";
 
 export function DashboardPage() {
   const [
@@ -259,6 +274,54 @@ export function DashboardPage() {
               : "default"
           }
         />
+      </section>
+
+      <section className="dashboard-charts">
+        <ChartContainer
+          title="Répartition des priorités"
+          description={
+            "Expositions par niveau de priorité."
+          }
+        >
+          <PriorityDonut
+            distribution={
+              dashboard
+                .priority_distribution
+            }
+          />
+        </ChartContainer>
+
+        <ChartContainer
+          title="Applicabilité"
+          description={
+            "Comparaison confirmed et potential."
+          }
+        >
+          <ApplicabilityChart
+            confirmed={
+              dashboard
+                .confirmed_exposure_count
+            }
+            potential={
+              dashboard
+                .potential_exposure_count
+            }
+          />
+        </ChartContainer>
+
+        <ChartContainer
+          title="Machines les plus exposées"
+          description={
+            "Top 5 selon le nombre "
+            + "d'expositions détectées."
+          }
+        >
+          <TopMachinesChart
+            machines={
+              dashboard.top_machines
+            }
+          />
+        </ChartContainer>
       </section>
 
       <section className="dashboard-columns">

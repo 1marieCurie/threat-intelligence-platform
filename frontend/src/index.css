@@ -1129,3 +1129,660 @@ button {
       1fr;
   }
 }
+
+/* =========================================================
+   Dashboard charts
+   ========================================================= */
+
+.dashboard-charts {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 18px;
+
+  margin-bottom: 22px;
+}
+
+.dashboard-charts
+.chart-container:last-child {
+  grid-column:
+    1 / -1;
+}
+
+.chart-container {
+  min-width: 0;
+
+  padding: 22px;
+
+  background: #ffffff;
+
+  border:
+    1px solid #e0e6ec;
+
+  border-radius: 11px;
+
+  box-shadow:
+    0 4px 14px
+    rgba(
+      13,
+      27,
+      42,
+      0.04
+    );
+
+  animation:
+    fade-in
+    180ms
+    ease-out;
+}
+
+.chart-container__header {
+  margin-bottom: 22px;
+}
+
+.chart-container__header h2 {
+  margin: 0;
+
+  color: #14283d;
+
+  font-size: 17px;
+}
+
+.chart-container__header p {
+  margin:
+    6px 0 0;
+
+  color: #718193;
+
+  font-size: 12px;
+
+  line-height: 1.5;
+}
+
+.chart-container__body {
+  min-height: 180px;
+}
+
+.chart-empty {
+  min-height: 180px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  color: #8290a0;
+
+  background: #f8fafc;
+
+  border:
+    1px dashed #d7e0e8;
+
+  border-radius: 8px;
+
+  font-size: 12px;
+
+  text-align: center;
+}
+
+
+/* Priority donut */
+
+.priority-chart {
+  min-height: 180px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 42px;
+}
+
+.priority-donut {
+  position: relative;
+
+  width: 180px;
+  height: 180px;
+
+  flex:
+    0 0 180px;
+}
+
+.priority-donut svg {
+  width: 100%;
+  height: 100%;
+
+  transform:
+    rotate(-90deg);
+}
+
+.donut-track,
+.donut-segment {
+  fill: none;
+
+  stroke-width: 15;
+}
+
+.donut-track {
+  stroke: #edf1f5;
+}
+
+.donut-segment {
+  transition:
+    opacity
+    140ms ease;
+}
+
+.donut-segment:hover {
+  opacity: 0.78;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+}
+
+.donut-center strong {
+  color: #10243a;
+
+  font-size: 27px;
+}
+
+.donut-center span {
+  margin-top: 3px;
+
+  color: #8290a0;
+
+  font-size: 10px;
+}
+
+.priority-low {
+  stroke: #73889d;
+  background: #73889d;
+}
+
+.priority-medium {
+  stroke: #d09a34;
+  background: #d09a34;
+}
+
+.priority-high {
+  stroke: #ca6d2c;
+  background: #ca6d2c;
+}
+
+.priority-critical {
+  stroke: #b93838;
+  background: #b93838;
+}
+
+.chart-legend {
+  min-width: 145px;
+}
+
+.chart-legend__row {
+  display: grid;
+
+  grid-template-columns:
+    10px 1fr auto;
+
+  align-items: center;
+
+  gap: 9px;
+
+  min-height: 31px;
+
+  color: #5d6e80;
+
+  font-size: 11px;
+}
+
+.chart-legend__row strong {
+  color: #263b50;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+}
+
+
+/* Confirmed / potential */
+
+.comparison-chart {
+  min-height: 180px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  gap: 28px;
+}
+
+.comparison-row__label {
+  display: flex;
+  justify-content: space-between;
+
+  margin-bottom: 8px;
+
+  color: #5d6e80;
+
+  font-size: 12px;
+}
+
+.comparison-row__label strong {
+  color: #263b50;
+}
+
+.comparison-track {
+  width: 100%;
+  height: 13px;
+
+  overflow: hidden;
+
+  background: #edf1f5;
+
+  border-radius: 999px;
+}
+
+.comparison-bar {
+  height: 100%;
+
+  min-width: 0;
+
+  border-radius: 999px;
+
+  transition:
+    width
+    250ms ease;
+}
+
+.comparison-bar--confirmed {
+  background: #266b9f;
+}
+
+.comparison-bar--potential {
+  background: #9cabb9;
+}
+
+
+/* Machines histogram */
+
+.machines-chart {
+  display: flex;
+  flex-direction: column;
+
+  gap: 20px;
+}
+
+.machine-chart-row__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  margin-bottom: 7px;
+}
+
+.machine-chart-row__header strong {
+  overflow: hidden;
+
+  color: #263b50;
+
+  font-size: 12px;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-chart-row__header span {
+  flex: 0 0 auto;
+
+  color: #718193;
+
+  font-size: 10px;
+}
+
+.machine-chart-track {
+  width: 100%;
+  height: 11px;
+
+  overflow: hidden;
+
+  background: #edf1f5;
+
+  border-radius: 999px;
+}
+
+.machine-chart-bar {
+  height: 100%;
+
+  background: #29659d;
+
+  border-radius: 999px;
+
+  transition:
+    width
+    250ms ease;
+}
+
+.machine-chart-meta {
+  display: flex;
+
+  gap: 18px;
+
+  margin-top: 6px;
+
+  color: #8290a0;
+
+  font-size: 10px;
+}
+
+
+@media (
+  max-width: 900px
+) {
+  .dashboard-charts {
+    grid-template-columns:
+      1fr;
+  }
+
+  .dashboard-charts
+  .chart-container:last-child {
+    grid-column: auto;
+  }
+}
+
+
+@media (
+  max-width: 650px
+) {
+  .priority-chart {
+    flex-direction: column;
+
+    gap: 20px;
+  }
+
+  .priority-donut {
+    width: 160px;
+    height: 160px;
+
+    flex-basis: 160px;
+  }
+
+  .chart-legend {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   Tables
+   ========================================================= */
+
+.table-container {
+  width: 100%;
+
+  overflow-x: auto;
+
+  background: #ffffff;
+
+  border:
+    1px solid #e0e6ec;
+
+  border-radius: 11px;
+
+  box-shadow:
+    0 4px 14px
+    rgba(
+      13,
+      27,
+      42,
+      0.04
+    );
+}
+
+.data-table {
+  width: 100%;
+
+  border-collapse: collapse;
+
+  font-size: 12px;
+}
+
+.data-table th {
+  padding:
+    14px 16px;
+
+  color: #718193;
+  background: #f7f9fb;
+
+  border-bottom:
+    1px solid #e0e6ec;
+
+  font-size: 10px;
+  font-weight: 750;
+
+  letter-spacing: 0.04em;
+
+  text-align: left;
+  text-transform: uppercase;
+
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding:
+    16px;
+
+  color: #425466;
+
+  border-bottom:
+    1px solid #edf1f4;
+
+  vertical-align: middle;
+}
+
+.data-table tbody
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr {
+  transition:
+    background
+    120ms ease;
+}
+
+.data-table tbody
+tr:hover {
+  background: #f8fafc;
+}
+
+.table-number {
+  text-align: right
+    !important;
+}
+
+.table-metric {
+  display: inline-flex;
+
+  min-width: 28px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding:
+    4px 7px;
+
+  color: #536476;
+  background: #edf1f5;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.table-metric--critical {
+  color: #a12828;
+  background: #fdeaea;
+}
+
+
+/* =========================================================
+   Machines
+   ========================================================= */
+
+.machines-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 24px;
+}
+
+.machines-toolbar
+> div:first-child
+strong,
+.machines-toolbar
+> div:first-child
+span {
+  display: block;
+}
+
+.machines-toolbar
+> div:first-child
+strong {
+  color: #263b50;
+
+  font-size: 14px;
+}
+
+.machines-toolbar
+> div:first-child
+span {
+  margin-top: 4px;
+
+  color: #8290a0;
+
+  font-size: 11px;
+}
+
+.machines-search {
+  width:
+    min(
+      320px,
+      100%
+    );
+}
+
+.machine-name-cell
+strong,
+.machine-name-cell
+span,
+.machine-os-cell
+strong,
+.machine-os-cell
+span {
+  display: block;
+}
+
+.machine-name-cell
+strong,
+.machine-os-cell
+strong {
+  color: #263b50;
+
+  font-size: 12px;
+}
+
+.machine-name-cell
+span,
+.machine-os-cell
+span {
+  margin-top: 4px;
+
+  color: #8290a0;
+
+  font-size: 10px;
+}
+
+.machines-empty-state {
+  min-height: 260px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 32px;
+
+  text-align: center;
+}
+
+.machines-empty-state__icon {
+  width: 46px;
+  height: 46px;
+
+  display: grid;
+  place-items: center;
+
+  margin-bottom: 16px;
+
+  color: #29659d;
+  background: #eaf1f7;
+
+  border-radius: 10px;
+
+  font-weight: 800;
+}
+
+.machines-empty-state
+strong {
+  color: #32485d;
+
+  font-size: 15px;
+}
+
+.machines-empty-state p {
+  max-width: 420px;
+
+  margin:
+    7px 0 0;
+
+  color: #8290a0;
+
+  font-size: 12px;
+
+  line-height: 1.6;
+}
+
+
+@media (
+  max-width: 700px
+) {
+  .machines-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .machines-search {
+    width: 100%;
+  }
+}

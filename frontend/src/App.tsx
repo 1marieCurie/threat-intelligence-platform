@@ -28,6 +28,10 @@ import {
   DashboardPage,
 } from "./features/dashboard/DashboardPage";
 
+import {
+  MachinesPage,
+} from "./features/machines/MachinesPage";
+
 function StaffRoutes() {
   return (
     <Routes>
@@ -76,13 +80,7 @@ function SecurityRoutes() {
         <Route
           path="machines"
           element={
-            <SecurityPlaceholderPage
-              title="Machines"
-              description={
-                "Inventaire des machines "
-                + "et de leur exposition."
-              }
-            />
+            <MachinesPage />
           }
         />
 

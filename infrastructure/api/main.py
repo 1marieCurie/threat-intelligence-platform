@@ -34,7 +34,12 @@ from application.services.get_dashboard_summary_service import (
 from infrastructure.persistence.sqlalchemy.readers.dashboard_read_repository import (
     SqlAlchemyDashboardReadRepository,
 )
-
+from application.services.list_machines_service import (
+    ListMachinesService,
+)
+from infrastructure.persistence.sqlalchemy.readers.machine_read_repository import (
+    SqlAlchemyMachineReadRepository,
+)
 
 REPOSITORY_ROOT = (
     Path(__file__)
@@ -112,6 +117,18 @@ def build_app() -> FastAPI:
             )
         )
     )
+    
+    machine_repository = (
+        SqlAlchemyMachineReadRepository(
+            session_factory
+        )
+    )
+
+    machines_service = (
+        ListMachinesService(
+            repository=machine_repository
+        )
+    )
 
     app = create_app(
         import_service=import_service,
@@ -120,6 +137,7 @@ def build_app() -> FastAPI:
             analyze_url_service
         ),
         dashboard_service=dashboard_service,
+        machines_service=machines_service,
     )
 
     # Conserver une référence explicite durant
