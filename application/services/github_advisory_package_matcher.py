@@ -46,40 +46,60 @@ class GitHubAdvisoryPackageMatch:
 
 class GitHubAdvisoryPackageMatcher:
     """
-    Matcher déterministe V1 pour les packages PyPI.
+    Matcher déterministe V1 pour les packages
+    PyPI et npm.
 
     Une exposition est confirmée uniquement lorsque :
-    - le composant est un package PyPI ;
+    - le composant appartient à un écosystème supporté ;
     - le nom du package correspond exactement après
-      normalisation déterministe ;
+      normalisation déterministe propre à l'écosystème ;
     - la version installée est vérifiable ;
     - la version appartient explicitement à la plage
       vulnérable GitHub Advisory.
 
     Aucun fuzzy matching, aucune IA et aucune
     approximation de version.
+
+    Pour npm, les plages de versions non interprétables
+    par notre parseur conservateur ne produisent jamais
+    d'exposition confirmée.
     """
 
-    MATCH_RULE = (
+    MATCH_RULE_PYPI = (
         "github_advisory_pypi_"
         "exact_package_version_range_v1"
     )
 
+    MATCH_RULE_NPM = (
+        "github_advisory_npm_"
+        "exact_package_version_range_v1"
+    )
+
+    # Compatibilité avec les consommateurs V1 qui
+    # référencent encore MATCH_RULE directement.
+    MATCH_RULE = MATCH_RULE_PYPI
+
     APPLICABILITY_STATUS = "confirmed"
+
+    _SUPPORTED_ECOSYSTEMS = {
+        "pypi",
+        "npm",
+    }
 
     _ECOSYSTEM_ALIASES = {
         "pip": "pypi",
         "pypi": "pypi",
+        "npm": "npm",
     }
-    
+
     _SEVERITY_MAP = {
-    "NONE": "NONE",
-    "UNKNOWN": None,
-    "LOW": "LOW",
-    "MODERATE": "MEDIUM",
-    "MEDIUM": "MEDIUM",
-    "HIGH": "HIGH",
-    "CRITICAL": "CRITICAL",
+        "NONE": "NONE",
+        "UNKNOWN": None,
+        "LOW": "LOW",
+        "MODERATE": "MEDIUM",
+        "MEDIUM": "MEDIUM",
+        "HIGH": "HIGH",
+        "CRITICAL": "CRITICAL",
     }
 
     def __init__(
@@ -122,6 +142,7 @@ class GitHubAdvisoryPackageMatcher:
             candidate_list = tuple(
                 candidates
             )
+
         except TypeError as error:
             raise TypeError(
                 "candidates must be iterable"
@@ -139,7 +160,7 @@ class GitHubAdvisoryPackageMatcher:
 
         installed_version = (
             self._parse_installed_version(
-                component.version # type: ignore
+                component.version  # type: ignore[arg-type]
             )
         )
 
@@ -194,7 +215,12 @@ class GitHubAdvisoryPackageMatcher:
 
         candidate_name = (
             self._normalize_candidate_name(
-                candidate.package_name
+                package_name=(
+                    candidate.package_name
+                ),
+                ecosystem=(
+                    component.ecosystem
+                ),
             )
         )
 
@@ -232,8 +258,16 @@ class GitHubAdvisoryPackageMatcher:
             .upper()
         )
 
-        severity = self._normalize_severity(
-            candidate.severity
+        severity = (
+            self._normalize_severity(
+                candidate.severity
+            )
+        )
+
+        match_rule = (
+            self._match_rule_for_ecosystem(
+                component.ecosystem
+            )
         )
 
         return GitHubAdvisoryPackageMatch(
@@ -245,10 +279,10 @@ class GitHubAdvisoryPackageMatcher:
             applicability_status=(
                 self.APPLICABILITY_STATUS
             ),
-            match_rule=self.MATCH_RULE,
+            match_rule=match_rule,
             match_version=(
                 component.version
-            ), # type: ignore
+            ),  # type: ignore[arg-type]
             vulnerable_version_range=(
                 candidate
                 .vulnerable_version_range
@@ -261,7 +295,21 @@ class GitHubAdvisoryPackageMatcher:
         )
 
     @classmethod
-    
+    def _match_rule_for_ecosystem(
+        cls,
+        ecosystem: str | None,
+    ) -> str:
+        if ecosystem == "pypi":
+            return cls.MATCH_RULE_PYPI
+
+        if ecosystem == "npm":
+            return cls.MATCH_RULE_NPM
+
+        raise ValueError(
+            "Unsupported package ecosystem"
+        )
+
+    @classmethod
     def _normalize_severity(
         cls,
         severity: str | None,
@@ -285,8 +333,9 @@ class GitHubAdvisoryPackageMatcher:
             normalized
         )
 
-    @staticmethod
+    @classmethod
     def _validate_component(
+        cls,
         component: SoftwareComponent,
     ) -> None:
         if not isinstance(
@@ -306,10 +355,13 @@ class GitHubAdvisoryPackageMatcher:
                 "component must be a package"
             )
 
-        if component.ecosystem != "pypi":
+        if (
+            component.ecosystem
+            not in cls._SUPPORTED_ECOSYSTEMS
+        ):
             raise ValueError(
                 "GitHubAdvisoryPackageMatcher "
-                "V1 currently supports only pypi"
+                "V1 supports only pypi and npm"
             )
 
         if component.version is None:
@@ -317,7 +369,10 @@ class GitHubAdvisoryPackageMatcher:
                 "package version is required"
             )
 
-        if component.normalized_name is None:
+        if (
+            component.normalized_name
+            is None
+        ):
             raise ValueError(
                 "package normalized_name "
                 "is required"
@@ -331,17 +386,26 @@ class GitHubAdvisoryPackageMatcher:
             return Version(
                 version
             )
+
         except InvalidVersion:
             return None
 
     def _normalize_candidate_name(
         self,
+        *,
         package_name: str,
+        ecosystem: str | None,
     ) -> str | None:
         if not isinstance(
             package_name,
             str,
         ):
+            return None
+
+        if ecosystem not in {
+            "pypi",
+            "npm",
+        }:
             return None
 
         try:
@@ -350,9 +414,10 @@ class GitHubAdvisoryPackageMatcher:
                     component_type="package",
                     name=package_name,
                     vendor=None,
-                    ecosystem="pypi",
+                    ecosystem=ecosystem,
                 )
             )
+
         except (
             TypeError,
             ValueError,
@@ -378,8 +443,11 @@ class GitHubAdvisoryPackageMatcher:
             .lower()
         )
 
-        return cls._ECOSYSTEM_ALIASES.get(
-            normalized
+        return (
+            cls._ECOSYSTEM_ALIASES
+            .get(
+                normalized
+            )
         )
 
     @classmethod
@@ -402,6 +470,7 @@ class GitHubAdvisoryPackageMatcher:
             specifiers = SpecifierSet(
                 normalized_range
             )
+
         except InvalidSpecifier:
             return False
 

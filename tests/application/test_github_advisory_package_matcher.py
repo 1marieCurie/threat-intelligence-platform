@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import (
+    UTC,
+    datetime,
+)
 from uuid import uuid4
 
 import pytest
@@ -31,7 +34,14 @@ def _package(
     name: str = "requests",
     normalized_name: str = "requests",
     version: str = "2.31.0",
+    ecosystem: str = "pypi",
 ) -> SoftwareComponent:
+    detected_by = (
+        "pip_global"
+        if ecosystem == "pypi"
+        else "npm_global"
+    )
+
     return SoftwareComponent(
         id=uuid4(),
         machine_id=uuid4(),
@@ -43,10 +53,10 @@ def _package(
         version=version,
         vendor=None,
         normalized_vendor=None,
-        ecosystem="pypi",
+        ecosystem=ecosystem,
         external_id=None,
         scope="global",
-        detected_by="pip_global",
+        detected_by=detected_by,
         created_at=NOW,
         updated_at=NOW,
     )
@@ -75,7 +85,9 @@ def _candidate(
         vulnerable_version_range=(
             vulnerable_version_range
         ),
-        first_patched_version="2.32.0",
+        first_patched_version=(
+            "2.32.0"
+        ),
         severity=severity,
     )
 
@@ -106,7 +118,9 @@ def test_github_severity_is_mapped_to_platform_severity(
             component=_package(),
             candidates=[
                 _candidate(
-                    severity=github_severity
+                    severity=(
+                        github_severity
+                    )
                 )
             ],
         )
@@ -118,9 +132,10 @@ def test_github_severity_is_mapped_to_platform_severity(
         matches[0].severity
         == expected_severity
     )
-    
 
-def test_confirmed_match_when_version_is_vulnerable() -> None:
+
+def test_confirmed_pypi_match_when_version_is_vulnerable(
+) -> None:
     component = _package()
 
     matcher = (
@@ -153,6 +168,14 @@ def test_confirmed_match_when_version_is_vulnerable() -> None:
         == "2.31.0"
     )
 
+    assert (
+        match.match_rule
+        == (
+            GitHubAdvisoryPackageMatcher
+            .MATCH_RULE_PYPI
+        )
+    )
+
     assert match.ghsa_id == (
         "GHSA-AAAA-BBBB-CCCC"
     )
@@ -161,10 +184,137 @@ def test_confirmed_match_when_version_is_vulnerable() -> None:
         "CVE-2026-12345"
     )
 
-    assert match.severity == "HIGH"
+    assert (
+        match.severity
+        == "HIGH"
+    )
 
 
-def test_first_patched_version_is_not_vulnerable() -> None:
+def test_confirmed_npm_match_when_version_is_vulnerable(
+) -> None:
+    component = _package(
+        name="lodash",
+        normalized_name="lodash",
+        version="4.17.20",
+        ecosystem="npm",
+    )
+
+    candidate = _candidate(
+        package_name="lodash",
+        vulnerable_version_range=(
+            ">= 4.0.0, < 4.17.21"
+        ),
+        ecosystem="npm",
+    )
+
+    matches = (
+        GitHubAdvisoryPackageMatcher()
+        .match(
+            component=component,
+            candidates=[
+                candidate
+            ],
+        )
+    )
+
+    assert len(matches) == 1
+
+    match = matches[0]
+
+    assert (
+        match.software_component_id
+        == component.id
+    )
+
+    assert (
+        match.applicability_status
+        == "confirmed"
+    )
+
+    assert (
+        match.match_version
+        == "4.17.20"
+    )
+
+    assert (
+        match.match_rule
+        == (
+            GitHubAdvisoryPackageMatcher
+            .MATCH_RULE_NPM
+        )
+    )
+
+
+def test_npm_scoped_package_name_matches_exactly_after_normalization(
+) -> None:
+    component = _package(
+        name="@Example/Package",
+        normalized_name=(
+            "@example/package"
+        ),
+        version="1.2.0",
+        ecosystem="npm",
+    )
+
+    candidate = _candidate(
+        package_name=(
+            "@EXAMPLE/PACKAGE"
+        ),
+        vulnerable_version_range=(
+            ">= 1.0.0, < 2.0.0"
+        ),
+        ecosystem="npm",
+    )
+
+    matches = (
+        GitHubAdvisoryPackageMatcher()
+        .match(
+            component=component,
+            candidates=[
+                candidate
+            ],
+        )
+    )
+
+    assert len(matches) == 1
+
+
+def test_npm_name_does_not_use_pypi_separator_normalization(
+) -> None:
+    component = _package(
+        name="example-package",
+        normalized_name=(
+            "example-package"
+        ),
+        version="1.0.0",
+        ecosystem="npm",
+    )
+
+    candidate = _candidate(
+        package_name=(
+            "example_package"
+        ),
+        vulnerable_version_range=(
+            ">= 0.1.0, < 2.0.0"
+        ),
+        ecosystem="npm",
+    )
+
+    matches = (
+        GitHubAdvisoryPackageMatcher()
+        .match(
+            component=component,
+            candidates=[
+                candidate
+            ],
+        )
+    )
+
+    assert matches == ()
+
+
+def test_first_patched_version_is_not_vulnerable(
+) -> None:
     component = _package(
         version="2.32.0"
     )
@@ -182,7 +332,8 @@ def test_first_patched_version_is_not_vulnerable() -> None:
     assert matches == ()
 
 
-def test_package_name_uses_exact_pypi_normalization() -> None:
+def test_package_name_uses_exact_pypi_normalization(
+) -> None:
     component = _package(
         name="Requests-Security-Test",
         normalized_name=(
@@ -209,7 +360,8 @@ def test_package_name_uses_exact_pypi_normalization() -> None:
     assert len(matches) == 1
 
 
-def test_different_package_does_not_match() -> None:
+def test_different_package_does_not_match(
+) -> None:
     component = _package()
 
     matches = (
@@ -218,7 +370,9 @@ def test_different_package_does_not_match() -> None:
             component=component,
             candidates=[
                 _candidate(
-                    package_name="urllib3"
+                    package_name=(
+                        "urllib3"
+                    )
                 )
             ],
         )
@@ -227,7 +381,38 @@ def test_different_package_does_not_match() -> None:
     assert matches == ()
 
 
-def test_invalid_vulnerable_range_is_not_confirmed() -> None:
+def test_candidate_ecosystem_must_match_component_ecosystem(
+) -> None:
+    component = _package(
+        name="example",
+        normalized_name="example",
+        version="1.0.0",
+        ecosystem="npm",
+    )
+
+    candidate = _candidate(
+        package_name="example",
+        vulnerable_version_range=(
+            ">= 0.1.0, < 2.0.0"
+        ),
+        ecosystem="pypi",
+    )
+
+    matches = (
+        GitHubAdvisoryPackageMatcher()
+        .match(
+            component=component,
+            candidates=[
+                candidate
+            ],
+        )
+    )
+
+    assert matches == ()
+
+
+def test_invalid_vulnerable_range_is_not_confirmed(
+) -> None:
     component = _package()
 
     matches = (
@@ -247,7 +432,8 @@ def test_invalid_vulnerable_range_is_not_confirmed() -> None:
     assert matches == ()
 
 
-def test_simple_equality_range_is_supported() -> None:
+def test_simple_equality_range_is_supported(
+) -> None:
     component = _package(
         version="2.31.0"
     )
@@ -269,7 +455,8 @@ def test_simple_equality_range_is_supported() -> None:
     assert len(matches) == 1
 
 
-def test_duplicate_ghsa_is_returned_once() -> None:
+def test_duplicate_ghsa_is_returned_once(
+) -> None:
     component = _package()
 
     candidate = _candidate()
@@ -288,7 +475,8 @@ def test_duplicate_ghsa_is_returned_once() -> None:
     assert len(matches) == 1
 
 
-def test_invalid_installed_version_is_not_confirmed() -> None:
+def test_invalid_installed_version_is_not_confirmed(
+) -> None:
     component = _package(
         version="not-a-valid-version"
     )
@@ -304,34 +492,3 @@ def test_invalid_installed_version_is_not_confirmed() -> None:
     )
 
     assert matches == ()
-
-
-def test_non_pypi_component_is_rejected() -> None:
-    component = SoftwareComponent(
-        id=uuid4(),
-        machine_id=uuid4(),
-        component_type="package",
-        name="example",
-        normalized_name="example",
-        version="1.0.0",
-        vendor=None,
-        normalized_vendor=None,
-        ecosystem="npm",
-        external_id=None,
-        scope="global",
-        detected_by="npm_global",
-        created_at=NOW,
-        updated_at=NOW,
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="only pypi",
-    ):
-        (
-            GitHubAdvisoryPackageMatcher()
-            .match(
-                component=component,
-                candidates=[],
-            )
-        )
