@@ -17,6 +17,9 @@ from application.services.get_dashboard_summary_service import (
 from application.services.get_machine_detail_service import (
     GetMachineDetailService,
 )
+from application.services.get_vulnerability_detail_service import (
+    GetVulnerabilityDetailService,
+)
 from application.services.import_machine_inventory_service import (
     ImportMachineInventoryService,
 )
@@ -93,6 +96,9 @@ def create_app(
     ) = None,
     vulnerabilities_service: (
         ListVulnerabilitiesService | None
+    ) = None,
+    vulnerability_detail_service: (
+        GetVulnerabilityDetailService | None
     ) = None,
     alerts_service: (
         ListAlertsService | None
@@ -203,7 +209,10 @@ def create_app(
             create_vulnerabilities_router(
                 service=(
                     vulnerabilities_service
-                )
+                ),
+                detail_service=(
+                    vulnerability_detail_service
+                ),
             )
         )
 

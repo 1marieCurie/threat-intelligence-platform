@@ -13,6 +13,9 @@ from application.services.get_dashboard_summary_service import (
 from application.services.get_machine_detail_service import (
     GetMachineDetailService,
 )
+from application.services.get_vulnerability_detail_service import (
+    GetVulnerabilityDetailService,
+)
 from application.services.import_and_process_machine_inventory_service import (
     ImportAndProcessMachineInventoryService,
 )
@@ -31,7 +34,6 @@ from application.services.list_software_service import (
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
 )
-
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -79,6 +81,7 @@ REPOSITORY_ROOT = (
     .parents[2]
 )
 
+
 URL_MODEL_PATH = (
     REPOSITORY_ROOT
     / "artifacts"
@@ -86,6 +89,7 @@ URL_MODEL_PATH = (
     / "models"
     / "url_multiclass_hgb_v3_hardened.joblib"
 )
+
 
 URL_MODEL_METADATA_PATH = (
     REPOSITORY_ROOT
@@ -106,7 +110,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Inventory import
+    # Inventaire + traitement automatique des vulnérabilités
     # =========================================================
 
     inventory_unit_of_work = (
@@ -123,10 +127,12 @@ def build_app() -> FastAPI:
         )
     )
 
-    # =========================================================
-    # Vulnerability processing
-    # =========================================================
-
+    # En runtime actuel, la livraison réelle Gmail
+    # n'est pas encore activée.
+    #
+    # Le DisabledNotificationAdapter garantit qu'une
+    # notification non réellement envoyée ne sera jamais
+    # marquée comme "sent".
     notification_port = (
         DisabledNotificationAdapter()
     )
@@ -142,10 +148,6 @@ def build_app() -> FastAPI:
         )
     )
 
-    # =========================================================
-    # Inventory → vulnerability pipeline
-    # =========================================================
-
     inventory_service = (
         ImportAndProcessMachineInventoryService(
             import_service=(
@@ -158,7 +160,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Machine authentication
+    # Auth machine V1
     # =========================================================
 
     authenticator = (
@@ -166,7 +168,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # URL analysis
+    # Analyse URL
     # =========================================================
 
     url_classifier = (
@@ -233,7 +235,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Software
+    # Logiciels
     # =========================================================
 
     software_repository = (
@@ -251,7 +253,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Vulnerabilities
+    # Vulnérabilités
     # =========================================================
 
     vulnerability_repository = (
@@ -268,8 +270,16 @@ def build_app() -> FastAPI:
         )
     )
 
+    vulnerability_detail_service = (
+        GetVulnerabilityDetailService(
+            repository=(
+                vulnerability_repository
+            )
+        )
+    )
+
     # =========================================================
-    # Alerts
+    # Alertes
     # =========================================================
 
     alert_repository = (
@@ -314,6 +324,9 @@ def build_app() -> FastAPI:
         ),
         vulnerabilities_service=(
             vulnerabilities_service
+        ),
+        vulnerability_detail_service=(
+            vulnerability_detail_service
         ),
         alerts_service=(
             alerts_service
