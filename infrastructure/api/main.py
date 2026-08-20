@@ -13,6 +13,9 @@ from application.services.get_dashboard_summary_service import (
 from application.services.get_machine_detail_service import (
     GetMachineDetailService,
 )
+from application.services.import_and_process_machine_inventory_service import (
+    ImportAndProcessMachineInventoryService,
+)
 from application.services.import_machine_inventory_service import (
     ImportMachineInventoryService,
 )
@@ -28,6 +31,7 @@ from application.services.list_software_service import (
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
 )
+
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -36,6 +40,12 @@ from infrastructure.api.app import (
 )
 from infrastructure.api.machine_credentials import (
     load_machine_api_key_authenticator,
+)
+from infrastructure.bootstrap.machine_vulnerability_processing import (
+    build_process_machine_vulnerabilities_service,
+)
+from infrastructure.notifications.disabled_notification_adapter import (
+    DisabledNotificationAdapter,
 )
 from infrastructure.persistence.sqlalchemy.asset_engine import (
     create_asset_engine,
@@ -95,21 +105,69 @@ def build_app() -> FastAPI:
         )
     )
 
-    unit_of_work = (
+    # =========================================================
+    # Inventory import
+    # =========================================================
+
+    inventory_unit_of_work = (
         SqlAlchemyAssetInventoryUnitOfWork(
             session_factory
         )
     )
 
-    import_service = (
+    base_import_service = (
         ImportMachineInventoryService(
-            unit_of_work=unit_of_work
+            unit_of_work=(
+                inventory_unit_of_work
+            )
         )
     )
+
+    # =========================================================
+    # Vulnerability processing
+    # =========================================================
+
+    notification_port = (
+        DisabledNotificationAdapter()
+    )
+
+    vulnerability_processing_service = (
+        build_process_machine_vulnerabilities_service(
+            session_factory=(
+                session_factory
+            ),
+            notification_port=(
+                notification_port
+            ),
+        )
+    )
+
+    # =========================================================
+    # Inventory → vulnerability pipeline
+    # =========================================================
+
+    inventory_service = (
+        ImportAndProcessMachineInventoryService(
+            import_service=(
+                base_import_service
+            ),
+            vulnerability_processing_service=(
+                vulnerability_processing_service
+            ),
+        )
+    )
+
+    # =========================================================
+    # Machine authentication
+    # =========================================================
 
     authenticator = (
         load_machine_api_key_authenticator()
     )
+
+    # =========================================================
+    # URL analysis
+    # =========================================================
 
     url_classifier = (
         JoblibURLThreatClassifier(
@@ -130,6 +188,10 @@ def build_app() -> FastAPI:
         )
     )
 
+    # =========================================================
+    # Dashboard
+    # =========================================================
+
     dashboard_repository = (
         SqlAlchemyDashboardReadRepository(
             session_factory
@@ -143,6 +205,10 @@ def build_app() -> FastAPI:
             )
         )
     )
+
+    # =========================================================
+    # Machines
+    # =========================================================
 
     machine_repository = (
         SqlAlchemyMachineReadRepository(
@@ -166,6 +232,10 @@ def build_app() -> FastAPI:
         )
     )
 
+    # =========================================================
+    # Software
+    # =========================================================
+
     software_repository = (
         SqlAlchemySoftwareReadRepository(
             session_factory
@@ -179,6 +249,10 @@ def build_app() -> FastAPI:
             )
         )
     )
+
+    # =========================================================
+    # Vulnerabilities
+    # =========================================================
 
     vulnerability_repository = (
         SqlAlchemyVulnerabilityReadRepository(
@@ -194,6 +268,10 @@ def build_app() -> FastAPI:
         )
     )
 
+    # =========================================================
+    # Alerts
+    # =========================================================
+
     alert_repository = (
         SqlAlchemyAlertReadRepository(
             session_factory
@@ -208,10 +286,14 @@ def build_app() -> FastAPI:
         )
     )
 
+    # =========================================================
+    # FastAPI
+    # =========================================================
+
     app = create_app(
         import_service=(
-            import_service
-        ),
+            inventory_service
+        ),  # type: ignore[arg-type]
         authenticator=(
             authenticator
         ),
