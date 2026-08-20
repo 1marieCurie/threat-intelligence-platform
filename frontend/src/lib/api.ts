@@ -15,6 +15,10 @@ import type {
   URLAnalysisResult,
 } from "../types/urlAnalysis";
 
+import type {
+  VulnerabilityListResponse,
+} from "../types/vulnerability";
+
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL
@@ -199,7 +203,9 @@ export async function getMachineDetail(
   );
 
   if (!response.ok) {
-    if (response.status === 404) {
+    if (
+      response.status === 404
+    ) {
       throw new Error(
         "Machine introuvable.",
       );
@@ -253,6 +259,42 @@ export async function getSoftware(
   }
 
   const payload: SoftwareListResponse =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getVulnerabilities(
+): Promise<VulnerabilityListResponse> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/vulnerabilities`,
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          organizationId,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger les vulnérabilités.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: VulnerabilityListResponse =
     await response.json();
 
   return payload;

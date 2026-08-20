@@ -29,6 +29,10 @@ import {
 } from "./features/url-analysis/URLAnalysisPage";
 
 import {
+  VulnerabilitiesPage,
+} from "./features/vulnerabilities/VulnerabilitiesPage";
+
+import {
   SecurityLayout,
 } from "./layouts/SecurityLayout";
 
@@ -110,13 +114,7 @@ function SecurityRoutes() {
         <Route
           path="vulnerabilites"
           element={
-            <SecurityPlaceholderPage
-              title="Vulnérabilités"
-              description={
-                "Vue agrégée des vulnérabilités "
-                + "affectant l'organisation."
-              }
-            />
+            <VulnerabilitiesPage />
           }
         />
 
