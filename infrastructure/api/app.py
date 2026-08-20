@@ -20,6 +20,9 @@ from application.services.get_machine_detail_service import (
 from application.services.import_machine_inventory_service import (
     ImportMachineInventoryService,
 )
+from application.services.list_alerts_service import (
+    ListAlertsService,
+)
 from application.services.list_machines_service import (
     ListMachinesService,
 )
@@ -28,6 +31,9 @@ from application.services.list_software_service import (
 )
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
+)
+from infrastructure.api.alerts_router import (
+    create_alerts_router,
 )
 from infrastructure.api.dashboard_router import (
     create_dashboard_router,
@@ -80,6 +86,9 @@ def create_app(
     ) = None,
     vulnerabilities_service: (
         ListVulnerabilitiesService | None
+    ) = None,
+    alerts_service: (
+        ListAlertsService | None
     ) = None,
 ) -> FastAPI:
     if import_service is None:
@@ -169,6 +178,15 @@ def create_app(
             create_vulnerabilities_router(
                 service=(
                     vulnerabilities_service
+                )
+            )
+        )
+
+    if alerts_service is not None:
+        app.include_router(
+            create_alerts_router(
+                service=(
+                    alerts_service
                 )
             )
         )

@@ -16,6 +16,9 @@ from application.services.get_machine_detail_service import (
 from application.services.import_machine_inventory_service import (
     ImportMachineInventoryService,
 )
+from application.services.list_alerts_service import (
+    ListAlertsService,
+)
 from application.services.list_machines_service import (
     ListMachinesService,
 )
@@ -39,6 +42,9 @@ from infrastructure.persistence.sqlalchemy.asset_engine import (
 )
 from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
     SqlAlchemyAssetInventoryUnitOfWork,
+)
+from infrastructure.persistence.sqlalchemy.readers.alert_read_repository import (
+    SqlAlchemyAlertReadRepository,
 )
 from infrastructure.persistence.sqlalchemy.readers.dashboard_read_repository import (
     SqlAlchemyDashboardReadRepository,
@@ -188,6 +194,20 @@ def build_app() -> FastAPI:
         )
     )
 
+    alert_repository = (
+        SqlAlchemyAlertReadRepository(
+            session_factory
+        )
+    )
+
+    alerts_service = (
+        ListAlertsService(
+            repository=(
+                alert_repository
+            )
+        )
+    )
+
     app = create_app(
         import_service=(
             import_service
@@ -212,6 +232,9 @@ def build_app() -> FastAPI:
         ),
         vulnerabilities_service=(
             vulnerabilities_service
+        ),
+        alerts_service=(
+            alerts_service
         ),
     )
 

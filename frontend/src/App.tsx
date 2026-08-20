@@ -9,6 +9,10 @@ import {
 } from "./context/RoleContext";
 
 import {
+  AlertsPage,
+} from "./features/alerts/AlertsPage";
+
+import {
   DashboardPage,
 } from "./features/dashboard/DashboardPage";
 
@@ -39,10 +43,6 @@ import {
 import {
   StaffLayout,
 } from "./layouts/StaffLayout";
-
-import {
-  SecurityPlaceholderPage,
-} from "./pages/SecurityPlaceholderPage";
 
 
 function StaffRoutes() {
@@ -121,13 +121,7 @@ function SecurityRoutes() {
         <Route
           path="alertes"
           element={
-            <SecurityPlaceholderPage
-              title="Alertes"
-              description={
-                "Centre opérationnel des "
-                + "notifications de sécurité."
-              }
-            />
+            <AlertsPage />
           }
         />
 
