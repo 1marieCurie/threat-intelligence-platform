@@ -5,6 +5,10 @@ import {
 } from "react";
 
 import {
+  Link,
+} from "react-router";
+
+import {
   Card,
 } from "../../components/ui/Card";
 
@@ -873,11 +877,29 @@ export function VulnerabilitiesPage() {
                         }
                       >
                         <td>
-                          <strong className="vulnerability-id">
-                            {displayIdentifier(
-                              item,
-                            )}
-                          </strong>
+                          <Link
+                            to={
+                              (
+                                "/vulnerabilites/"
+                                + item
+                                  .canonical_vulnerability_id
+                              )
+                            }
+                            aria-label={
+                              (
+                                "Ouvrir la vulnérabilité "
+                                + displayIdentifier(
+                                  item,
+                                )
+                              )
+                            }
+                          >
+                            <strong className="vulnerability-id">
+                              {displayIdentifier(
+                                item,
+                              )}
+                            </strong>
+                          </Link>
                         </td>
 
                         <td>

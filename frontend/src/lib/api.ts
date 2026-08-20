@@ -25,6 +25,7 @@ import type {
 } from "../types/urlAnalysis";
 
 import type {
+  VulnerabilityDetail,
   VulnerabilityListResponse,
 } from "../types/vulnerability";
 
@@ -304,6 +305,57 @@ export async function getVulnerabilities(
   }
 
   const payload: VulnerabilityListResponse =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getVulnerabilityDetail(
+  vulnerabilityId: string,
+): Promise<VulnerabilityDetail> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    (
+      `${API_BASE_URL}`
+      + "/api/v1/vulnerabilities/"
+      + encodeURIComponent(
+        vulnerabilityId,
+      )
+    ),
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          organizationId,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    if (
+      response.status === 404
+    ) {
+      throw new Error(
+        "Vulnérabilité introuvable.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger cette vulnérabilité.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: VulnerabilityDetail =
     await response.json();
 
   return payload;

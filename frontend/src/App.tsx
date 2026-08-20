@@ -37,6 +37,10 @@ import {
 } from "./features/url-analysis/URLAnalysisPage";
 
 import {
+  VulnerabilityDetailPage,
+} from "./features/vulnerabilities/VulnerabilityDetailPage";
+
+import {
   VulnerabilitiesPage,
 } from "./features/vulnerabilities/VulnerabilitiesPage";
 
@@ -126,6 +130,13 @@ function SecurityRoutes() {
           path="vulnerabilites"
           element={
             <VulnerabilitiesPage />
+          }
+        />
+
+        <Route
+          path="vulnerabilites/:vulnerabilityId"
+          element={
+            <VulnerabilityDetailPage />
           }
         />
 
