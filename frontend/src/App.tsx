@@ -17,6 +17,10 @@ import {
 } from "./features/dashboard/DashboardPage";
 
 import {
+  InventoryPage,
+} from "./features/inventory/InventoryPage";
+
+import {
   MachineDetailPage,
 } from "./features/machines/MachineDetailPage";
 
@@ -101,6 +105,13 @@ function SecurityRoutes() {
           path="machines/:machineId"
           element={
             <MachineDetailPage />
+          }
+        />
+
+        <Route
+          path="inventaires"
+          element={
+            <InventoryPage />
           }
         />
 

@@ -50,3 +50,7 @@ docs/
 # Local development inventory data
 .dev-agent-state/
 .dev-data/
+# Local inventory development artifacts
+/.tip-agent-state/
+/inventory*.json
+/collect_inventory.ps1

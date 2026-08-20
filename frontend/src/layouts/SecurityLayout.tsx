@@ -24,6 +24,10 @@ const navigationItems: NavigationItem[] = [
     path: "/machines",
   },
   {
+    label: "Inventaires",
+    path: "/inventaires",
+  },
+  {
     label: "Logiciels",
     path: "/logiciels",
   },

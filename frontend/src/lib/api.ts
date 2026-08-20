@@ -1,6 +1,15 @@
 import type {
+  AlertListResponse,
+} from "../types/alert";
+
+import type {
   DashboardSummary,
 } from "../types/dashboard";
+
+import type {
+  InventoryImportResult,
+  MachineInventoryPayload,
+} from "../types/inventory";
 
 import type {
   MachineDetail,
@@ -19,9 +28,6 @@ import type {
   VulnerabilityListResponse,
 } from "../types/vulnerability";
 
-import type {
-  AlertListResponse,
-} from "../types/alert";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL
@@ -303,6 +309,7 @@ export async function getVulnerabilities(
   return payload;
 }
 
+
 export async function getAlerts(
 ): Promise<AlertListResponse> {
   const organizationId =
@@ -333,6 +340,81 @@ export async function getAlerts(
   }
 
   const payload: AlertListResponse =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getWindowsInventoryScript(
+): Promise<string> {
+  const response = await fetch(
+    (
+      `${API_BASE_URL}`
+      + "/api/v1/inventory-agent/windows/script"
+    ),
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger le script Windows.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  return response.text();
+}
+
+
+export async function importInventory(
+  inventory: MachineInventoryPayload,
+): Promise<InventoryImportResult> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    (
+      `${API_BASE_URL}`
+      + "/api/v1/inventory-imports"
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+
+        "X-Organization-Id":
+          organizationId,
+      },
+
+      body: JSON.stringify(
+        inventory,
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Impossible d'importer cet inventaire.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: InventoryImportResult =
     await response.json();
 
   return payload;

@@ -32,11 +32,18 @@ from application.services.list_software_service import (
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
 )
+
 from infrastructure.api.alerts_router import (
     create_alerts_router,
 )
 from infrastructure.api.dashboard_router import (
     create_dashboard_router,
+)
+from infrastructure.api.inventory_agent_router import (
+    create_inventory_agent_router,
+)
+from infrastructure.api.inventory_imports_router import (
+    create_inventory_imports_router,
 )
 from infrastructure.api.inventory_router import (
     create_inventory_router,
@@ -116,6 +123,8 @@ def create_app(
         allow_headers=["*"],
     )
 
+    # Import direct venant d'une machine
+    # authentifiée par machine API key.
     app.include_router(
         create_inventory_router(
             import_service=(
@@ -125,6 +134,22 @@ def create_app(
                 authenticator
             ),
         )
+    )
+
+    # Import manuel JSON depuis
+    # l'espace responsable sécurité.
+    app.include_router(
+        create_inventory_imports_router(
+            import_service=(
+                import_service
+            )
+        )
+    )
+
+    # Distribution du collecteur officiel
+    # Windows utilisé par l'interface React.
+    app.include_router(
+        create_inventory_agent_router()
     )
 
     if analyze_url_service is not None:
