@@ -9,6 +9,10 @@ import {
 } from "./context/RoleContext";
 
 import {
+  AlertDetailPage,
+} from "./features/alerts/AlertDetailPage";
+
+import {
   AlertsPage,
 } from "./features/alerts/AlertsPage";
 
@@ -144,6 +148,13 @@ function SecurityRoutes() {
           path="alertes"
           element={
             <AlertsPage />
+          }
+        />
+
+        <Route
+          path="alertes/:alertId"
+          element={
+            <AlertDetailPage />
           }
         />
 

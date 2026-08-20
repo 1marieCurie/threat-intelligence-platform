@@ -7,6 +7,9 @@ from fastapi import FastAPI
 from application.services.analyze_url_service import (
     AnalyzeURLService,
 )
+from application.services.get_alert_detail_service import (
+    GetAlertDetailService,
+)
 from application.services.get_dashboard_summary_service import (
     GetDashboardSummaryService,
 )
@@ -296,6 +299,14 @@ def build_app() -> FastAPI:
         )
     )
 
+    alert_detail_service = (
+        GetAlertDetailService(
+            repository=(
+                alert_repository
+            )
+        )
+    )
+
     # =========================================================
     # FastAPI
     # =========================================================
@@ -330,6 +341,9 @@ def build_app() -> FastAPI:
         ),
         alerts_service=(
             alerts_service
+        ),
+        alert_detail_service=(
+            alert_detail_service
         ),
     )
 

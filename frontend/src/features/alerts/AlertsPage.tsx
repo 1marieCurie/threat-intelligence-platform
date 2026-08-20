@@ -5,6 +5,10 @@ import {
 } from "react";
 
 import {
+  Link,
+} from "react-router";
+
+import {
   Card,
 } from "../../components/ui/Card";
 
@@ -719,23 +723,57 @@ export function AlertsPage() {
                         </td>
 
                         <td>
-                          <strong className="alerts-event">
-                            {
-                              displayAlertType(
-                                alert.alert_type,
+                          <Link
+                            to={
+                              (
+                                "/alertes/"
+                                + alert.alert_id
                               )
                             }
-                          </strong>
+                            aria-label={
+                              (
+                                "Ouvrir l'alerte "
+                                + displayIdentifier(
+                                  alert,
+                                )
+                              )
+                            }
+                          >
+                            <strong className="alerts-event">
+                              {
+                                displayAlertType(
+                                  alert.alert_type,
+                                )
+                              }
+                            </strong>
+                          </Link>
                         </td>
 
                         <td>
-                          <strong className="vulnerability-id">
-                            {
-                              displayIdentifier(
-                                alert,
+                          <Link
+                            to={
+                              (
+                                "/alertes/"
+                                + alert.alert_id
                               )
                             }
-                          </strong>
+                            aria-label={
+                              (
+                                "Ouvrir l'alerte "
+                                + displayIdentifier(
+                                  alert,
+                                )
+                              )
+                            }
+                          >
+                            <strong className="vulnerability-id">
+                              {
+                                displayIdentifier(
+                                  alert,
+                                )
+                              }
+                            </strong>
+                          </Link>
                         </td>
 
                         <td>

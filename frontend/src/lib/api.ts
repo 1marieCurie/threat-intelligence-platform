@@ -1,4 +1,5 @@
 import type {
+  AlertDetail,
   AlertListResponse,
 } from "../types/alert";
 
@@ -200,7 +201,10 @@ export async function getMachineDetail(
   const response = await fetch(
     (
       `${API_BASE_URL}`
-      + `/api/v1/machines/${machineId}`
+      + "/api/v1/machines/"
+      + encodeURIComponent(
+        machineId,
+      )
     ),
     {
       method: "GET",
@@ -392,6 +396,57 @@ export async function getAlerts(
   }
 
   const payload: AlertListResponse =
+    await response.json();
+
+  return payload;
+}
+
+
+export async function getAlertDetail(
+  alertId: string,
+): Promise<AlertDetail> {
+  const organizationId =
+    requireDevelopmentOrganization();
+
+  const response = await fetch(
+    (
+      `${API_BASE_URL}`
+      + "/api/v1/alerts/"
+      + encodeURIComponent(
+        alertId,
+      )
+    ),
+    {
+      method: "GET",
+
+      headers: {
+        "X-Organization-Id":
+          organizationId,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    if (
+      response.status === 404
+    ) {
+      throw new Error(
+        "Alerte introuvable.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Impossible de charger cette alerte.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload: AlertDetail =
     await response.json();
 
   return payload;

@@ -15,6 +15,7 @@ import type {
 
 type RoleContextValue = {
   role: UserRole;
+
   setRole: (
     role: UserRole,
   ) => void;
@@ -22,9 +23,45 @@ type RoleContextValue = {
 
 
 const RoleContext =
-  createContext<RoleContextValue | null>(
+  createContext<
+    RoleContextValue | null
+  >(
     null,
   );
+
+
+const ROLE_STORAGE_KEY =
+  "tip-dev-role";
+
+
+function isUserRole(
+  value: string | null,
+): value is UserRole {
+  return (
+    value === "staff"
+    || value
+      === "security_responsible"
+  );
+}
+
+
+function getInitialRole(
+): UserRole {
+  const storedRole =
+    window.localStorage.getItem(
+      ROLE_STORAGE_KEY,
+    );
+
+  if (
+    isUserRole(
+      storedRole,
+    )
+  ) {
+    return storedRole;
+  }
+
+  return "staff";
+}
 
 
 type RoleProviderProps = {
@@ -35,8 +72,27 @@ type RoleProviderProps = {
 export function RoleProvider({
   children,
 }: RoleProviderProps) {
-  const [role, setRole] =
-    useState<UserRole>("staff");
+  const [
+    role,
+    setStoredRole,
+  ] = useState<UserRole>(
+    getInitialRole,
+  );
+
+
+  function setRole(
+    nextRole: UserRole,
+  ) {
+    window.localStorage.setItem(
+      ROLE_STORAGE_KEY,
+      nextRole,
+    );
+
+    setStoredRole(
+      nextRole,
+    );
+  }
+
 
   return (
     <RoleContext.Provider
@@ -51,11 +107,16 @@ export function RoleProvider({
 }
 
 
-export function useRole(): RoleContextValue {
+export function useRole(
+): RoleContextValue {
   const context =
-    useContext(RoleContext);
+    useContext(
+      RoleContext,
+    );
 
-  if (context === null) {
+  if (
+    context === null
+  ) {
     throw new Error(
       "useRole must be used inside RoleProvider",
     );

@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from application.models.alert_view import (
+    AlertDetail,
     AlertSummary,
 )
 
@@ -25,4 +26,12 @@ class AlertReadRepository(
         AlertSummary,
         ...,
     ]:
+        ...
+
+    def get_alert_detail(
+        self,
+        *,
+        organization_id: UUID,
+        alert_id: UUID,
+    ) -> AlertDetail | None:
         ...

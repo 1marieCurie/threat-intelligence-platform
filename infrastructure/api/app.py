@@ -11,6 +11,9 @@ from application.security.machine_api_key_authenticator import (
 from application.services.analyze_url_service import (
     AnalyzeURLService,
 )
+from application.services.get_alert_detail_service import (
+    GetAlertDetailService,
+)
 from application.services.get_dashboard_summary_service import (
     GetDashboardSummaryService,
 )
@@ -102,6 +105,9 @@ def create_app(
     ) = None,
     alerts_service: (
         ListAlertsService | None
+    ) = None,
+    alert_detail_service: (
+        GetAlertDetailService | None
     ) = None,
 ) -> FastAPI:
     if import_service is None:
@@ -221,7 +227,10 @@ def create_app(
             create_alerts_router(
                 service=(
                     alerts_service
-                )
+                ),
+                detail_service=(
+                    alert_detail_service
+                ),
             )
         )
 
