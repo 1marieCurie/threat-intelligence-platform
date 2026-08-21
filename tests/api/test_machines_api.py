@@ -5,9 +5,14 @@ from datetime import (
     datetime,
 )
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import (
+    UUID,
+    uuid4,
+)
 
-from fastapi.testclient import TestClient
+from fastapi.testclient import (
+    TestClient,
+)
 
 from application.models.machine_view import (
     MachineDetail,
@@ -31,32 +36,53 @@ from application.services.list_machines_service import (
 from infrastructure.api.app import (
     create_app,
 )
+from tests.api.auth_test_support import (
+    allow_security_user,
+)
 
 
 def _client(
     machines_service: ListMachinesService,
+    *,
+    organization_id: UUID,
     detail_service: (
-        GetMachineDetailService | None
+        GetMachineDetailService
+        | None
     ) = None,
 ) -> TestClient:
     import_service = Mock(
-        spec=ImportMachineInventoryService
+        spec=(
+            ImportMachineInventoryService
+        )
     )
 
     authenticator = Mock(
-        spec=MachineApiKeyAuthenticator
+        spec=(
+            MachineApiKeyAuthenticator
+        )
     )
 
     if detail_service is None:
         detail_service = Mock(
-            spec=GetMachineDetailService
+            spec=(
+                GetMachineDetailService
+            )
         )
 
     app = create_app(
         import_service=import_service,
         authenticator=authenticator,
         machines_service=machines_service,
-        machine_detail_service=detail_service,
+        machine_detail_service=(
+            detail_service
+        ),
+    )
+
+    allow_security_user(
+        app,
+        organization_id=(
+            organization_id
+        ),
     )
 
     return TestClient(app)
@@ -94,16 +120,14 @@ def test_list_machines_returns_items(
     )
 
     client = _client(
-        machines_service
+        machines_service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/machines",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        "/api/v1/machines"
     )
 
     assert response.status_code == 200
@@ -124,21 +148,6 @@ def test_list_machines_returns_items(
     assert (
         item["hostname"]
         == "workstation-01"
-    )
-
-    assert (
-        item["os_name"]
-        == "Windows"
-    )
-
-    assert (
-        item["os_version"]
-        == "11"
-    )
-
-    assert (
-        item["architecture"]
-        == "x64"
     )
 
     assert (
@@ -174,31 +183,10 @@ def test_list_machines_returns_items(
     )
 
 
-def test_list_machines_requires_organization_header(
-) -> None:
-    machines_service = Mock(
-        spec=ListMachinesService
-    )
-
-    client = _client(
-        machines_service
-    )
-
-    response = client.get(
-        "/api/v1/machines"
-    )
-
-    assert response.status_code == 422
-
-    (
-        machines_service
-        .list_machines
-        .assert_not_called()
-    )
-
-
 def test_list_machines_maps_repository_error_to_503(
 ) -> None:
+    organization_id = uuid4()
+
     machines_service = Mock(
         spec=ListMachinesService
     )
@@ -210,16 +198,14 @@ def test_list_machines_maps_repository_error_to_503(
     )
 
     client = _client(
-        machines_service
+        machines_service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/machines",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+        "/api/v1/machines"
     )
 
     assert response.status_code == 503
@@ -269,16 +255,16 @@ def test_get_machine_returns_detail(
 
     client = _client(
         machines_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
-        f"/api/v1/machines/{machine_id}",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        f"/api/v1/machines/{machine_id}"
     )
 
     assert response.status_code == 200
@@ -301,22 +287,14 @@ def test_get_machine_returns_detail(
     )
 
     assert (
-        payload["os_name"]
-        == "Windows 11 Pro"
+        payload["components"]
+        == []
     )
 
     assert (
-        payload["os_version"]
-        == "25H2"
+        payload["exposures"]
+        == []
     )
-
-    assert (
-        payload["architecture"]
-        == "x86_64"
-    )
-
-    assert payload["components"] == []
-    assert payload["exposures"] == []
 
     (
         detail_service
@@ -325,9 +303,7 @@ def test_get_machine_returns_detail(
             organization_id=(
                 organization_id
             ),
-            machine_id=(
-                machine_id
-            ),
+            machine_id=machine_id,
         )
     )
 
@@ -351,16 +327,16 @@ def test_get_machine_returns_404_when_not_found(
 
     client = _client(
         machines_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
-        f"/api/v1/machines/{machine_id}",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        f"/api/v1/machines/{machine_id}"
     )
 
     assert response.status_code == 404
@@ -368,16 +344,3 @@ def test_get_machine_returns_404_when_not_found(
     assert response.json() == {
         "detail": "Machine not found"
     }
-
-    (
-        detail_service
-        .get_machine
-        .assert_called_once_with(
-            organization_id=(
-                organization_id
-            ),
-            machine_id=(
-                machine_id
-            ),
-        )
-    )

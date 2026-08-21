@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import Mock
+from uuid import uuid4
 
 from fastapi.testclient import (
     TestClient,
@@ -14,6 +15,9 @@ from application.services.import_machine_inventory_service import (
 )
 from infrastructure.api.app import (
     create_app,
+)
+from tests.api.auth_test_support import (
+    allow_security_user,
 )
 
 
@@ -31,17 +35,16 @@ def _client() -> TestClient:
     )
 
     app = create_app(
-        import_service=(
-            import_service
-        ),
-        authenticator=(
-            authenticator
-        ),
+        import_service=import_service,
+        authenticator=authenticator,
     )
 
-    return TestClient(
-        app
+    allow_security_user(
+        app,
+        organization_id=uuid4(),
     )
+
+    return TestClient(app)
 
 
 def test_windows_inventory_script_is_available(
@@ -52,10 +55,7 @@ def test_windows_inventory_script_is_available(
         "/api/v1/inventory-agent/windows/script"
     )
 
-    assert (
-        response.status_code
-        == 200
-    )
+    assert response.status_code == 200
 
     assert (
         response.headers[
@@ -74,14 +74,9 @@ def test_windows_inventory_script_is_current_v1_collector(
         "/api/v1/inventory-agent/windows/script"
     )
 
-    assert (
-        response.status_code
-        == 200
-    )
+    assert response.status_code == 200
 
-    script = (
-        response.text
-    )
+    script = response.text
 
     assert (
         "[CmdletBinding()]"
@@ -111,18 +106,4 @@ def test_windows_inventory_script_is_current_v1_collector(
     assert (
         "Get-GlobalNpmPackageComponents"
         in script
-    )
-
-
-def test_windows_inventory_script_does_not_require_tenant_header(
-) -> None:
-    client = _client()
-
-    response = client.get(
-        "/api/v1/inventory-agent/windows/script"
-    )
-
-    assert (
-        response.status_code
-        == 200
     )

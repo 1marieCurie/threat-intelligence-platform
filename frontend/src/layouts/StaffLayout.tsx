@@ -3,18 +3,20 @@ import {
 } from "react-router";
 
 import {
-  DevelopmentRoleSwitcher,
-} from "../components/layout/DevelopmentRoleSwitcher";
+  Button,
+} from "../components/ui/Button";
 
 import {
-  useRole,
-} from "../context/RoleContext";
+  useAuth,
+} from "../context/AuthContext";
 
 
 export function StaffLayout() {
   const {
-    role,
-  } = useRole();
+    user,
+    logout,
+  } = useAuth();
+
 
   return (
     <div className="app-shell">
@@ -35,16 +37,27 @@ export function StaffLayout() {
           </div>
         </div>
 
-        <DevelopmentRoleSwitcher />
-      </header>
+        <div className="auth-user-actions">
+          <div className="auth-user-summary">
+            <strong>
+              {user?.display_name}
+            </strong>
 
-      <div className="development-banner">
-        Mode développement
-        <span>·</span>
-        <strong>
-          {role}
-        </strong>
-      </div>
+            <span>
+              {user?.email}
+            </span>
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => {
+              void logout();
+            }}
+          >
+            Déconnexion
+          </Button>
+        </div>
+      </header>
 
       <Outlet />
     </div>

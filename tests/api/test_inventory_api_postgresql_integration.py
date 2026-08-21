@@ -44,7 +44,6 @@ from infrastructure.persistence.sqlalchemy.session import (
     create_session_factory,
 )
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError
 
 
 PROJECT_ROOT = Path(
@@ -419,17 +418,14 @@ def test_http_inventory_import_uses_runtime_role_and_is_idempotent(
         == 0
     )
     
-def test_asset_runtime_role_cannot_read_user_accounts(
+def test_asset_runtime_role_can_read_user_accounts_for_alert_resolution(
     asset_engine: Engine,
 ) -> None:
-    with pytest.raises(
-        ProgrammingError
-    ):
-        with asset_engine.connect() as connection:
-            connection.execute(
-                text(
-                    "SELECT id "
-                    "FROM threat_intel.user_account "
-                    "LIMIT 1"
-                )
+    with asset_engine.connect() as connection:
+        connection.execute(
+            text(
+                "SELECT id "
+                "FROM threat_intel.user_account "
+                "LIMIT 1"
             )
+        )

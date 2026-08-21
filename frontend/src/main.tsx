@@ -13,11 +13,12 @@ import {
 import App from "./App";
 
 import {
-  RoleProvider,
-} from "./context/RoleContext";
+  AuthProvider,
+} from "./context/AuthContext";
 
 import "./index.css";
 import "./minimal-theme.css";
+import "./auth.css";
 
 
 createRoot(
@@ -27,9 +28,9 @@ createRoot(
 ).render(
   <StrictMode>
     <BrowserRouter>
-      <RoleProvider>
+      <AuthProvider>
         <App />
-      </RoleProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );

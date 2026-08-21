@@ -4,8 +4,12 @@ import {
 } from "react-router";
 
 import {
-  DevelopmentRoleSwitcher,
-} from "../components/layout/DevelopmentRoleSwitcher";
+  Button,
+} from "../components/ui/Button";
+
+import {
+  useAuth,
+} from "../context/AuthContext";
 
 
 type NavigationItem = {
@@ -14,39 +18,46 @@ type NavigationItem = {
 };
 
 
-const navigationItems: NavigationItem[] = [
-  {
-    label: "Dashboard",
-    path: "/dashboard",
-  },
-  {
-    label: "Machines",
-    path: "/machines",
-  },
-  {
-    label: "Inventaires",
-    path: "/inventaires",
-  },
-  {
-    label: "Logiciels",
-    path: "/logiciels",
-  },
-  {
-    label: "Vulnérabilités",
-    path: "/vulnerabilites",
-  },
-  {
-    label: "Alertes",
-    path: "/alertes",
-  },
-  {
-    label: "Analyse URL",
-    path: "/analyse-url",
-  },
-];
+const navigationItems:
+  NavigationItem[] = [
+    {
+      label: "Dashboard",
+      path: "/dashboard",
+    },
+    {
+      label: "Machines",
+      path: "/machines",
+    },
+    {
+      label: "Inventaires",
+      path: "/inventaires",
+    },
+    {
+      label: "Logiciels",
+      path: "/logiciels",
+    },
+    {
+      label: "Vulnérabilités",
+      path: "/vulnerabilites",
+    },
+    {
+      label: "Alertes",
+      path: "/alertes",
+    },
+    {
+      label: "Analyse URL",
+      path: "/analyse-url",
+    },
+  ];
 
 
 export function SecurityLayout() {
+  const {
+    user,
+    logout,
+  } = useAuth();
+
+
   return (
     <div className="security-shell">
       <aside className="security-sidebar">
@@ -75,7 +86,9 @@ export function SecurityLayout() {
           aria-label="Navigation principale"
         >
           {navigationItems.map(
-            (item) => (
+            (
+              item,
+            ) => (
               <NavLink
                 key={item.path}
                 to={item.path}
@@ -98,12 +111,16 @@ export function SecurityLayout() {
 
         <div className="sidebar-footer">
           <span>
-            Mode développement
+            Connecté en tant que
           </span>
 
           <strong>
-            security_responsible
+            {user?.display_name}
           </strong>
+
+          <span>
+            Responsable sécurité
+          </span>
         </div>
       </aside>
 
@@ -119,7 +136,26 @@ export function SecurityLayout() {
             </strong>
           </div>
 
-          <DevelopmentRoleSwitcher />
+          <div className="auth-user-actions">
+            <div className="auth-user-summary">
+              <strong>
+                {user?.display_name}
+              </strong>
+
+              <span>
+                {user?.email}
+              </span>
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => {
+                void logout();
+              }}
+            >
+              Déconnexion
+            </Button>
+          </div>
         </header>
 
         <div className="security-content">

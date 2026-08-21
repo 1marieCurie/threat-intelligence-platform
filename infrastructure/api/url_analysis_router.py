@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
@@ -23,6 +24,12 @@ from application.services.canonical_url_normalizer import (
 )
 from application.services.url_feature_extractor import (
     URLFeatureExtractionError,
+)
+from domain.user_account import (
+    UserAccount,
+)
+from infrastructure.api.auth_dependencies import (
+    require_authenticated_user,
 )
 
 
@@ -63,7 +70,8 @@ def create_url_analysis_router(
 ) -> APIRouter:
     if analyze_url_service is None:
         raise ValueError(
-            "analyze_url_service must not be None"
+            "analyze_url_service "
+            "must not be None"
         )
 
     router = APIRouter(
@@ -78,6 +86,9 @@ def create_url_analysis_router(
     )
     def analyze_url(
         payload: URLAnalysisRequest,
+        _: UserAccount = Depends(
+            require_authenticated_user
+        ),
     ) -> URLAnalysisResponse:
         try:
             result = (
@@ -92,7 +103,8 @@ def create_url_analysis_router(
         ) as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_422_UNPROCESSABLE_CONTENT
+                    status
+                    .HTTP_422_UNPROCESSABLE_CONTENT
                 ),
                 detail=str(error),
             ) from error
@@ -100,7 +112,8 @@ def create_url_analysis_router(
         except URLThreatClassifierError as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    status
+                    .HTTP_503_SERVICE_UNAVAILABLE
                 ),
                 detail=(
                     "URL analysis service is "

@@ -10,6 +10,9 @@ from infrastructure.persistence.models.assets import (
     UserAccountModel,
     VulnerabilityExposureModel,
 )
+from infrastructure.persistence.models.auth import (
+    AuthSessionModel,
+)
 from infrastructure.persistence.models.canonical import (
     CanonicalVulnerabilityEvidenceModel,
     CanonicalVulnerabilityIdentifierModel,
@@ -82,6 +85,7 @@ __all__ = [
     "HTTPArchivePageModel",
     "OrganizationModel",
     "UserAccountModel",
+    "AuthSessionModel",
     "MachineModel",
     "MachineInventoryStateModel",
     "SoftwareComponentModel",

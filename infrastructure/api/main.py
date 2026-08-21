@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 
+from application.security.access_token_codec import (
+    AccessTokenCodec,
+)
+from application.security.password_hasher import (
+    PasswordHasher,
+)
+from application.security.refresh_tokens import (
+    RefreshTokenManager,
+)
 from application.services.analyze_url_service import (
     AnalyzeURLService,
 )
@@ -37,6 +47,9 @@ from application.services.list_software_service import (
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
 )
+from application.services.user_authentication_service import (
+    UserAuthenticationService,
+)
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -57,6 +70,9 @@ from infrastructure.persistence.sqlalchemy.asset_engine import (
 )
 from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
     SqlAlchemyAssetInventoryUnitOfWork,
+)
+from infrastructure.persistence.sqlalchemy.authentication_unit_of_work import (
+    SqlAlchemyAuthenticationUnitOfWork,
 )
 from infrastructure.persistence.sqlalchemy.readers.alert_read_repository import (
     SqlAlchemyAlertReadRepository,
@@ -103,12 +119,212 @@ URL_MODEL_METADATA_PATH = (
 )
 
 
+def _require_environment_value(
+    name: str,
+) -> str:
+    value = os.environ.get(
+        name
+    )
+
+    if value is None:
+        raise RuntimeError(
+            f"{name} is not defined"
+        )
+
+    normalized = value.strip()
+
+    if not normalized:
+        raise RuntimeError(
+            f"{name} must not be empty"
+        )
+
+    if normalized == "CHANGE_ME":
+        raise RuntimeError(
+            f"{name} must be configured"
+        )
+
+    return normalized
+
+
+def _read_positive_integer(
+    name: str,
+    *,
+    default: int,
+) -> int:
+    raw_value = os.environ.get(
+        name
+    )
+
+    if raw_value is None:
+        return default
+
+    try:
+        value = int(
+            raw_value.strip()
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
+        raise RuntimeError(
+            f"{name} must be an integer"
+        ) from error
+
+    if value <= 0:
+        raise RuntimeError(
+            f"{name} must be positive"
+        )
+
+    return value
+
+
+def _read_boolean(
+    name: str,
+    *,
+    default: bool,
+) -> bool:
+    raw_value = os.environ.get(
+        name
+    )
+
+    if raw_value is None:
+        return default
+
+    normalized = (
+        raw_value
+        .strip()
+        .lower()
+    )
+
+    if normalized in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return True
+
+    if normalized in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
+        return False
+
+    raise RuntimeError(
+        f"{name} must be a boolean"
+    )
+
+
 def build_app() -> FastAPI:
-    engine = create_asset_engine()
+    engine = (
+        create_asset_engine()
+    )
 
     session_factory = (
         create_session_factory(
             engine
+        )
+    )
+
+    # =========================================================
+    # Authentification utilisateurs
+    # =========================================================
+
+    jwt_secret = (
+        _require_environment_value(
+            "TIP_AUTH_JWT_SECRET"
+        )
+    )
+
+    auth_issuer = (
+        _require_environment_value(
+            "TIP_AUTH_ISSUER"
+        )
+    )
+
+    auth_audience = (
+        _require_environment_value(
+            "TIP_AUTH_AUDIENCE"
+        )
+    )
+
+    access_token_ttl_seconds = (
+        _read_positive_integer(
+            (
+                "TIP_AUTH_ACCESS_TOKEN_"
+                "TTL_SECONDS"
+            ),
+            default=900,
+        )
+    )
+
+    refresh_token_ttl_seconds = (
+        _read_positive_integer(
+            (
+                "TIP_AUTH_REFRESH_TOKEN_"
+                "TTL_SECONDS"
+            ),
+            default=(
+                30 * 24 * 60 * 60
+            ),
+        )
+    )
+
+    auth_cookie_secure = (
+        _read_boolean(
+            "TIP_AUTH_COOKIE_SECURE",
+            default=False,
+        )
+    )
+
+    authentication_unit_of_work = (
+        SqlAlchemyAuthenticationUnitOfWork(
+            session_factory
+        )
+    )
+
+    password_hasher = (
+        PasswordHasher()
+    )
+
+    refresh_token_manager = (
+        RefreshTokenManager()
+    )
+
+    access_token_codec = (
+        AccessTokenCodec(
+            secret=jwt_secret,
+            issuer=auth_issuer,
+            audience=auth_audience,
+            ttl_seconds=(
+                access_token_ttl_seconds
+            ),
+        )
+    )
+
+    authentication_service = (
+        UserAuthenticationService(
+            unit_of_work=(
+                authentication_unit_of_work
+            ),
+            password_hasher=(
+                password_hasher
+            ),
+            access_token_codec=(
+                access_token_codec
+            ),
+            refresh_token_manager=(
+                refresh_token_manager
+            ),
+            access_token_ttl_seconds=(
+                access_token_ttl_seconds
+            ),
+            refresh_token_ttl_seconds=(
+                refresh_token_ttl_seconds
+            ),
         )
     )
 
@@ -130,12 +346,6 @@ def build_app() -> FastAPI:
         )
     )
 
-    # En runtime actuel, la livraison réelle Gmail
-    # n'est pas encore activée.
-    #
-    # Le DisabledNotificationAdapter garantit qu'une
-    # notification non réellement envoyée ne sera jamais
-    # marquée comme "sent".
     notification_port = (
         DisabledNotificationAdapter()
     )
@@ -163,10 +373,10 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Auth machine V1
+    # Auth machine
     # =========================================================
 
-    authenticator = (
+    machine_authenticator = (
         load_machine_api_key_authenticator()
     )
 
@@ -316,7 +526,7 @@ def build_app() -> FastAPI:
             inventory_service
         ),  # type: ignore[arg-type]
         authenticator=(
-            authenticator
+            machine_authenticator
         ),
         analyze_url_service=(
             analyze_url_service
@@ -344,6 +554,15 @@ def build_app() -> FastAPI:
         ),
         alert_detail_service=(
             alert_detail_service
+        ),
+        authentication_service=(
+            authentication_service
+        ),
+        auth_refresh_token_ttl_seconds=(
+            refresh_token_ttl_seconds
+        ),
+        auth_cookie_secure=(
+            auth_cookie_secure
         ),
     )
 

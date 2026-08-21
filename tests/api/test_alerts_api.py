@@ -5,7 +5,10 @@ from datetime import (
     datetime,
 )
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import (
+    UUID,
+    uuid4,
+)
 
 from fastapi import FastAPI
 from fastapi.testclient import (
@@ -34,10 +37,15 @@ from application.services.list_alerts_service import (
 from infrastructure.api.alerts_router import (
     create_alerts_router,
 )
+from tests.api.auth_test_support import (
+    allow_security_user,
+)
 
 
 def _client(
     service: ListAlertsService,
+    *,
+    organization_id: UUID,
     detail_service: (
         GetAlertDetailService
         | None
@@ -54,9 +62,14 @@ def _client(
         )
     )
 
-    return TestClient(
-        app
+    allow_security_user(
+        app,
+        organization_id=(
+            organization_id
+        ),
     )
+
+    return TestClient(app)
 
 
 def test_list_alerts_returns_items(
@@ -121,16 +134,14 @@ def test_list_alerts_returns_items(
     )
 
     client = _client(
-        service
+        service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/alerts",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        "/api/v1/alerts"
     )
 
     assert response.status_code == 200
@@ -202,28 +213,10 @@ def test_list_alerts_returns_items(
     )
 
 
-def test_list_alerts_requires_header(
-) -> None:
-    service = Mock(
-        spec=ListAlertsService
-    )
-
-    client = _client(
-        service
-    )
-
-    response = client.get(
-        "/api/v1/alerts"
-    )
-
-    assert (
-        response.status_code
-        == 422
-    )
-
-
 def test_list_alerts_maps_repository_error(
 ) -> None:
+    organization_id = uuid4()
+
     service = Mock(
         spec=ListAlertsService
     )
@@ -235,16 +228,14 @@ def test_list_alerts_maps_repository_error(
     )
 
     client = _client(
-        service
+        service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/alerts",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+        "/api/v1/alerts"
     )
 
     assert (
@@ -403,19 +394,19 @@ def test_get_alert_detail_returns_item(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/alerts/"
             + str(detail.alert_id)
-        ),
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        )
     )
 
     assert (
@@ -533,19 +524,19 @@ def test_get_alert_detail_returns_404(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/alerts/"
             + str(alert_id)
-        ),
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        )
     )
 
     assert (
@@ -559,37 +550,23 @@ def test_get_alert_detail_returns_404(
         )
     }
 
-
-def test_get_alert_detail_requires_header(
-) -> None:
-    list_service = Mock(
-        spec=ListAlertsService
-    )
-
-    detail_service = Mock(
-        spec=GetAlertDetailService
-    )
-
-    client = _client(
-        list_service,
-        detail_service,
-    )
-
-    response = client.get(
-        (
-            "/api/v1/alerts/"
-            + str(uuid4())
+    (
+        detail_service
+        .get_alert
+        .assert_called_once_with(
+            organization_id=(
+                organization_id
+            ),
+            alert_id=alert_id,
         )
-    )
-
-    assert (
-        response.status_code
-        == 422
     )
 
 
 def test_get_alert_detail_maps_repository_error(
 ) -> None:
+    organization_id = uuid4()
+    alert_id = uuid4()
+
     list_service = Mock(
         spec=ListAlertsService
     )
@@ -606,19 +583,19 @@ def test_get_alert_detail_maps_repository_error(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/alerts/"
-            + str(uuid4())
-        ),
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+            + str(alert_id)
+        )
     )
 
     assert (
@@ -632,3 +609,14 @@ def test_get_alert_detail_maps_repository_error(
             "temporarily unavailable"
         )
     }
+
+    (
+        detail_service
+        .get_alert
+        .assert_called_once_with(
+            organization_id=(
+                organization_id
+            ),
+            alert_id=alert_id,
+        )
+    )

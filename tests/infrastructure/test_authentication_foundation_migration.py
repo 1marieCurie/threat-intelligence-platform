@@ -4,10 +4,30 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 
-ASSET_CORE_REVISION = "d2f1a6b7c9e0"
+AUTH_REVISION = (
+    "86d4692edc3c"
+)
 
 
-def test_asset_core_migration_exists(
+def test_authentication_migration_is_current_head(
+) -> None:
+    config = Config(
+        "alembic.ini"
+    )
+
+    script = (
+        ScriptDirectory.from_config(
+            config
+        )
+    )
+
+    assert (
+        script.get_current_head()
+        == AUTH_REVISION
+    )
+
+
+def test_authentication_migration_extends_asset_core(
 ) -> None:
     config = Config(
         "alembic.ini"
@@ -21,28 +41,7 @@ def test_asset_core_migration_exists(
 
     revision = (
         script.get_revision(
-            ASSET_CORE_REVISION
-        )
-    )
-
-    assert revision is not None
-
-
-def test_asset_core_migration_extends_previous_head(
-) -> None:
-    config = Config(
-        "alembic.ini"
-    )
-
-    script = (
-        ScriptDirectory.from_config(
-            config
-        )
-    )
-
-    revision = (
-        script.get_revision(
-            ASSET_CORE_REVISION
+            AUTH_REVISION
         )
     )
 
@@ -50,5 +49,5 @@ def test_asset_core_migration_extends_previous_head(
 
     assert (
         revision.down_revision
-        == "9a71c3e5d2f4"
+        == "d2f1a6b7c9e0"
     )

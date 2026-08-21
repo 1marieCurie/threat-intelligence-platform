@@ -5,13 +5,11 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
-from pydantic import (
-    BaseModel,
-)
+from pydantic import BaseModel
 
 from application.ports.outbound.vulnerability_read_repository import (
     VulnerabilityReadRepositoryError,
@@ -21,6 +19,9 @@ from application.services.get_vulnerability_detail_service import (
 )
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
+)
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
 )
 
 
@@ -182,7 +183,9 @@ def create_vulnerabilities_router(
 
     router = APIRouter(
         prefix="/api/v1",
-        tags=["vulnerabilities"],
+        tags=[
+            "vulnerabilities",
+        ],
     )
 
     @router.get(
@@ -190,11 +193,13 @@ def create_vulnerabilities_router(
         response_model=(
             VulnerabilityListResponse
         ),
-        status_code=status.HTTP_200_OK,
+        status_code=(
+            status.HTTP_200_OK
+        ),
     )
     def list_vulnerabilities(
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> VulnerabilityListResponse:
         try:
@@ -295,8 +300,8 @@ def create_vulnerabilities_router(
         )
         def get_vulnerability(
             canonical_vulnerability_id: UUID,
-            organization_id: UUID = Header(
-                alias="X-Organization-Id"
+            organization_id: UUID = Depends(
+                require_security_organization_id
             ),
         ) -> VulnerabilityDetailResponse:
             try:
@@ -329,7 +334,8 @@ def create_vulnerabilities_router(
             if vulnerability is None:
                 raise HTTPException(
                     status_code=(
-                        status.HTTP_404_NOT_FOUND
+                        status
+                        .HTTP_404_NOT_FOUND
                     ),
                     detail=(
                         "Vulnerability not found"

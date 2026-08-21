@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
@@ -19,6 +19,9 @@ from application.services.get_alert_detail_service import (
 )
 from application.services.list_alerts_service import (
     ListAlertsService,
+)
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
 )
 
 
@@ -192,11 +195,13 @@ def create_alerts_router(
         response_model=(
             AlertListResponse
         ),
-        status_code=status.HTTP_200_OK,
+        status_code=(
+            status.HTTP_200_OK
+        ),
     )
     def list_alerts(
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> AlertListResponse:
         try:
@@ -282,8 +287,8 @@ def create_alerts_router(
         )
         def get_alert_detail(
             alert_id: UUID,
-            organization_id: UUID = Header(
-                alias="X-Organization-Id"
+            organization_id: UUID = Depends(
+                require_security_organization_id
             ),
         ) -> AlertDetailResponse:
             try:
@@ -297,9 +302,7 @@ def create_alerts_router(
                     )
                 )
 
-            except (
-                AlertReadRepositoryError
-            ) as error:
+            except AlertReadRepositoryError as error:
                 raise HTTPException(
                     status_code=(
                         status
@@ -314,17 +317,14 @@ def create_alerts_router(
             if detail is None:
                 raise HTTPException(
                     status_code=(
-                        status
-                        .HTTP_404_NOT_FOUND
+                        status.HTTP_404_NOT_FOUND
                     ),
                     detail=(
                         "Alert not found"
                     ),
                 )
 
-            component_response = (
-                None
-            )
+            component_response = None
 
             if (
                 detail.component
@@ -370,9 +370,7 @@ def create_alerts_router(
                     )
                 )
 
-            exposure_response = (
-                None
-            )
+            exposure_response = None
 
             if (
                 detail.exposure
@@ -524,8 +522,7 @@ def create_alerts_router(
                     detail.epss_score
                 ),
                 epss_percentile=(
-                    detail
-                    .epss_percentile
+                    detail.epss_percentile
                 ),
                 cvss_score=(
                     detail.cvss_score

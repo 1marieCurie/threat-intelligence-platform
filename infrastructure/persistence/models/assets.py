@@ -82,6 +82,14 @@ class UserAccountModel(Base):
             ),
             name="email_normalized",
         ),
+        CheckConstraint(
+            (
+                "char_length("
+                "btrim(password_hash)"
+                ") > 0"
+            ),
+            name="password_hash_not_blank",
+        ),
         Index(
             "ix_user_account_organization_id",
             "organization_id",
@@ -114,6 +122,14 @@ class UserAccountModel(Base):
     display_name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(512),
+        nullable=False,
+        default=(
+            "!authentication-not-configured!"
+        ),
     )
 
     role: Mapped[str] = mapped_column(
