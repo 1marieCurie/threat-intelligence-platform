@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $SchemaVersion = "inventory/v1"
 $AgentName = "tip-windows-agent"
-$AgentVersion = "0.1.0"
+$AgentVersion = "0.2.0"
 
 $UninstallPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
@@ -495,6 +495,211 @@ function Get-InstalledApplicationComponents {
     return $components
 }
 
+# ============================================================
+# Global Python packages
+# ============================================================
+
+function Get-GlobalPythonPackageComponents {
+    $components = @()
+
+    # Prefer the regular Python executable. If it is not available,
+    # fall back to the Windows Python launcher.
+    $pythonCommand = Get-Command `
+        -Name "python.exe" `
+        -ErrorAction SilentlyContinue
+
+    $usePythonLauncher = $false
+
+    if ($null -eq $pythonCommand) {
+        $pythonCommand = Get-Command `
+            -Name "py.exe" `
+            -ErrorAction SilentlyContinue
+
+        if ($null -ne $pythonCommand) {
+            $usePythonLauncher = $true
+        }
+    }
+
+    if ($null -eq $pythonCommand) {
+        return $components
+    }
+
+    try {
+        if ($usePythonLauncher) {
+            $rawOutput = & $pythonCommand.Source `
+                -3 `
+                -m pip `
+                list `
+                --format=json `
+                2>$null
+        }
+        else {
+            $rawOutput = & $pythonCommand.Source `
+                -m pip `
+                list `
+                --format=json `
+                2>$null
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            return $components
+        }
+
+        $jsonText = (
+            $rawOutput |
+                Out-String
+        ).Trim()
+
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $jsonText
+            )
+        ) {
+            return $components
+        }
+
+        $packages = @(
+            $jsonText |
+                ConvertFrom-Json
+        )
+
+        foreach (
+            $package
+            in (
+                $packages |
+                    Sort-Object -Property name
+            )
+        ) {
+            $name = ConvertTo-NullableString `
+                -Value $package.name
+
+            $version = ConvertTo-NullableString `
+                -Value $package.version
+
+            if (
+                ($null -eq $name) -or
+                ($null -eq $version)
+            ) {
+                continue
+            }
+
+            $components += (
+                [PSCustomObject][ordered]@{
+                    component_type = "package"
+                    ecosystem = "pypi"
+                    package_name = $name
+                    version = $version
+                    scope = "global"
+                    detected_by = "pip_global"
+                }
+            )
+        }
+    }
+    catch {
+        # La collecte pip est optionnelle.
+        # Une erreur ne doit jamais interrompre
+        # l'inventaire Windows principal.
+        return $components
+    }
+
+    return $components
+}
+
+
+# ============================================================
+# Global npm packages
+# ============================================================
+
+function Get-GlobalNpmPackageComponents {
+    $components = @()
+
+    # npm.cmd avoids PowerShell execution-policy issues that can
+    # occur with npm.ps1 on some Windows installations.
+    $npmCommand = Get-Command `
+        -Name "npm.cmd" `
+        -ErrorAction SilentlyContinue
+
+    if ($null -eq $npmCommand) {
+        $npmCommand = Get-Command `
+            -Name "npm" `
+            -ErrorAction SilentlyContinue
+    }
+
+    if ($null -eq $npmCommand) {
+        return $components
+    }
+
+    try {
+        $rawOutput = & $npmCommand.Source `
+            list `
+            --global `
+            --depth=0 `
+            --json `
+            2>$null
+
+        $jsonText = (
+            $rawOutput |
+                Out-String
+        ).Trim()
+
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $jsonText
+            )
+        ) {
+            return $components
+        }
+
+        $parsed = (
+            $jsonText |
+                ConvertFrom-Json
+        )
+
+        if ($null -eq $parsed.dependencies) {
+            return $components
+        }
+
+        $properties = @(
+            $parsed.dependencies.PSObject.Properties |
+                Sort-Object -Property Name
+        )
+
+        foreach ($property in $properties) {
+            $name = ConvertTo-NullableString `
+                -Value $property.Name
+
+            $version = ConvertTo-NullableString `
+                -Value $property.Value.version
+
+            if (
+                ($null -eq $name) -or
+                ($null -eq $version)
+            ) {
+                continue
+            }
+
+            $components += (
+                [PSCustomObject][ordered]@{
+                    component_type = "package"
+                    ecosystem = "npm"
+                    package_name = $name
+                    version = $version
+                    scope = "global"
+                    detected_by = "npm_global"
+                }
+            )
+        }
+    }
+    catch {
+        # La collecte npm est optionnelle.
+        # Une erreur ne doit jamais interrompre
+        # l'inventaire Windows principal.
+        return $components
+    }
+
+    return $components
+}
+
 
 # ============================================================
 # JSON output
@@ -548,6 +753,8 @@ $machineObservation = Get-WindowsObservation
 
 $components = @(
     Get-InstalledApplicationComponents
+    Get-GlobalPythonPackageComponents
+    Get-GlobalNpmPackageComponents
 )
 
 $inventory = [ordered]@{
