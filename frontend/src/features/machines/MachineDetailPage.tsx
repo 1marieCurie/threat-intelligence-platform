@@ -5,6 +5,23 @@ import {
 } from "react";
 
 import {
+  ArrowLeft,
+  Boxes,
+  Clock3,
+  Cpu,
+  Fingerprint,
+  Monitor,
+  Package,
+  Search,
+  ShieldAlert,
+  Zap,
+} from "lucide-react";
+
+import type {
+  LucideIcon,
+} from "lucide-react";
+
+import {
   Link,
   useParams,
 } from "react-router";
@@ -28,6 +45,8 @@ import {
 import type {
   MachineDetail,
 } from "../../types/machine";
+
+import "./machines.css";
 
 
 function formatInventoryDate(
@@ -68,6 +87,66 @@ function displayValue(
 ): string {
   return value?.trim()
     || "Non renseigné";
+}
+
+
+type MachineFactProps = {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+  compact?: boolean;
+};
+
+
+function MachineFact({
+  icon: Icon,
+  label,
+  value,
+  compact = false,
+}: MachineFactProps) {
+  return (
+    <div className="machine-fact">
+      <span className="machine-fact__icon">
+        <Icon
+          size={17}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="machine-fact__content">
+        <strong
+          className={
+            compact
+              ? (
+                "machine-fact__value "
+                + "machine-fact__value--compact"
+              )
+              : "machine-fact__value"
+          }
+        >
+          {value}
+        </strong>
+
+        <span className="machine-fact__label">
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
+function priorityClass(
+  priority: string | null,
+): string {
+  if (!priority) {
+    return "priority-tag";
+  }
+
+  return (
+    "priority-tag "
+    + `priority-tag--${priority.toLowerCase()}`
+  );
 }
 
 
@@ -227,9 +306,14 @@ export function MachineDetailPage() {
       <main className="security-page">
         <Link
           to="/machines"
-          className="back-link"
+          className="machine-back-link"
         >
-          ← Retour aux machines
+          <ArrowLeft
+            size={15}
+            strokeWidth={1.8}
+          />
+
+          Retour aux machines
         </Link>
 
         <Card>
@@ -255,14 +339,19 @@ export function MachineDetailPage() {
     <main className="security-page">
       <Link
         to="/machines"
-        className="back-link"
+        className="machine-back-link"
       >
-        ← Retour aux machines
+        <ArrowLeft
+          size={15}
+          strokeWidth={1.8}
+        />
+
+        Retour aux machines
       </Link>
 
-      <header className="machine-detail-header">
+      <header className="security-page-header machine-detail-page-header">
         <div>
-          <span className="eyebrow">
+          <span className="machine-detail-eyebrow">
             Fiche machine
           </span>
 
@@ -277,96 +366,112 @@ export function MachineDetailPage() {
           </p>
         </div>
 
-        <span className="machine-detail-id">
-          {machine.machine_id}
+        <span className="machine-header-id">
+          <Fingerprint
+            size={14}
+            strokeWidth={1.8}
+          />
+
+          {
+            machine.machine_id.slice(
+              0,
+              8,
+            )
+          }
         </span>
       </header>
 
-      <section className="machine-info-grid">
-        <Card>
-          <span className="info-label">
-            Système
-          </span>
+      <section
+        className="machine-facts"
+        aria-label="Informations de la machine"
+      >
+        <MachineFact
+          icon={Monitor}
+          label="Système"
+          value={
+            `${machine.os_name} ${machine.os_version}`
+          }
+          compact
+        />
 
-          <strong className="info-value">
-            {machine.os_name}
-          </strong>
+        <MachineFact
+          icon={Cpu}
+          label="Architecture"
+          value={
+            machine.architecture
+          }
+        />
 
-          <span className="info-detail">
-            {machine.os_version}
-          </span>
-        </Card>
-
-        <Card>
-          <span className="info-label">
-            Architecture
-          </span>
-
-          <strong className="info-value">
-            {machine.architecture}
-          </strong>
-        </Card>
-
-        <Card>
-          <span className="info-label">
-            Dernier inventaire
-          </span>
-
-          <strong className="info-value info-value--small">
-            {formatInventoryDate(
+        <MachineFact
+          icon={Clock3}
+          label="Dernier inventaire"
+          value={
+            formatInventoryDate(
               machine.last_inventory_at,
-            )}
-          </strong>
-        </Card>
+            )
+          }
+          compact
+        />
 
-        <Card>
-          <span className="info-label">
-            Composants
-          </span>
+        <MachineFact
+          icon={Boxes}
+          label="Composants"
+          value={
+            machine.components.length
+          }
+        />
 
-          <strong className="info-value">
-            {machine.components.length}
-          </strong>
-        </Card>
+        <MachineFact
+          icon={ShieldAlert}
+          label="Expositions"
+          value={
+            machine.exposures.length
+          }
+        />
 
-        <Card>
-          <span className="info-label">
-            Expositions
-          </span>
-
-          <strong className="info-value">
-            {machine.exposures.length}
-          </strong>
-        </Card>
-
-        <Card>
-          <span className="info-label">
-            Machine UID
-          </span>
-
-          <strong className="info-value info-value--uuid">
-            {machine.machine_uid}
-          </strong>
-        </Card>
+        <MachineFact
+          icon={Fingerprint}
+          label="Machine UID"
+          value={
+            machine.machine_uid
+          }
+          compact
+        />
       </section>
 
       <section className="machine-detail-section">
         <div className="machine-section-header">
-          <div>
-            <h2>
-              Inventaire logiciel
-            </h2>
+          <div className="machine-section-title">
+            <span className="machine-section-icon">
+              <Package
+                size={16}
+                strokeWidth={1.8}
+              />
+            </span>
 
-            <p>
-              Composants détectés lors du
-              dernier inventaire.
-            </p>
+            <div>
+              <h2>
+                Inventaire logiciel
+              </h2>
+
+              <p>
+                Composants détectés lors du
+                dernier inventaire.
+              </p>
+            </div>
           </div>
 
           <div className="machine-component-search">
+            <Search
+              size={15}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />
+
             <Input
               type="search"
               placeholder="Rechercher un logiciel..."
+              aria-label="Rechercher un logiciel"
               value={componentSearch}
               onChange={(event) => {
                 setComponentSearch(
@@ -378,20 +483,23 @@ export function MachineDetailPage() {
         </div>
 
         {filteredComponents.length === 0 ? (
-          <Card>
-            <div className="dashboard-empty">
-              <strong>
-                Aucun composant
-              </strong>
+          <Card className="machine-empty-panel">
+            <Package
+              size={22}
+              strokeWidth={1.6}
+            />
 
-              <span>
-                Aucun logiciel ne correspond
-                à cette recherche.
-              </span>
-            </div>
+            <strong>
+              Aucun composant
+            </strong>
+
+            <span>
+              Aucun logiciel ne correspond
+              à cette recherche.
+            </span>
           </Card>
         ) : (
-          <Table>
+          <Table className="machine-components-table">
             <thead>
               <tr>
                 <th>
@@ -427,7 +535,10 @@ export function MachineDetailPage() {
                     <td>
                       <span
                         className={
-                          `component-type component-type--${component.component_type}`
+                          (
+                            "component-type "
+                            + `component-type--${component.component_type}`
+                          )
                         }
                       >
                         {
@@ -472,34 +583,46 @@ export function MachineDetailPage() {
 
       <section className="machine-detail-section">
         <div className="machine-section-header">
-          <div>
-            <h2>
-              Expositions associées
-            </h2>
+          <div className="machine-section-title">
+            <span className="machine-section-icon machine-section-icon--danger">
+              <ShieldAlert
+                size={16}
+                strokeWidth={1.8}
+              />
+            </span>
 
-            <p>
-              Vulnérabilités corrélées aux
-              composants de cette machine.
-            </p>
+            <div>
+              <h2>
+                Expositions associées
+              </h2>
+
+              <p>
+                Vulnérabilités corrélées aux
+                composants de cette machine.
+              </p>
+            </div>
           </div>
         </div>
 
         {machine.exposures.length === 0 ? (
-          <Card>
-            <div className="machine-exposure-empty">
-              <strong>
-                Aucune exposition détectée
-              </strong>
+          <Card className="machine-empty-panel">
+            <ShieldAlert
+              size={22}
+              strokeWidth={1.6}
+            />
 
-              <span>
-                Aucune vulnérabilité n'est
-                actuellement associée aux
-                composants de cette machine.
-              </span>
-            </div>
+            <strong>
+              Aucune exposition détectée
+            </strong>
+
+            <span>
+              Aucune vulnérabilité n'est
+              actuellement associée aux
+              composants de cette machine.
+            </span>
           </Card>
         ) : (
-          <Table>
+          <Table className="machine-exposures-table">
             <thead>
               <tr>
                 <th>
@@ -541,7 +664,7 @@ export function MachineDetailPage() {
                     }
                   >
                     <td>
-                      <strong>
+                      <strong className="vulnerability-identifier">
                         {
                           exposure
                             .primary_identifier
@@ -558,7 +681,7 @@ export function MachineDetailPage() {
                     </td>
 
                     <td>
-                      <strong>
+                      <strong className="machine-exposure-component">
                         {
                           exposure
                             .component_name
@@ -598,18 +721,35 @@ export function MachineDetailPage() {
                     </td>
 
                     <td>
-                      {
-                        exposure.priority
-                        ?? "—"
-                      }
+                      <span
+                        className={
+                          priorityClass(
+                            exposure.priority,
+                          )
+                        }
+                      >
+                        {
+                          exposure.priority
+                          ?? "—"
+                        }
+                      </span>
                     </td>
 
                     <td>
-                      {
-                        exposure.is_kev
-                        ? "Oui"
-                        : "Non"
-                      }
+                      {exposure.is_kev ? (
+                        <span className="kev-indicator">
+                          <Zap
+                            size={12}
+                            strokeWidth={1.9}
+                          />
+
+                          KEV
+                        </span>
+                      ) : (
+                        <span className="machine-muted-value">
+                          —
+                        </span>
+                      )}
                     </td>
 
                     <td>

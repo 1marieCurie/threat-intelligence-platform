@@ -1,0 +1,486 @@
+/* =========================================================
+   Software statistics
+   No cards
+   ========================================================= */
+
+.software-statistics {
+  display: flex;
+  align-items: center;
+
+  gap: 52px;
+
+  margin:
+    7px 4px 23px;
+
+  padding: 0;
+
+  background:
+    transparent;
+}
+
+
+.software-statistic {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+}
+
+
+.software-statistic__icon {
+  width: 31px;
+  height: 31px;
+
+  display: grid;
+  place-items: center;
+
+  flex:
+    0 0 31px;
+
+  color:
+    #626a73;
+
+  background:
+    #eceff2;
+
+  border-radius: 50%;
+}
+
+
+.software-statistic__content {
+  min-width: 0;
+}
+
+
+.software-statistic__content strong,
+.software-statistic__content span {
+  display: block;
+}
+
+
+.software-statistic__content strong {
+  color:
+    var(--ti-text);
+
+  font-size: 17px;
+  font-weight: 700;
+
+  line-height: 1;
+}
+
+
+.software-statistic__content span {
+  margin-top: 4px;
+
+  color:
+    var(--ti-text-muted);
+
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   Controls
+   ========================================================= */
+
+.software-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 18px;
+
+  margin-bottom: 13px;
+
+  padding:
+    12px 0;
+
+  border-top:
+    1px solid
+    var(--ti-border);
+
+  border-bottom:
+    1px solid
+    var(--ti-border);
+}
+
+
+.software-search {
+  position: relative;
+
+  width: min(
+    320px,
+    100%
+  );
+}
+
+
+.software-search > svg {
+  position: absolute;
+
+  top: 50%;
+  left: 11px;
+
+  z-index: 1;
+
+  color:
+    var(--ti-text-muted);
+
+  pointer-events: none;
+
+  transform:
+    translateY(-50%);
+}
+
+
+.software-search .input {
+  height: 36px;
+  min-height: 36px;
+
+  padding-left: 34px;
+
+  font-size: 10px;
+}
+
+
+.software-filters {
+  display: flex;
+  align-items: flex-end;
+
+  gap: 10px;
+}
+
+
+.software-filter {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+
+.software-filter > span {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 8px;
+  font-weight: 600;
+}
+
+
+.software-filter select {
+  min-width: 135px;
+  height: 36px;
+
+  padding:
+    0 28px
+    0 10px;
+
+  color:
+    var(--ti-text-secondary);
+
+  background:
+    var(--ti-surface);
+
+  border:
+    1px solid
+    var(--ti-border-strong);
+
+  border-radius: 2px;
+
+  outline: none;
+
+  font-size: 10px;
+
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+
+.software-filter select:focus {
+  border-color:
+    var(--ti-blue);
+
+  box-shadow:
+    0 0 0 2px
+    rgba(
+      36,
+      148,
+      228,
+      0.10
+    );
+}
+
+
+.software-results-meta {
+  display: flex;
+  align-items: center;
+
+  min-height: 24px;
+
+  margin-bottom: 5px;
+}
+
+
+.software-results-meta span {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 8px;
+}
+
+
+/* =========================================================
+   Table
+   ========================================================= */
+
+.software-table {
+  margin-bottom: 0;
+}
+
+
+.software-name-cell {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+
+.software-row-icon {
+  width: 27px;
+  height: 27px;
+
+  display: grid;
+  place-items: center;
+
+  flex:
+    0 0 27px;
+
+  color:
+    #68717a;
+
+  background:
+    #f0f2f4;
+
+  border-radius: 50%;
+}
+
+
+.software-name {
+  color:
+    var(--ti-text);
+
+  font-size: 10px;
+  font-weight: 650;
+}
+
+
+.software-version,
+.software-vendor {
+  color:
+    var(--ti-text-secondary);
+
+  font-size: 9px;
+}
+
+
+.software-machine-count {
+  color:
+    var(--ti-text-secondary);
+
+  font-weight: 650;
+}
+
+
+/* =========================================================
+   Type
+   ========================================================= */
+
+.software-type {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 4px;
+
+  padding:
+    3px 7px;
+
+  border-radius: 10px;
+
+  font-size: 8px;
+  font-weight: 650;
+
+  text-transform:
+    lowercase;
+}
+
+
+.software-type--application {
+  color:
+    #276995;
+
+  background:
+    #edf6fc;
+}
+
+
+.software-type--package {
+  color:
+    #665a95;
+
+  background:
+    #f1effa;
+}
+
+
+/* =========================================================
+   Exposures
+   ========================================================= */
+
+.software-exposure-active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  gap: 4px;
+
+  color:
+    var(--ti-red);
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+
+.software-exposure-empty {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 9px;
+}
+
+
+/* =========================================================
+   Empty
+   ========================================================= */
+
+.software-empty-panel {
+  min-height: 160px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  color:
+    var(--ti-text-muted);
+
+  text-align: center;
+}
+
+
+.software-empty-panel > svg {
+  margin-bottom: 10px;
+}
+
+
+.software-empty-panel strong {
+  color:
+    var(--ti-text);
+
+  font-size: 11px;
+}
+
+
+.software-empty-panel p {
+  max-width: 360px;
+
+  margin:
+    5px 0 0;
+
+  color:
+    var(--ti-text-muted);
+
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (
+  max-width: 850px
+) {
+  .software-controls {
+    align-items: stretch;
+
+    flex-direction: column;
+  }
+
+
+  .software-search {
+    width: 100%;
+  }
+
+
+  .software-filters {
+    width: 100%;
+  }
+
+
+  .software-filter {
+    flex: 1;
+  }
+
+
+  .software-filter select {
+    width: 100%;
+  }
+}
+
+
+@media (
+  max-width: 650px
+) {
+  .software-statistics {
+    display: grid;
+
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+
+    gap:
+      16px 24px;
+  }
+
+
+  .software-filters {
+    flex-direction: column;
+
+    align-items: stretch;
+  }
+
+
+  .software-filter {
+    width: 100%;
+  }
+}
+
+
+@media (
+  max-width: 430px
+) {
+  .software-statistics {
+    grid-template-columns:
+      1fr;
+  }
+}

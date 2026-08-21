@@ -1,0 +1,824 @@
+/* =========================================================
+   Statistics
+   No cards
+   ========================================================= */
+
+.vulnerability-statistics {
+  display: flex;
+  align-items: center;
+
+  gap: 52px;
+
+  margin:
+    7px 4px 23px;
+
+  padding: 0;
+}
+
+
+.vulnerability-statistic {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+}
+
+
+.vulnerability-statistic__icon {
+  width: 31px;
+  height: 31px;
+
+  display: grid;
+  place-items: center;
+
+  flex:
+    0 0 31px;
+
+  color:
+    #626a73;
+
+  background:
+    #eceff2;
+
+  border-radius: 50%;
+}
+
+
+.vulnerability-statistic__content {
+  min-width: 0;
+}
+
+
+.vulnerability-statistic__content strong,
+.vulnerability-statistic__content span {
+  display: block;
+}
+
+
+.vulnerability-statistic__content strong {
+  color:
+    var(--ti-text);
+
+  font-size: 17px;
+  font-weight: 700;
+
+  line-height: 1;
+}
+
+
+.vulnerability-statistic__content span {
+  margin-top: 4px;
+
+  color:
+    var(--ti-text-muted);
+
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+
+.vulnerability-statistic--success
+.vulnerability-statistic__icon {
+  color:
+    var(--ti-green);
+
+  background:
+    var(--ti-green-soft);
+}
+
+
+.vulnerability-statistic--critical
+.vulnerability-statistic__icon {
+  color:
+    var(--ti-red);
+
+  background:
+    var(--ti-red-soft);
+}
+
+
+.vulnerability-statistic--critical
+.vulnerability-statistic__content strong {
+  color:
+    var(--ti-red);
+}
+
+
+/* =========================================================
+   Controls
+   ========================================================= */
+
+.vulnerability-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  margin-bottom: 12px;
+
+  padding:
+    12px 0;
+
+  border-top:
+    1px solid
+    var(--ti-border);
+
+  border-bottom:
+    1px solid
+    var(--ti-border);
+}
+
+
+.vulnerability-search {
+  position: relative;
+
+  width:
+    min(
+      285px,
+      100%
+    );
+
+  flex:
+    0 1 285px;
+}
+
+
+.vulnerability-search > svg {
+  position: absolute;
+
+  top: 50%;
+  left: 11px;
+
+  z-index: 1;
+
+  color:
+    var(--ti-text-muted);
+
+  pointer-events: none;
+
+  transform:
+    translateY(-50%);
+}
+
+
+.vulnerability-search .input {
+  height: 36px;
+  min-height: 36px;
+
+  padding-left: 34px;
+
+  font-size: 10px;
+}
+
+
+.vulnerability-filters {
+  display: flex;
+  align-items: flex-end;
+
+  gap: 9px;
+}
+
+
+.vulnerability-filter {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+
+.vulnerability-filter > span {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 8px;
+  font-weight: 600;
+}
+
+
+.vulnerability-filter select {
+  min-width: 116px;
+  height: 36px;
+
+  padding:
+    0 27px
+    0 9px;
+
+  color:
+    var(--ti-text-secondary);
+
+  background:
+    var(--ti-surface);
+
+  border:
+    1px solid
+    var(--ti-border-strong);
+
+  border-radius: 2px;
+
+  outline: none;
+
+  font-size: 9px;
+
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+
+.vulnerability-filter select:focus {
+  border-color:
+    var(--ti-blue);
+
+  box-shadow:
+    0 0 0 2px
+    rgba(
+      36,
+      148,
+      228,
+      0.10
+    );
+}
+
+
+/* =========================================================
+   KEV toggle
+   ========================================================= */
+
+.vulnerability-kev-toggle {
+  min-height: 36px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  cursor: pointer;
+}
+
+
+.vulnerability-kev-toggle > input {
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+
+  overflow: hidden;
+
+  opacity: 0;
+
+  pointer-events: none;
+}
+
+
+.vulnerability-kev-toggle__control {
+  width: 27px;
+  height: 15px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 2px;
+
+  background:
+    #d9dde1;
+
+  border-radius: 999px;
+
+  transition:
+    background 120ms ease;
+}
+
+
+.vulnerability-kev-toggle__control > span {
+  width: 11px;
+  height: 11px;
+
+  display: block;
+
+  background:
+    #ffffff;
+
+  border-radius: 50%;
+
+  box-shadow:
+    0 1px 2px
+    rgba(
+      0,
+      0,
+      0,
+      0.14
+    );
+
+  transition:
+    transform 120ms ease;
+}
+
+
+.vulnerability-kev-toggle
+input:checked
++ .vulnerability-kev-toggle__control {
+  background:
+    var(--ti-red);
+}
+
+
+.vulnerability-kev-toggle
+input:checked
++ .vulnerability-kev-toggle__control
+> span {
+  transform:
+    translateX(12px);
+}
+
+
+.vulnerability-kev-toggle__label {
+  color:
+    var(--ti-text-secondary);
+
+  font-size: 8px;
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   Results
+   ========================================================= */
+
+.vulnerability-results-meta {
+  min-height: 24px;
+
+  display: flex;
+  align-items: center;
+
+  margin-bottom: 5px;
+}
+
+
+.vulnerability-results-meta span {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 8px;
+}
+
+
+/* =========================================================
+   Table
+   ========================================================= */
+
+.vulnerability-table {
+  margin-bottom: 0;
+}
+
+
+.vulnerability-primary-cell {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+
+.vulnerability-row-icon {
+  width: 27px;
+  height: 27px;
+
+  display: grid;
+  place-items: center;
+
+  flex:
+    0 0 27px;
+
+  color:
+    #68717a;
+
+  background:
+    #f0f2f4;
+
+  border-radius: 50%;
+}
+
+
+.vulnerability-row-icon--critical {
+  color:
+    var(--ti-red);
+
+  background:
+    var(--ti-red-soft);
+}
+
+
+.vulnerability-id {
+  display: block;
+
+  color:
+    var(--ti-text);
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+
+.vulnerability-short-id {
+  display: block;
+
+  margin-top: 3px;
+
+  color:
+    var(--ti-text-muted);
+
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+
+  font-size: 7px;
+}
+
+
+.vulnerability-score {
+  display: block;
+
+  color:
+    var(--ti-text);
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+
+.vulnerability-score-detail {
+  display: block;
+
+  margin-top: 3px;
+
+  color:
+    var(--ti-text-muted);
+
+  font-size: 7px;
+}
+
+
+.vulnerability-epss {
+  color:
+    var(--ti-text-secondary);
+
+  font-size: 9px;
+}
+
+
+.vulnerability-table-count {
+  color:
+    var(--ti-text-secondary);
+
+  font-size: 9px;
+  font-weight: 650;
+}
+
+
+/* =========================================================
+   Priority
+   ========================================================= */
+
+.vulnerability-priority-tag,
+.vulnerability-severity-tag {
+  display: inline-flex;
+  align-items: center;
+
+  padding:
+    3px 7px;
+
+  border-radius: 10px;
+
+  font-size: 7px;
+  font-weight: 700;
+
+  text-transform:
+    uppercase;
+}
+
+
+.vulnerability-priority-tag--low {
+  color:
+    var(--ti-green);
+
+  background:
+    var(--ti-green-soft);
+}
+
+
+.vulnerability-priority-tag--medium {
+  color:
+    #9a6b18;
+
+  background:
+    #fbf4e7;
+}
+
+
+.vulnerability-priority-tag--high {
+  color:
+    #ad5f18;
+
+  background:
+    #fbefe5;
+}
+
+
+.vulnerability-priority-tag--critical {
+  color:
+    var(--ti-red);
+
+  background:
+    var(--ti-red-soft);
+}
+
+
+.vulnerability-priority-tag--unknown {
+  color:
+    var(--ti-text-muted);
+
+  background:
+    #f0f2f4;
+}
+
+
+/* =========================================================
+   Severity
+   ========================================================= */
+
+.vulnerability-severity-tag {
+  color:
+    var(--ti-text-secondary);
+
+  background:
+    #f0f2f4;
+}
+
+
+.vulnerability-severity-tag--low {
+  color:
+    var(--ti-green);
+
+  background:
+    var(--ti-green-soft);
+}
+
+
+.vulnerability-severity-tag--medium {
+  color:
+    #9a6b18;
+
+  background:
+    #fbf4e7;
+}
+
+
+.vulnerability-severity-tag--high {
+  color:
+    #ad5f18;
+
+  background:
+    #fbefe5;
+}
+
+
+.vulnerability-severity-tag--critical {
+  color:
+    var(--ti-red);
+
+  background:
+    var(--ti-red-soft);
+}
+
+
+/* =========================================================
+   Applicability
+   ========================================================= */
+
+.vulnerability-applicability {
+  display: flex;
+  flex-direction: column;
+
+  gap: 3px;
+}
+
+
+.vulnerability-applicability__confirmed {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 3px;
+
+  width: fit-content;
+
+  color:
+    var(--ti-green);
+
+  font-size: 8px;
+  font-weight: 650;
+}
+
+
+.vulnerability-applicability__potential {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 7px;
+}
+
+
+/* =========================================================
+   CWE
+   ========================================================= */
+
+.vulnerability-cwe-list {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 3px;
+}
+
+
+.vulnerability-cwe-list span {
+  display: inline-flex;
+  align-items: center;
+
+  padding:
+    2px 5px;
+
+  color:
+    var(--ti-text-secondary);
+
+  background:
+    #f1f3f4;
+
+  border-radius: 8px;
+
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+
+  font-size: 7px;
+}
+
+
+/* =========================================================
+   KEV
+   ========================================================= */
+
+.vulnerability-kev {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 3px;
+
+  color:
+    var(--ti-red);
+
+  font-size: 8px;
+  font-weight: 700;
+}
+
+
+.vulnerability-muted {
+  color:
+    var(--ti-text-muted);
+
+  font-size: 8px;
+}
+
+
+/* =========================================================
+   Empty state
+   ========================================================= */
+
+.vulnerability-empty-panel {
+  min-height: 160px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  color:
+    var(--ti-text-muted);
+
+  text-align: center;
+}
+
+
+.vulnerability-empty-panel > svg {
+  margin-bottom: 10px;
+}
+
+
+.vulnerability-empty-panel strong {
+  color:
+    var(--ti-text);
+
+  font-size: 11px;
+}
+
+
+.vulnerability-empty-panel p {
+  max-width: 420px;
+
+  margin:
+    5px 0 0;
+
+  color:
+    var(--ti-text-muted);
+
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (
+  max-width: 1150px
+) {
+  .vulnerability-controls {
+    align-items: stretch;
+
+    flex-direction: column;
+  }
+
+
+  .vulnerability-search {
+    width: 100%;
+    max-width: none;
+
+    flex: none;
+  }
+
+
+  .vulnerability-filters {
+    flex-wrap: wrap;
+  }
+}
+
+
+@media (
+  max-width: 760px
+) {
+  .vulnerability-statistics {
+    display: grid;
+
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+
+    gap:
+      16px 24px;
+  }
+
+
+  .vulnerability-filters {
+    align-items: stretch;
+
+    flex-direction: column;
+  }
+
+
+  .vulnerability-filter {
+    width: 100%;
+  }
+
+
+  .vulnerability-filter select {
+    width: 100%;
+  }
+
+
+  .vulnerability-kev-toggle {
+    align-self: flex-start;
+  }
+}
+
+
+@media (
+  max-width: 430px
+) {
+  .vulnerability-statistics {
+    grid-template-columns:
+      1fr;
+  }
+}

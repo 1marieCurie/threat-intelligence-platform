@@ -5,8 +5,19 @@ import {
 } from "react";
 
 import {
-  Link,
-} from "react-router";
+  BellRing,
+  CircleCheck,
+  CircleX,
+  Clock3,
+  Search,
+  ShieldAlert,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
+
+import type {
+  LucideIcon,
+} from "lucide-react";
 
 import {
   Card,
@@ -29,6 +40,8 @@ import type {
   AlertSummary,
   AlertType,
 } from "../../types/alert";
+
+import "./alerts.css";
 
 
 type AlertStatusFilter =
@@ -75,23 +88,17 @@ function displayAlertType(
     value
     === "new_confirmed_critical_exposure"
   ) {
-    return (
-      "Nouvelle exposition critique"
-    );
+    return "Nouvelle exposition critique";
   }
 
   if (
     value
     === "confirmed_exposure_entered_kev"
   ) {
-    return (
-      "Entrée dans CISA KEV"
-    );
+    return "Entrée dans CISA KEV";
   }
 
-  return (
-    "Passage en priorité critique"
-  );
+  return "Passage en priorité critique";
 }
 
 
@@ -159,6 +166,105 @@ function displayDate(
       hour: "2-digit",
       minute: "2-digit",
     },
+  );
+}
+
+
+type AlertStatisticTone =
+  | "default"
+  | "warning"
+  | "success"
+  | "critical";
+
+
+type AlertStatisticProps = {
+  icon: LucideIcon;
+  value: number;
+  label: string;
+  tone?: AlertStatisticTone;
+};
+
+
+function AlertStatistic({
+  icon: Icon,
+  value,
+  label,
+  tone = "default",
+}: AlertStatisticProps) {
+  return (
+    <div
+      className={
+        "alert-statistic "
+        + `alert-statistic--${tone}`
+      }
+    >
+      <span className="alert-statistic__icon">
+        <Icon
+          size={17}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="alert-statistic__content">
+        <strong>
+          {value}
+        </strong>
+
+        <span>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
+function priorityClass(
+  value: string | null,
+): string {
+  return (
+    "alerts-priority "
+    + "alerts-priority--"
+    + (
+      value
+      ?? "unknown"
+    ).toLowerCase()
+  );
+}
+
+
+function alertTypeIcon(
+  type: AlertType,
+) {
+  if (
+    type
+    === "confirmed_exposure_entered_kev"
+  ) {
+    return (
+      <Zap
+        size={14}
+        strokeWidth={1.9}
+      />
+    );
+  }
+
+  if (
+    type
+    === "priority_transition_to_critical"
+  ) {
+    return (
+      <TriangleAlert
+        size={14}
+        strokeWidth={1.8}
+      />
+    );
+  }
+
+  return (
+    <ShieldAlert
+      size={14}
+      strokeWidth={1.8}
+    />
   );
 }
 
@@ -320,10 +426,8 @@ export function AlertsPage() {
               .join(" ")
               .toLowerCase();
 
-            return (
-              searchable.includes(
-                searchValue,
-              )
+            return searchable.includes(
+              searchValue,
             );
           },
         );
@@ -464,23 +568,22 @@ export function AlertsPage() {
       {!isLoading
         && !error
         && alerts.length === 0 && (
-          <Card>
-            <div className="alerts-empty-state">
-              <div className="alerts-empty-icon">
-                ✓
-              </div>
+          <Card className="alerts-empty-panel">
+            <CircleCheck
+              size={25}
+              strokeWidth={1.6}
+            />
 
-              <strong>
-                Aucune alerte
-              </strong>
+            <strong>
+              Aucune alerte
+            </strong>
 
-              <p>
-                Aucun événement de sécurité
-                nécessitant une notification
-                n'est actuellement enregistré
-                pour cette organisation.
-              </p>
-            </div>
+            <p>
+              Aucun événement de sécurité
+              nécessitant une notification
+              n'est actuellement enregistré
+              pour cette organisation.
+            </p>
           </Card>
         )}
 
@@ -488,79 +591,82 @@ export function AlertsPage() {
         && !error
         && alerts.length > 0 && (
           <>
-            <section className="alerts-summary-grid">
-              <Card>
-                <span className="alerts-summary-label">
-                  Total
-                </span>
+            <section
+              className="alerts-statistics"
+              aria-label="Résumé des alertes"
+            >
+              <AlertStatistic
+                icon={BellRing}
+                value={
+                  alerts.length
+                }
+                label="Total"
+              />
 
-                <strong className="alerts-summary-value">
-                  {
-                    alerts.length
-                  }
-                </strong>
-              </Card>
+              <AlertStatistic
+                icon={Clock3}
+                value={
+                  pendingCount
+                }
+                label="En attente"
+                tone={
+                  pendingCount > 0
+                    ? "warning"
+                    : "default"
+                }
+              />
 
-              <Card>
-                <span className="alerts-summary-label">
-                  En attente
-                </span>
+              <AlertStatistic
+                icon={CircleCheck}
+                value={
+                  sentCount
+                }
+                label="Envoyées"
+                tone="success"
+              />
 
-                <strong className="alerts-summary-value">
-                  {
-                    pendingCount
-                  }
-                </strong>
-              </Card>
-
-              <Card>
-                <span className="alerts-summary-label">
-                  Envoyées
-                </span>
-
-                <strong className="alerts-summary-value">
-                  {
-                    sentCount
-                  }
-                </strong>
-              </Card>
-
-              <Card>
-                <span className="alerts-summary-label">
-                  Échecs
-                </span>
-
-                <strong className="alerts-summary-value">
-                  {
-                    failedCount
-                  }
-                </strong>
-              </Card>
+              <AlertStatistic
+                icon={CircleX}
+                value={
+                  failedCount
+                }
+                label="Échecs"
+                tone={
+                  failedCount > 0
+                    ? "critical"
+                    : "default"
+                }
+              />
             </section>
 
-            <Card>
-              <div className="alerts-toolbar">
-                <div className="alerts-search">
-                  <Input
-                    type="search"
-                    placeholder={
-                      "Rechercher CVE, logiciel ou machine..."
-                    }
-                    value={
-                      search
-                    }
-                    onChange={(
-                      event,
-                    ) => {
-                      setSearch(
-                        event
-                          .target
-                          .value,
-                      );
-                    }}
-                  />
-                </div>
+            <section className="alerts-controls">
+              <div className="alerts-search">
+                <Search
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
 
+                <Input
+                  type="search"
+                  placeholder="Rechercher CVE, logiciel ou machine..."
+                  aria-label="Rechercher une alerte"
+                  value={
+                    search
+                  }
+                  onChange={(
+                    event,
+                  ) => {
+                    setSearch(
+                      event
+                        .target
+                        .value,
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="alerts-filters">
                 <label className="alerts-filter">
                   <span>
                     Statut
@@ -647,25 +753,44 @@ export function AlertsPage() {
                   </select>
                 </label>
               </div>
-            </Card>
+            </section>
+
+            <div className="alerts-results-meta">
+              <span>
+                {
+                  visibleAlerts.length
+                }
+                {" "}
+                alerte
+                {
+                  visibleAlerts.length
+                  !== 1
+                    ? "s"
+                    : ""
+                }
+              </span>
+            </div>
 
             {visibleAlerts.length
               === 0 ? (
-              <Card>
-                <div className="alerts-empty-state">
-                  <strong>
-                    Aucun résultat
-                  </strong>
+              <Card className="alerts-empty-panel">
+                <Search
+                  size={22}
+                  strokeWidth={1.6}
+                />
 
-                  <p>
-                    Aucune alerte ne
-                    correspond aux filtres
-                    sélectionnés.
-                  </p>
-                </div>
+                <strong>
+                  Aucun résultat
+                </strong>
+
+                <p>
+                  Aucune alerte ne
+                  correspond aux filtres
+                  sélectionnés.
+                </p>
               </Card>
             ) : (
-              <Table>
+              <Table className="alerts-table">
                 <thead>
                   <tr>
                     <th>
@@ -713,32 +838,35 @@ export function AlertsPage() {
                         }
                       >
                         <td>
-                          <strong className="alerts-date">
+                          <span className="alerts-date">
                             {
                               displayDate(
                                 alert.created_at,
                               )
                             }
-                          </strong>
+                          </span>
                         </td>
 
                         <td>
-                          <Link
-                            to={
-                              (
-                                "/alertes/"
-                                + alert.alert_id
-                              )
-                            }
-                            aria-label={
-                              (
-                                "Ouvrir l'alerte "
-                                + displayIdentifier(
-                                  alert,
+                          <div className="alerts-event-cell">
+                            <span
+                              className={
+                                alert.alert_type
+                                === "confirmed_exposure_entered_kev"
+                                  ? (
+                                    "alerts-event-icon "
+                                    + "alerts-event-icon--critical"
+                                  )
+                                  : "alerts-event-icon"
+                              }
+                            >
+                              {
+                                alertTypeIcon(
+                                  alert.alert_type,
                                 )
-                              )
-                            }
-                          >
+                              }
+                            </span>
+
                             <strong className="alerts-event">
                               {
                                 displayAlertType(
@@ -746,38 +874,21 @@ export function AlertsPage() {
                                 )
                               }
                             </strong>
-                          </Link>
+                          </div>
                         </td>
 
                         <td>
-                          <Link
-                            to={
-                              (
-                                "/alertes/"
-                                + alert.alert_id
+                          <strong className="alerts-vulnerability-id">
+                            {
+                              displayIdentifier(
+                                alert,
                               )
                             }
-                            aria-label={
-                              (
-                                "Ouvrir l'alerte "
-                                + displayIdentifier(
-                                  alert,
-                                )
-                              )
-                            }
-                          >
-                            <strong className="vulnerability-id">
-                              {
-                                displayIdentifier(
-                                  alert,
-                                )
-                              }
-                            </strong>
-                          </Link>
+                          </strong>
                         </td>
 
                         <td>
-                          <strong>
+                          <strong className="alerts-component">
                             {
                               alert.component_name
                               ?? "—"
@@ -785,30 +896,29 @@ export function AlertsPage() {
                           </strong>
 
                           {alert.component_version && (
-                            <div className="table-secondary">
-                              Version {
+                            <span className="alerts-secondary">
+                              Version{" "}
+                              {
                                 alert.component_version
                               }
-                            </div>
+                            </span>
                           )}
                         </td>
 
                         <td>
-                          {
-                            alert.machine_hostname
-                          }
+                          <span className="alerts-machine">
+                            {
+                              alert.machine_hostname
+                            }
+                          </span>
                         </td>
 
                         <td>
                           {alert.current_priority ? (
                             <span
                               className={
-                                (
-                                  "vulnerability-priority "
-                                  + "vulnerability-priority--"
-                                  + alert
-                                    .current_priority
-                                    .toLowerCase()
+                                priorityClass(
+                                  alert.current_priority,
                                 )
                               }
                             >
@@ -817,50 +927,81 @@ export function AlertsPage() {
                               }
                             </span>
                           ) : (
-                            "—"
+                            <span className="alerts-muted">
+                              —
+                            </span>
                           )}
                         </td>
 
                         <td>
                           {alert.is_kev === true ? (
-                            <span className="alerts-kev alerts-kev--active">
+                            <span className="alerts-kev">
+                              <Zap
+                                size={11}
+                                strokeWidth={1.9}
+                              />
+
                               KEV
                             </span>
-                          ) : alert.is_kev === false ? (
-                            <span className="alerts-kev">
-                              Non
-                            </span>
                           ) : (
-                            "—"
+                            <span className="alerts-muted">
+                              —
+                            </span>
                           )}
                         </td>
 
                         <td>
-                          <span
-                            className={
-                              (
-                                "alert-status "
-                                + "alert-status--"
-                                + alert.status
-                              )
-                            }
-                          >
-                            {
-                              displayStatus(
-                                alert.status,
-                              )
-                            }
-                          </span>
-
-                          {alert.sent_at && (
-                            <div className="table-secondary alerts-sent-date">
-                              Envoyée le {
-                                displayDate(
-                                  alert.sent_at,
+                          <div className="alerts-notification">
+                            <span
+                              className={
+                                (
+                                  "alerts-status "
+                                  + "alerts-status--"
+                                  + alert.status
                                 )
                               }
-                            </div>
-                          )}
+                            >
+                              {alert.status
+                                === "sent" && (
+                                  <CircleCheck
+                                    size={11}
+                                    strokeWidth={1.9}
+                                  />
+                                )}
+
+                              {alert.status
+                                === "pending" && (
+                                  <Clock3
+                                    size={11}
+                                    strokeWidth={1.9}
+                                  />
+                                )}
+
+                              {alert.status
+                                === "failed" && (
+                                  <CircleX
+                                    size={11}
+                                    strokeWidth={1.9}
+                                  />
+                                )}
+
+                              {
+                                displayStatus(
+                                  alert.status,
+                                )
+                              }
+                            </span>
+
+                            {alert.sent_at && (
+                              <span className="alerts-secondary">
+                                {
+                                  displayDate(
+                                    alert.sent_at,
+                                  )
+                                }
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ),

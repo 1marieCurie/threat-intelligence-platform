@@ -17,6 +17,7 @@ import {
 } from "./context/RoleContext";
 
 import "./index.css";
+import "./minimal-theme.css";
 
 
 createRoot(

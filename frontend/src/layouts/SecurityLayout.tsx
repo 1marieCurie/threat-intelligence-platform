@@ -55,7 +55,7 @@ export function SecurityLayout() {
             TI
           </div>
 
-          <div>
+          <div className="sidebar-brand__text">
             <strong>
               Threat Intelligence
             </strong>
@@ -70,7 +70,10 @@ export function SecurityLayout() {
           Navigation
         </div>
 
-        <nav className="security-nav">
+        <nav
+          className="security-nav"
+          aria-label="Navigation principale"
+        >
           {navigationItems.map(
             (item) => (
               <NavLink
@@ -87,8 +90,6 @@ export function SecurityLayout() {
                     : "security-nav-link"
                 }
               >
-                <span className="nav-indicator" />
-
                 {item.label}
               </NavLink>
             ),
@@ -108,13 +109,13 @@ export function SecurityLayout() {
 
       <div className="security-main">
         <header className="security-topbar">
-          <div>
+          <div className="security-topbar__context">
             <span className="security-topbar__eyebrow">
               Espace sécurité
             </span>
 
             <strong className="security-topbar__title">
-              Cockpit de supervision
+              Supervision
             </strong>
           </div>
 

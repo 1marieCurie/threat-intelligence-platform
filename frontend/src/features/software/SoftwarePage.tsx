@@ -5,6 +5,19 @@ import {
 } from "react";
 
 import {
+  AppWindow,
+  Boxes,
+  Package,
+  PackageOpen,
+  Search,
+  ShieldAlert,
+} from "lucide-react";
+
+import type {
+  LucideIcon,
+} from "lucide-react";
+
+import {
   Card,
 } from "../../components/ui/Card";
 
@@ -23,6 +36,8 @@ import {
 import type {
   SoftwareSummary,
 } from "../../types/software";
+
+import "./software.css";
 
 
 type SoftwareTypeFilter =
@@ -90,6 +105,41 @@ function displayVersion(
   }
 
   return value;
+}
+
+
+type SoftwareStatisticProps = {
+  icon: LucideIcon;
+  value: number;
+  label: string;
+};
+
+
+function SoftwareStatistic({
+  icon: Icon,
+  value,
+  label,
+}: SoftwareStatisticProps) {
+  return (
+    <div className="software-statistic">
+      <span className="software-statistic__icon">
+        <Icon
+          size={17}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="software-statistic__content">
+        <strong>
+          {value}
+        </strong>
+
+        <span>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 
@@ -386,18 +436,21 @@ export function SoftwarePage() {
       {!isLoading
         && !error
         && software.length === 0 && (
-          <Card>
-            <div className="software-empty-state">
-              <strong>
-                Aucun logiciel inventorié
-              </strong>
+          <Card className="software-empty-panel">
+            <PackageOpen
+              size={24}
+              strokeWidth={1.6}
+            />
 
-              <p>
-                Aucun composant logiciel
-                n'est disponible pour cette
-                organisation.
-              </p>
-            </div>
+            <strong>
+              Aucun logiciel inventorié
+            </strong>
+
+            <p>
+              Aucun composant logiciel
+              n'est disponible pour cette
+              organisation.
+            </p>
           </Card>
         )}
 
@@ -405,57 +458,59 @@ export function SoftwarePage() {
         && !error
         && software.length > 0 && (
           <>
-            <section className="software-summary-grid">
-              <Card>
-                <span className="software-summary-label">
-                  Logiciels agrégés
-                </span>
+            <section
+              className="software-statistics"
+              aria-label="Résumé des logiciels"
+            >
+              <SoftwareStatistic
+                icon={Boxes}
+                value={
+                  software.length
+                }
+                label="Logiciels agrégés"
+              />
 
-                <strong className="software-summary-value">
-                  {software.length}
-                </strong>
-              </Card>
+              <SoftwareStatistic
+                icon={AppWindow}
+                value={
+                  applicationCount
+                }
+                label="Applications"
+              />
 
-              <Card>
-                <span className="software-summary-label">
-                  Applications
-                </span>
-
-                <strong className="software-summary-value">
-                  {applicationCount}
-                </strong>
-              </Card>
-
-              <Card>
-                <span className="software-summary-label">
-                  Packages
-                </span>
-
-                <strong className="software-summary-value">
-                  {packageCount}
-                </strong>
-              </Card>
+              <SoftwareStatistic
+                icon={Package}
+                value={
+                  packageCount
+                }
+                label="Packages"
+              />
             </section>
 
-            <Card>
-              <div className="software-toolbar">
-                <div className="software-search">
-                  <Input
-                    type="search"
-                    placeholder={
-                      "Rechercher un logiciel..."
-                    }
-                    value={search}
-                    onChange={(
-                      event,
-                    ) => {
-                      setSearch(
-                        event.target.value,
-                      );
-                    }}
-                  />
-                </div>
+            <section className="software-controls">
+              <div className="software-search">
+                <Search
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
 
+                <Input
+                  type="search"
+                  placeholder="Rechercher un logiciel..."
+                  aria-label="Rechercher un logiciel"
+                  value={search}
+                  onChange={(
+                    event,
+                  ) => {
+                    setSearch(
+                      event.target.value,
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="software-filters">
                 <label className="software-filter">
                   <span>
                     Type
@@ -518,24 +573,43 @@ export function SoftwarePage() {
                   </select>
                 </label>
               </div>
-            </Card>
+            </section>
+
+            <div className="software-results-meta">
+              <span>
+                {
+                  visibleSoftware.length
+                }
+                {" "}
+                résultat
+                {
+                  visibleSoftware.length
+                  !== 1
+                    ? "s"
+                    : ""
+                }
+              </span>
+            </div>
 
             {visibleSoftware.length === 0 ? (
-              <Card>
-                <div className="software-empty-state">
-                  <strong>
-                    Aucun résultat
-                  </strong>
+              <Card className="software-empty-panel">
+                <Search
+                  size={22}
+                  strokeWidth={1.6}
+                />
 
-                  <p>
-                    Aucun logiciel ne
-                    correspond aux filtres
-                    sélectionnés.
-                  </p>
-                </div>
+                <strong>
+                  Aucun résultat
+                </strong>
+
+                <p>
+                  Aucun logiciel ne
+                  correspond aux filtres
+                  sélectionnés.
+                </p>
               </Card>
             ) : (
-              <Table>
+              <Table className="software-table">
                 <thead>
                   <tr>
                     <th>
@@ -591,62 +665,99 @@ export function SoftwarePage() {
                           <span
                             className={
                               (
-                                "component-type "
-                                + "component-type--"
+                                "software-type "
+                                + "software-type--"
                                 + item.component_type
                               )
                             }
                           >
-                            {
-                              item.component_type
-                            }
+                            {item.component_type
+                              === "application" ? (
+                                <AppWindow
+                                  size={11}
+                                  strokeWidth={1.8}
+                                />
+                              ) : (
+                                <Package
+                                  size={11}
+                                  strokeWidth={1.8}
+                                />
+                              )}
+
+                            <span>
+                              {
+                                item.component_type
+                              }
+                            </span>
                           </span>
                         </td>
 
                         <td>
-                          <strong className="software-name">
-                            {
-                              item.name
-                            }
-                          </strong>
+                          <div className="software-name-cell">
+                            <span className="software-row-icon">
+                              {item.component_type
+                                === "application" ? (
+                                  <AppWindow
+                                    size={14}
+                                    strokeWidth={1.8}
+                                  />
+                                ) : (
+                                  <Package
+                                    size={14}
+                                    strokeWidth={1.8}
+                                  />
+                                )}
+                            </span>
+
+                            <strong className="software-name">
+                              {
+                                item.name
+                              }
+                            </strong>
+                          </div>
                         </td>
 
                         <td>
-                          {displayVersion(
-                            item.version,
-                          )}
+                          <span className="software-version">
+                            {displayVersion(
+                              item.version,
+                            )}
+                          </span>
                         </td>
 
                         <td>
-                          {displayVendor(
-                            item,
-                          )}
+                          <span className="software-vendor">
+                            {displayVendor(
+                              item,
+                            )}
+                          </span>
                         </td>
 
                         <td className="table-number">
-                          {
-                            item.machine_count
-                          }
-                        </td>
-
-                        <td className="table-number">
-                          <span
-                            className={
-                              item.exposure_count
-                              > 0
-                                ? (
-                                  "software-exposure-count "
-                                  + "software-exposure-count--active"
-                                )
-                                : (
-                                  "software-exposure-count"
-                                )
-                            }
-                          >
+                          <span className="software-machine-count">
                             {
-                              item.exposure_count
+                              item.machine_count
                             }
                           </span>
+                        </td>
+
+                        <td className="table-number">
+                          {item.exposure_count > 0 ? (
+                            <span className="software-exposure-active">
+                              <ShieldAlert
+                                size={11}
+                                strokeWidth={1.8}
+                              />
+
+                              {
+                                item.exposure_count
+                              }
+                            </span>
+                          ) : (
+                            <span className="software-exposure-empty">
+                              0
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ),

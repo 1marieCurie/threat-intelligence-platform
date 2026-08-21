@@ -5,6 +5,13 @@ import {
 } from "react";
 
 import {
+  ChevronRight,
+  Monitor,
+  MonitorOff,
+  Search,
+} from "lucide-react";
+
+import {
   Link,
 } from "react-router";
 
@@ -27,6 +34,8 @@ import {
 import type {
   MachineSummary,
 } from "../../types/machine";
+
+import "./machines.css";
 
 
 function formatInventoryDate(
@@ -212,22 +221,22 @@ export function MachinesPage() {
       {!isLoading
         && !error
         && machines.length === 0 && (
-          <Card>
-            <div className="machines-empty-state">
-              <div className="machines-empty-state__icon">
-                M
-              </div>
+          <Card className="machines-empty-panel">
+            <MonitorOff
+              size={25}
+              strokeWidth={1.6}
+              className="machines-empty-icon"
+            />
 
-              <strong>
-                Aucune machine inventoriée
-              </strong>
+            <strong>
+              Aucune machine inventoriée
+            </strong>
 
-              <p>
-                Aucun inventaire machine
-                n'a encore été importé pour
-                cette organisation.
-              </p>
-            </div>
+            <p>
+              Aucun inventaire machine
+              n'a encore été importé pour
+              cette organisation.
+            </p>
           </Card>
         )}
 
@@ -235,56 +244,70 @@ export function MachinesPage() {
         && !error
         && machines.length > 0 && (
           <>
-            <Card>
-              <div className="machines-toolbar">
+            <section className="machines-controls">
+              <div className="machines-count">
+                <span className="machines-count__icon">
+                  <Monitor
+                    size={17}
+                    strokeWidth={1.8}
+                  />
+                </span>
+
                 <div>
                   <strong>
                     {machines.length}
-                    {" "}
+                  </strong>
+
+                  <span>
                     machine
                     {machines.length !== 1
                       ? "s"
                       : ""}
-                  </strong>
-
-                  <span>
-                    Inventaire courant
                   </span>
                 </div>
-
-                <div className="machines-search">
-                  <Input
-                    type="search"
-                    placeholder={
-                      "Rechercher une machine..."
-                    }
-                    value={search}
-                    onChange={(event) => {
-                      setSearch(
-                        event.target.value,
-                      );
-                    }}
-                  />
-                </div>
               </div>
-            </Card>
+
+              <div className="machines-search">
+                <Search
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
+
+                <Input
+                  type="search"
+                  placeholder="Rechercher une machine..."
+                  aria-label="Rechercher une machine"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(
+                      event.target.value,
+                    );
+                  }}
+                />
+              </div>
+            </section>
 
             {filteredMachines.length === 0 ? (
-              <Card>
-                <div className="machines-empty-state">
-                  <strong>
-                    Aucun résultat
-                  </strong>
+              <Card className="machines-empty-panel">
+                <Search
+                  size={23}
+                  strokeWidth={1.6}
+                  className="machines-empty-icon"
+                />
 
-                  <p>
-                    Aucune machine ne
-                    correspond à cette
-                    recherche.
-                  </p>
-                </div>
+                <strong>
+                  Aucun résultat
+                </strong>
+
+                <p>
+                  Aucune machine ne
+                  correspond à cette
+                  recherche.
+                </p>
               </Card>
             ) : (
-              <Table>
+              <Table className="machines-table">
                 <thead>
                   <tr>
                     <th>
@@ -319,9 +342,10 @@ export function MachinesPage() {
                       KEV
                     </th>
 
-                    <th>
-                      Détail
-                    </th>
+                    <th
+                      className="machines-table__action-heading"
+                      aria-label="Actions"
+                    />
                   </tr>
                 </thead>
 
@@ -334,28 +358,37 @@ export function MachinesPage() {
                         }
                       >
                         <td>
-                          <div className="machine-name-cell">
-                            <Link
-                              to={
-                                `/machines/${machine.machine_id}`
-                              }
-                              className="machine-name-link"
-                            >
-                              {
-                                machine.hostname
-                              }
-                            </Link>
-
-                            <span>
-                              {
-                                machine
-                                  .machine_id
-                                  .slice(
-                                    0,
-                                    8,
-                                  )
-                              }
+                          <div className="machine-primary-cell">
+                            <span className="machine-row-icon">
+                              <Monitor
+                                size={15}
+                                strokeWidth={1.8}
+                              />
                             </span>
+
+                            <div className="machine-name-cell">
+                              <Link
+                                to={
+                                  `/machines/${machine.machine_id}`
+                                }
+                                className="machine-name-link"
+                              >
+                                {
+                                  machine.hostname
+                                }
+                              </Link>
+
+                              <span>
+                                {
+                                  machine
+                                    .machine_id
+                                    .slice(
+                                      0,
+                                      8,
+                                    )
+                                }
+                              </span>
+                            </div>
                           </div>
                         </td>
 
@@ -407,10 +440,10 @@ export function MachinesPage() {
                                 .critical_exposure_count
                                 > 0
                                 ? (
-                                  "table-metric "
-                                  + "table-metric--critical"
+                                  "machine-table-value "
+                                  + "machine-table-value--critical"
                                 )
-                                : "table-metric"
+                                : "machine-table-value"
                             }
                           >
                             {
@@ -427,10 +460,10 @@ export function MachinesPage() {
                                 .kev_exposure_count
                                 > 0
                                 ? (
-                                  "table-metric "
-                                  + "table-metric--critical"
+                                  "machine-table-value "
+                                  + "machine-table-value--critical"
                                 )
-                                : "table-metric"
+                                : "machine-table-value"
                             }
                           >
                             {
@@ -440,14 +473,20 @@ export function MachinesPage() {
                           </span>
                         </td>
 
-                        <td>
+                        <td className="machines-table__action">
                           <Link
                             to={
                               `/machines/${machine.machine_id}`
                             }
-                            className="table-action-link"
+                            className="machine-open-link"
+                            aria-label={
+                              `Ouvrir ${machine.hostname}`
+                            }
                           >
-                            Ouvrir
+                            <ChevronRight
+                              size={17}
+                              strokeWidth={1.8}
+                            />
                           </Link>
                         </td>
                       </tr>

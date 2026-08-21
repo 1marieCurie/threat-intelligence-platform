@@ -3,13 +3,24 @@ import {
   useState,
 } from "react";
 
+import type {
+  LucideIcon,
+} from "lucide-react";
+
+import {
+  BadgeCheck,
+  Boxes,
+  CircleHelp,
+  CircleX,
+  Clock3,
+  Monitor,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
+
 import {
   Card,
 } from "../../components/ui/Card";
-
-import {
-  KPICard,
-} from "../../components/ui/KPICard";
 
 import {
   getDashboard,
@@ -34,6 +45,59 @@ import {
 import {
   TopMachinesChart,
 } from "./TopMachinesChart";
+
+
+type StatisticTone =
+  | "default"
+  | "warning"
+  | "critical"
+  | "success";
+
+
+type DashboardStatisticProps = {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  tone?: StatisticTone;
+};
+
+
+function DashboardStatistic({
+  icon: Icon,
+  label,
+  value,
+  tone = "default",
+}: DashboardStatisticProps) {
+  return (
+    <div
+      className={
+        "dashboard-statistic "
+        + `dashboard-statistic--${tone}`
+      }
+    >
+      <span
+        className="dashboard-statistic__icon"
+        aria-hidden="true"
+      >
+        <Icon
+          size={17}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="dashboard-statistic__content">
+        <strong className="dashboard-statistic__value">
+          {value}
+        </strong>
+
+        <span className="dashboard-statistic__label">
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 
 export function DashboardPage() {
   const [
@@ -160,6 +224,12 @@ export function DashboardPage() {
   if (!dashboard) {
     return (
       <main className="security-page">
+        <header className="security-page-header">
+          <h1>
+            Dashboard
+          </h1>
+        </header>
+
         <Card>
           <div className="empty-state">
             Aucune donnée Dashboard
@@ -184,39 +254,48 @@ export function DashboardPage() {
         </p>
       </header>
 
-      <section className="kpi-grid">
-        <KPICard
+      <section
+        className="dashboard-statistics"
+        aria-label="Indicateurs principaux"
+      >
+        <DashboardStatistic
+          icon={Monitor}
           label="Machines"
           value={
             dashboard.machine_count
           }
         />
 
-        <KPICard
-          label="Composants inventoriés"
+        <DashboardStatistic
+          icon={Boxes}
+          label="Composants"
           value={
             dashboard.component_count
           }
         />
 
-        <KPICard
-          label="Expositions confirmed"
+        <DashboardStatistic
+          icon={BadgeCheck}
+          label="Confirmed"
           value={
             dashboard
               .confirmed_exposure_count
           }
+          tone="success"
         />
 
-        <KPICard
-          label="Expositions potential"
+        <DashboardStatistic
+          icon={CircleHelp}
+          label="Potential"
           value={
             dashboard
               .potential_exposure_count
           }
         />
 
-        <KPICard
-          label="Expositions critiques"
+        <DashboardStatistic
+          icon={TriangleAlert}
+          label="Critiques"
           value={
             dashboard
               .critical_exposure_count
@@ -230,7 +309,8 @@ export function DashboardPage() {
           }
         />
 
-        <KPICard
+        <DashboardStatistic
+          icon={Zap}
           label="KEV"
           value={
             dashboard
@@ -245,8 +325,9 @@ export function DashboardPage() {
           }
         />
 
-        <KPICard
-          label="Alertes pending"
+        <DashboardStatistic
+          icon={Clock3}
+          label="Pending"
           value={
             dashboard
               .pending_alert_count
@@ -260,8 +341,9 @@ export function DashboardPage() {
           }
         />
 
-        <KPICard
-          label="Alertes failed"
+        <DashboardStatistic
+          icon={CircleX}
+          label="Failed"
           value={
             dashboard
               .failed_alert_count
@@ -276,175 +358,188 @@ export function DashboardPage() {
         />
       </section>
 
-      <section className="dashboard-charts">
-        <ChartContainer
-          title="Répartition des priorités"
-          description={
-            "Expositions par niveau de priorité."
-          }
-        >
-          <PriorityDonut
-            distribution={
-              dashboard
-                .priority_distribution
+      <section className="dashboard-workspace">
+        <div className="dashboard-main-column">
+          <ChartContainer
+            title="Machines les plus exposées"
+            description={
+              "Top 5 selon le nombre "
+              + "d'expositions détectées."
             }
-          />
-        </ChartContainer>
+          >
+            <TopMachinesChart
+              machines={
+                dashboard.top_machines
+              }
+            />
+          </ChartContainer>
 
-        <ChartContainer
-          title="Applicabilité"
-          description={
-            "Comparaison confirmed et potential."
-          }
-        >
-          <ApplicabilityChart
-            confirmed={
-              dashboard
-                .confirmed_exposure_count
+          <ChartContainer
+            title="Applicabilité"
+            description={
+              "Répartition entre les expositions "
+              + "confirmed et potential."
             }
-            potential={
-              dashboard
-                .potential_exposure_count
-            }
-          />
-        </ChartContainer>
+          >
+            <ApplicabilityChart
+              confirmed={
+                dashboard
+                  .confirmed_exposure_count
+              }
+              potential={
+                dashboard
+                  .potential_exposure_count
+              }
+            />
+          </ChartContainer>
 
-        <ChartContainer
-          title="Machines les plus exposées"
-          description={
-            "Top 5 selon le nombre "
-            + "d'expositions détectées."
-          }
-        >
-          <TopMachinesChart
-            machines={
-              dashboard.top_machines
-            }
-          />
-        </ChartContainer>
-      </section>
-
-      <section className="dashboard-columns">
-        <Card>
-          <div className="dashboard-section-header">
-            <div>
+          <Card className="dashboard-panel">
+            <div className="dashboard-section-header">
               <h2>
                 Actions prioritaires
               </h2>
-
-              <p>
-                Calculées par le backend à
-                partir des expositions et
-                alertes persistées.
-              </p>
             </div>
-          </div>
 
-          {dashboard
-            .priority_actions
-            .length === 0 ? (
-            <div className="dashboard-empty">
-              <strong>
-                Aucune action prioritaire
-              </strong>
+            {dashboard
+              .priority_actions
+              .length === 0 ? (
+              <div className="dashboard-empty">
+                <strong>
+                  Aucune action prioritaire
+                </strong>
 
-              <span>
-                Aucun élément ne nécessite
-                une attention immédiate.
-              </span>
-            </div>
-          ) : (
-            <div className="action-list">
-              {dashboard
-                .priority_actions
-                .map((action) => (
-                  <article
-                    key={action.kind}
-                    className="action-item"
-                  >
-                    <div>
-                      <strong>
-                        {action.title}
-                      </strong>
-
-                      <span>
-                        Priorité{" "}
-                        {action.priority}
+                <span>
+                  Aucun élément ne nécessite
+                  une attention immédiate.
+                </span>
+              </div>
+            ) : (
+              <div className="priority-activity">
+                {dashboard
+                  .priority_actions
+                  .map((action) => (
+                    <article
+                      key={
+                        `${action.kind}-${action.title}`
+                      }
+                      className="priority-activity__item"
+                    >
+                      <span
+                        className="activity-icon activity-icon--warning"
+                        aria-hidden="true"
+                      >
+                        <TriangleAlert
+                          size={14}
+                          strokeWidth={1.8}
+                        />
                       </span>
-                    </div>
 
-                    <strong className="action-count">
-                      {action.count}
-                    </strong>
-                  </article>
-                ))}
-            </div>
-          )}
-        </Card>
+                      <div className="activity-content">
+                        <strong>
+                          {action.title}
+                        </strong>
 
-        <Card>
-          <div className="dashboard-section-header">
-            <div>
+                        <span>
+                          Priorité{" "}
+                          {action.priority}
+                        </span>
+                      </div>
+
+                      <strong className="activity-count">
+                        {action.count}
+                      </strong>
+                    </article>
+                  ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <aside className="dashboard-side-column">
+          <ChartContainer
+            title="Répartition des priorités"
+            description={
+              "Expositions par niveau "
+              + "de priorité."
+            }
+          >
+            <PriorityDonut
+              distribution={
+                dashboard
+                  .priority_distribution
+              }
+            />
+          </ChartContainer>
+
+          <Card className="dashboard-panel">
+            <div className="dashboard-section-header">
               <h2>
                 Dernières alertes
               </h2>
-
-              <p>
-                Alertes persistées les
-                plus récentes.
-              </p>
             </div>
-          </div>
 
-          {dashboard
-            .latest_alerts
-            .length === 0 ? (
-            <div className="dashboard-empty">
-              <strong>
-                Aucune alerte
-              </strong>
+            {dashboard
+              .latest_alerts
+              .length === 0 ? (
+              <div className="dashboard-empty">
+                <strong>
+                  Aucune alerte
+                </strong>
 
-              <span>
-                Aucune alerte n'est
-                actuellement enregistrée.
-              </span>
-            </div>
-          ) : (
-            <div className="alert-list">
-              {dashboard
-                .latest_alerts
-                .map((alert) => (
-                  <article
-                    key={
-                      alert.alert_id
-                    }
-                    className="alert-row"
-                  >
-                    <div>
-                      <strong>
-                        {alert.hostname}
-                      </strong>
-
-                      <span>
-                        {alert.alert_type}
-                      </span>
-                    </div>
-
-                    <span
-                      className={
-                        "alert-status "
-                        + (
-                          `alert-status--${alert.status}`
-                        )
+                <span>
+                  Aucune alerte n'est
+                  actuellement enregistrée.
+                </span>
+              </div>
+            ) : (
+              <div className="alert-activity">
+                {dashboard
+                  .latest_alerts
+                  .map((alert) => (
+                    <article
+                      key={
+                        alert.alert_id
                       }
+                      className="alert-activity__item"
                     >
-                      {alert.status}
-                    </span>
-                  </article>
-                ))}
-            </div>
-          )}
-        </Card>
+                      <div className="activity-timeline">
+                        <span
+                          className="activity-icon"
+                          aria-hidden="true"
+                        >
+                          <TriangleAlert
+                            size={13}
+                            strokeWidth={1.8}
+                          />
+                        </span>
+                      </div>
+
+                      <div className="activity-content">
+                        <strong>
+                          {alert.hostname}
+                        </strong>
+
+                        <span>
+                          {alert.alert_type}
+                        </span>
+
+                        <span
+                          className={
+                            "activity-status "
+                            + (
+                              `activity-status--${alert.status}`
+                            )
+                          }
+                        >
+                          {alert.status}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+              </div>
+            )}
+          </Card>
+        </aside>
       </section>
     </main>
   );

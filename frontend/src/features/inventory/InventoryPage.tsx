@@ -4,6 +4,22 @@ import {
 } from "react";
 
 import {
+  Check,
+  Copy,
+  Database,
+  FileText,
+  Info,
+  Monitor,
+  Package,
+  Terminal,
+  Upload,
+} from "lucide-react";
+
+import type {
+  LucideIcon,
+} from "lucide-react";
+
+import {
   Button,
 } from "../../components/ui/Button";
 
@@ -468,6 +484,82 @@ function displayImportStatus(
 }
 
 
+type InventoryStepProps = {
+  number: number;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+};
+
+
+function InventoryStep({
+  number,
+  icon: Icon,
+  title,
+  description,
+}: InventoryStepProps) {
+  return (
+    <div className="inventory-flow-step">
+      <span className="inventory-flow-step__icon">
+        <Icon
+          size={16}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="inventory-flow-step__content">
+        <span className="inventory-flow-step__number">
+          Étape {number}
+        </span>
+
+        <strong>
+          {title}
+        </strong>
+
+        <p>
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+type InventoryFactProps = {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+};
+
+
+function InventoryFact({
+  icon: Icon,
+  label,
+  value,
+}: InventoryFactProps) {
+  return (
+    <div className="inventory-fact">
+      <span className="inventory-fact__icon">
+        <Icon
+          size={15}
+          strokeWidth={1.8}
+        />
+      </span>
+
+      <div className="inventory-fact__content">
+        <strong>
+          {value}
+        </strong>
+
+        <span>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
 export function InventoryPage() {
   const [
     script,
@@ -818,454 +910,486 @@ export function InventoryPage() {
         </div>
       </header>
 
-      <section className="inventory-flow-grid">
-        <Card className="inventory-step-card">
-          <span className="inventory-step-number">
-            1
-          </span>
+      <section
+        className="inventory-flow"
+        aria-label="Étapes d'import d'un inventaire"
+      >
+        <InventoryStep
+          number={1}
+          icon={FileText}
+          title="Récupérer le script"
+          description={
+            "Enregistrer le collecteur "
+            + "PowerShell sur la machine."
+          }
+        />
 
-          <strong>
-            Copier le script
-          </strong>
+        <InventoryStep
+          number={2}
+          icon={Terminal}
+          title="Lancer la collecte"
+          description={
+            "Exécuter le script pour "
+            + "produire inventory.json."
+          }
+        />
 
-          <p>
-            Enregistrez le collecteur
-            PowerShell sur la machine
-            Windows à inventorier.
-          </p>
-        </Card>
-
-        <Card className="inventory-step-card">
-          <span className="inventory-step-number">
-            2
-          </span>
-
-          <strong>
-            Exécuter la collecte
-          </strong>
-
-          <p>
-            Lancez le script pour produire
-            un fichier inventory.json.
-          </p>
-        </Card>
-
-        <Card className="inventory-step-card">
-          <span className="inventory-step-number">
-            3
-          </span>
-
-          <strong>
-            Importer le JSON
-          </strong>
-
-          <p>
-            Sélectionnez le fichier généré
-            et envoyez-le à la plateforme.
-          </p>
-        </Card>
+        <InventoryStep
+          number={3}
+          icon={Upload}
+          title="Importer le JSON"
+          description={
+            "Valider puis envoyer "
+            + "l'inventaire à la plateforme."
+          }
+        />
       </section>
 
-      <Card>
-        <div className="inventory-section-header">
-          <div>
-            <span className="inventory-section-eyebrow">
-              Étape 1
-            </span>
+      <section className="inventory-workspace">
+        <Card className="inventory-panel inventory-collector-panel">
+          <div className="inventory-section-header">
+            <div className="inventory-section-title">
+              <span className="inventory-section-icon">
+                <Terminal
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </span>
 
-            <h2>
-              Collecteur Windows
-            </h2>
-
-            <p>
-              Agent officiel inventory/v1.
-              Il collecte les applications
-              Windows, les packages Python
-              globaux et les packages npm
-              globaux disponibles.
-            </p>
-          </div>
-
-          <span className="inventory-platform-badge">
-            Windows
-          </span>
-        </div>
-
-        {isScriptLoading && (
-          <div className="loading-state">
-            <span
-              className="spinner"
-              aria-hidden="true"
-            />
-
-            <span>
-              Chargement du script...
-            </span>
-          </div>
-        )}
-
-        {scriptError && (
-          <div className="error-state">
-            <strong>
-              Script indisponible
-            </strong>
-
-            <span>
-              {scriptError}
-            </span>
-          </div>
-        )}
-
-        {!isScriptLoading
-          && !scriptError
-          && script && (
-          <>
-            <div className="inventory-code-toolbar">
               <div>
-                <strong>
-                  collect_inventory.ps1
-                </strong>
-
-                <span>
-                  PowerShell
+                <span className="inventory-section-eyebrow">
+                  Collecteur
                 </span>
-              </div>
 
-              <Button
-                type="button"
-                className="inventory-secondary-button"
-                onClick={
-                  handleCopyScript
-                }
-              >
-                {scriptCopied
-                  ? "Copié"
-                  : "Copier le script"}
-              </Button>
-            </div>
-
-            <pre className="inventory-code">
-              <code>
-                {script}
-              </code>
-            </pre>
-
-            <div className="inventory-command-section">
-              <div>
-                <strong>
-                  Commande d'exécution
-                </strong>
+                <h2>
+                  Collecteur Windows
+                </h2>
 
                 <p>
-                  Après avoir enregistré le
-                  script sous
-                  collect_inventory.ps1,
-                  exécutez cette commande
-                  dans PowerShell.
+                  Agent officiel inventory/v1.
+                  Il collecte les applications
+                  Windows, les packages Python
+                  globaux et les packages npm
+                  globaux disponibles.
                 </p>
               </div>
+            </div>
 
-              <div className="inventory-command">
-                <code>
-                  {WINDOWS_COMMAND}
-                </code>
+            <span className="inventory-platform-badge">
+              <Monitor
+                size={13}
+                strokeWidth={1.8}
+              />
+
+              Windows
+            </span>
+          </div>
+
+          {isScriptLoading && (
+            <div className="loading-state">
+              <span
+                className="spinner"
+                aria-hidden="true"
+              />
+
+              <span>
+                Chargement du script...
+              </span>
+            </div>
+          )}
+
+          {scriptError && (
+            <div className="error-state">
+              <strong>
+                Script indisponible
+              </strong>
+
+              <span>
+                {scriptError}
+              </span>
+            </div>
+          )}
+
+          {!isScriptLoading
+            && !scriptError
+            && script && (
+            <>
+              <div className="inventory-code-toolbar">
+                <div className="inventory-code-file">
+                  <FileText
+                    size={15}
+                    strokeWidth={1.8}
+                  />
+
+                  <div>
+                    <strong>
+                      collect_inventory.ps1
+                    </strong>
+
+                    <span>
+                      PowerShell
+                    </span>
+                  </div>
+                </div>
 
                 <Button
                   type="button"
-                  className="inventory-secondary-button"
+                  className="inventory-code-button"
                   onClick={
-                    handleCopyCommand
+                    handleCopyScript
                   }
                 >
-                  {commandCopied
-                    ? "Copiée"
+                  {scriptCopied ? (
+                    <Check
+                      size={14}
+                      strokeWidth={2}
+                    />
+                  ) : (
+                    <Copy
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                  )}
+
+                  {scriptCopied
+                    ? "Copié"
                     : "Copier"}
                 </Button>
               </div>
 
-              <p className="inventory-command-note">
-                Le fichier inventory.json
-                sera généré dans le dossier
-                courant. L'identifiant de la
-                machine est conservé entre
-                les collectes.
-              </p>
-            </div>
-          </>
-        )}
-      </Card>
+              <pre className="inventory-code">
+                <code>
+                  {script}
+                </code>
+              </pre>
 
-      <Card>
-        <div className="inventory-section-header">
-          <div>
-            <span className="inventory-section-eyebrow">
-              Étape 2
+              <div className="inventory-command-section">
+                <div className="inventory-command-heading">
+                  <Terminal
+                    size={15}
+                    strokeWidth={1.8}
+                  />
+
+                  <div>
+                    <strong>
+                      Commande d'exécution
+                    </strong>
+
+                    <p>
+                      Après avoir enregistré
+                      collect_inventory.ps1,
+                      exécutez cette commande
+                      dans PowerShell.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="inventory-command">
+                  <code>
+                    {WINDOWS_COMMAND}
+                  </code>
+
+                  <button
+                    type="button"
+                    className="inventory-copy-command"
+                    onClick={
+                      handleCopyCommand
+                    }
+                    aria-label="Copier la commande"
+                  >
+                    {commandCopied ? (
+                      <Check
+                        size={14}
+                        strokeWidth={2}
+                      />
+                    ) : (
+                      <Copy
+                        size={14}
+                        strokeWidth={1.8}
+                      />
+                    )}
+
+                    <span>
+                      {commandCopied
+                        ? "Copiée"
+                        : "Copier"}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="inventory-note">
+                  <Info
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+
+                  <p>
+                    Le fichier inventory.json
+                    sera généré dans le dossier
+                    courant. L'identifiant de la
+                    machine est conservé entre
+                    les collectes.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card className="inventory-panel inventory-import-panel">
+          <div className="inventory-section-header">
+            <div className="inventory-section-title">
+              <span className="inventory-section-icon">
+                <Upload
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </span>
+
+              <div>
+                <span className="inventory-section-eyebrow">
+                  Import
+                </span>
+
+                <h2>
+                  Importer l'inventaire
+                </h2>
+
+                <p>
+                  Sélectionnez le fichier
+                  inventory.json généré par
+                  le collecteur Windows.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <label className="inventory-file-picker">
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(
+                event,
+              ) => {
+                const file =
+                  event
+                    .target
+                    .files?.[0]
+                  ?? null;
+
+                void handleFileChange(
+                  file,
+                );
+              }}
+            />
+
+            <span className="inventory-file-picker__icon">
+              <Upload
+                size={18}
+                strokeWidth={1.7}
+              />
             </span>
 
-            <h2>
-              Importer l'inventaire
-            </h2>
-
-            <p>
-              Sélectionnez le fichier
-              inventory.json généré par le
-              collecteur Windows.
-            </p>
-          </div>
-        </div>
-
-        <label className="inventory-file-picker">
-          <input
-            type="file"
-            accept=".json,application/json"
-            onChange={(
-              event,
-            ) => {
-              const file =
-                event
-                  .target
-                  .files?.[0]
-                ?? null;
-
-              void handleFileChange(
-                file,
-              );
-            }}
-          />
-
-          <span className="inventory-file-picker__icon">
-            ↑
-          </span>
-
-          <strong>
-            Sélectionner inventory.json
-          </strong>
-
-          <span>
-            Fichier JSON inventory/v1
-          </span>
-        </label>
-
-        {fileError && (
-          <div className="inventory-inline-error">
             <strong>
-              Fichier invalide
+              Sélectionner inventory.json
             </strong>
 
             <span>
-              {fileError}
+              Fichier JSON inventory/v1
             </span>
-          </div>
-        )}
+          </label>
 
-        {inventory
-          && selectedFile && (
-          <div className="inventory-file-summary">
-            <div>
-              <span>
-                Fichier
-              </span>
-
+          {fileError && (
+            <div className="inventory-inline-error">
               <strong>
-                {selectedFile.name}
+                Fichier invalide
               </strong>
-            </div>
 
-            <div>
               <span>
-                Machine
+                {fileError}
               </span>
+            </div>
+          )}
 
-              <strong>
-                {
+          {inventory
+            && selectedFile && (
+            <section className="inventory-file-details">
+              <InventoryFact
+                icon={FileText}
+                label="Fichier"
+                value={
+                  selectedFile.name
+                }
+              />
+
+              <InventoryFact
+                icon={Monitor}
+                label="Machine"
+                value={
                   inventory
                     .machine
                     .hostname
                 }
-              </strong>
-            </div>
+              />
 
-            <div>
-              <span>
-                Système
-              </span>
-
-              <strong>
-                {
+              <InventoryFact
+                icon={Database}
+                label="Système"
+                value={
                   inventory
                     .machine
                     .os_name
                 }
-              </strong>
-            </div>
+              />
 
-            <div>
-              <span>
-                Composants
-              </span>
-
-              <strong>
-                {
+              <InventoryFact
+                icon={Package}
+                label="Composants"
+                value={
                   inventory
                     .components
                     .length
                 }
-              </strong>
-            </div>
+              />
 
-            <div>
-              <span>
-                Agent
-              </span>
-
-              <strong>
-                {
+              <InventoryFact
+                icon={Terminal}
+                label="Agent"
+                value={
                   inventory
                     .agent
                     .version
                 }
-              </strong>
-            </div>
+              />
 
-            <div>
-              <span>
-                Schéma
-              </span>
-
-              <strong>
-                {
+              <InventoryFact
+                icon={FileText}
+                label="Schéma"
+                value={
                   inventory
                     .schema_version
                 }
+              />
+            </section>
+          )}
+
+          {inventory && (
+            <div className="inventory-import-actions">
+              <Button
+                type="button"
+                disabled={
+                  isImporting
+                }
+                onClick={() => {
+                  void handleImport();
+                }}
+              >
+                <Upload
+                  size={14}
+                  strokeWidth={1.8}
+                />
+
+                {isImporting
+                  ? "Import en cours..."
+                  : "Importer l'inventaire"}
+              </Button>
+            </div>
+          )}
+
+          {isImporting && (
+            <div className="loading-state inventory-import-loading">
+              <span
+                className="spinner"
+                aria-hidden="true"
+              />
+
+              <span>
+                Enregistrement de
+                l'inventaire...
+              </span>
+            </div>
+          )}
+
+          {importError && (
+            <div className="inventory-inline-error">
+              <strong>
+                Import impossible
               </strong>
+
+              <span>
+                {importError}
+              </span>
             </div>
-          </div>
-        )}
+          )}
 
-        {inventory && (
-          <div className="inventory-import-actions">
-            <Button
-              type="button"
-              disabled={
-                isImporting
-              }
-              onClick={() => {
-                void handleImport();
-              }}
-            >
-              {isImporting
-                ? "Import en cours..."
-                : "Importer l'inventaire"}
-            </Button>
-          </div>
-        )}
-
-        {isImporting && (
-          <div className="loading-state inventory-import-loading">
-            <span
-              className="spinner"
-              aria-hidden="true"
-            />
-
-            <span>
-              Enregistrement de
-              l'inventaire...
-            </span>
-          </div>
-        )}
-
-        {importError && (
-          <div className="inventory-inline-error">
-            <strong>
-              Import impossible
-            </strong>
-
-            <span>
-              {importError}
-            </span>
-          </div>
-        )}
-
-        {importResult && (
-          <div className="inventory-success">
-            <div className="inventory-success-header">
-              <div className="inventory-success-icon">
-                ✓
-              </div>
-
-              <div>
-                <strong>
-                  {
-                    displayImportStatus(
-                      importResult,
-                    )
-                  }
-                </strong>
-
-                <span>
-                  L'inventaire a été traité
-                  correctement par la
-                  plateforme.
-                </span>
-              </div>
-            </div>
-
-            <div className="inventory-result-grid">
-              <div>
-                <span>
-                  Composants
+          {importResult && (
+            <section className="inventory-success">
+              <div className="inventory-success-header">
+                <span className="inventory-success-icon">
+                  <Check
+                    size={16}
+                    strokeWidth={2}
+                  />
                 </span>
 
-                <strong>
-                  {
+                <div>
+                  <strong>
+                    {
+                      displayImportStatus(
+                        importResult,
+                      )
+                    }
+                  </strong>
+
+                  <span>
+                    L'inventaire a été traité
+                    correctement par la
+                    plateforme.
+                  </span>
+                </div>
+              </div>
+
+              <div className="inventory-result-stats">
+                <InventoryFact
+                  icon={Package}
+                  label="Composants"
+                  value={
                     importResult
                       .component_count
                   }
-                </strong>
-              </div>
+                />
 
-              <div>
-                <span>
-                  Ajoutés
-                </span>
-
-                <strong>
-                  {
+                <InventoryFact
+                  icon={Database}
+                  label="Ajoutés"
+                  value={
                     importResult
                       .inserted_components
                   }
-                </strong>
-              </div>
+                />
 
-              <div>
-                <span>
-                  Modifiés
-                </span>
-
-                <strong>
-                  {
+                <InventoryFact
+                  icon={FileText}
+                  label="Modifiés"
+                  value={
                     importResult
                       .updated_components
                   }
-                </strong>
-              </div>
+                />
 
-              <div>
-                <span>
-                  Supprimés
-                </span>
-
-                <strong>
-                  {
+                <InventoryFact
+                  icon={Package}
+                  label="Supprimés"
+                  value={
                     importResult
                       .deleted_components
                   }
-                </strong>
+                />
               </div>
-            </div>
-          </div>
-        )}
-      </Card>
+            </section>
+          )}
+        </Card>
+      </section>
     </main>
   );
 }
