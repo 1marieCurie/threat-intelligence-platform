@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import (
     UTC,
@@ -30,6 +31,11 @@ from application.security.refresh_tokens import (
 )
 from domain.user_account import (
     UserAccount,
+)
+
+
+_ORGANIZATION_SLUG_PATTERN = re.compile(
+    r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
 
 
@@ -176,17 +182,15 @@ class UserAuthenticationService:
     def login(
         self,
         *,
-        organization_id: UUID,
+        organization_slug: str,
         email: str,
         password: str,
     ) -> AuthenticationTokenPair:
-        if not isinstance(
-            organization_id,
-            UUID,
-        ):
-            raise TypeError(
-                "organization_id must be UUID"
+        normalized_slug = (
+            self._normalize_organization_slug(
+                organization_slug
             )
+        )
 
         normalized_email = (
             self._normalize_email(
@@ -218,8 +222,8 @@ class UserAuthenticationService:
             authentication_record = (
                 repository
                 .find_user_for_login(
-                    organization_id=(
-                        organization_id
+                    organization_slug=(
+                        normalized_slug
                     ),
                     email=(
                         normalized_email
@@ -276,7 +280,7 @@ class UserAuthenticationService:
 
                 repository.update_password_hash(
                     organization_id=(
-                        organization_id
+                        user.organization_id
                     ),
                     user_id=user.id,
                     password_hash=(
@@ -665,6 +669,37 @@ class UserAuthenticationService:
             )
 
         return principal
+
+    @staticmethod
+    def _normalize_organization_slug(
+        organization_slug: str,
+    ) -> str:
+        if not isinstance(
+            organization_slug,
+            str,
+        ):
+            raise InvalidCredentialsError(
+                "Invalid email or password"
+            )
+
+        normalized = (
+            organization_slug
+            .strip()
+            .lower()
+        )
+
+        if (
+            not normalized
+            or len(normalized) > 63
+            or _ORGANIZATION_SLUG_PATTERN
+            .fullmatch(normalized)
+            is None
+        ):
+            raise InvalidCredentialsError(
+                "Invalid email or password"
+            )
+
+        return normalized
 
     @staticmethod
     def _normalize_email(

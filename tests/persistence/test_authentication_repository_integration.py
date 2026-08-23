@@ -152,6 +152,8 @@ def authentication_users(
         UUID,
         UUID,
         UUID,
+        str,
+        str,
     ]
 ]:
     first_organization_id = (
@@ -164,6 +166,16 @@ def authentication_users(
 
     first_user_id = uuid4()
     second_user_id = uuid4()
+
+    first_slug = (
+        "auth-test-a-"
+        + uuid4().hex[:12]
+    )
+
+    second_slug = (
+        "auth-test-b-"
+        + uuid4().hex[:12]
+    )
 
     shared_email = (
         "shared-auth@example.test"
@@ -183,6 +195,7 @@ def authentication_users(
                         "Auth Test A "
                         f"{uuid4().hex}"
                     ),
+                    slug=first_slug,
                     is_active=True,
                     created_at=NOW,
                 ),
@@ -194,6 +207,7 @@ def authentication_users(
                         "Auth Test B "
                         f"{uuid4().hex}"
                     ),
+                    slug=second_slug,
                     is_active=True,
                     created_at=NOW,
                 ),
@@ -246,6 +260,8 @@ def authentication_users(
             first_organization_id,
             first_user_id,
             second_organization_id,
+            first_slug,
+            second_slug,
         )
 
     finally:
@@ -295,7 +311,7 @@ def authentication_users(
             session.commit()
 
 
-def test_user_login_lookup_is_tenant_scoped(
+def test_user_login_lookup_is_tenant_scoped_by_slug(
     authentication_session_factory: (
         AuthenticationSessionFactory
     ),
@@ -303,12 +319,16 @@ def test_user_login_lookup_is_tenant_scoped(
         UUID,
         UUID,
         UUID,
+        str,
+        str,
     ],
 ) -> None:
     (
         first_organization_id,
         first_user_id,
         second_organization_id,
+        first_slug,
+        second_slug,
     ) = authentication_users
 
     with (
@@ -323,8 +343,8 @@ def test_user_login_lookup_is_tenant_scoped(
 
         first = (
             repository.find_user_for_login(
-                organization_id=(
-                    first_organization_id
+                organization_slug=(
+                    first_slug.upper()
                 ),
                 email=(
                     "SHARED-AUTH@EXAMPLE.TEST"
@@ -334,8 +354,8 @@ def test_user_login_lookup_is_tenant_scoped(
 
         second = (
             repository.find_user_for_login(
-                organization_id=(
-                    second_organization_id
+                organization_slug=(
+                    second_slug
                 ),
                 email=(
                     "shared-auth@example.test"
@@ -345,7 +365,9 @@ def test_user_login_lookup_is_tenant_scoped(
 
         missing = (
             repository.find_user_for_login(
-                organization_id=uuid4(),
+                organization_slug=(
+                    "missing-organization"
+                ),
                 email=(
                     "shared-auth@example.test"
                 ),
@@ -383,6 +405,72 @@ def test_user_login_lookup_is_tenant_scoped(
     assert missing is None
 
 
+def test_deactivated_organization_is_hidden_from_authentication(
+    authentication_session_factory: (
+        AuthenticationSessionFactory
+    ),
+    authentication_users: tuple[
+        UUID,
+        UUID,
+        UUID,
+        str,
+        str,
+    ],
+) -> None:
+    (
+        first_organization_id,
+        first_user_id,
+        _,
+        first_slug,
+        _,
+    ) = authentication_users
+
+    with (
+        authentication_session_factory()
+        as session
+    ):
+        organization = session.get(
+            OrganizationModel,
+            first_organization_id,
+        )
+
+        assert organization is not None
+
+        organization.is_active = False
+        session.commit()
+
+    with (
+        authentication_session_factory()
+        as session
+    ):
+        repository = (
+            SqlAlchemyAuthenticationRepository(
+                session=session
+            )
+        )
+
+        login_record = (
+            repository.find_user_for_login(
+                organization_slug=(
+                    first_slug
+                ),
+                email=(
+                    "shared-auth@example.test"
+                ),
+            )
+        )
+
+        user = repository.find_user_by_id(
+            organization_id=(
+                first_organization_id
+            ),
+            user_id=first_user_id,
+        )
+
+    assert login_record is None
+    assert user is None
+
+
 def test_authentication_session_lifecycle(
     authentication_session_factory: (
         AuthenticationSessionFactory
@@ -391,11 +479,15 @@ def test_authentication_session_lifecycle(
         UUID,
         UUID,
         UUID,
+        str,
+        str,
     ],
 ) -> None:
     (
         organization_id,
         user_id,
+        _,
+        _,
         _,
     ) = authentication_users
 

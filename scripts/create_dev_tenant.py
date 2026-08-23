@@ -49,6 +49,10 @@ DEV_ORGANIZATION_NAME = (
     "Threat Intelligence Development"
 )
 
+DEV_ORGANIZATION_SLUG = (
+    "threat-intelligence-development"
+)
+
 DEV_STAFF_EMAIL = (
     "staff@tip.local"
 )
@@ -115,6 +119,7 @@ def _get_or_create_organization(
     organization = OrganizationModel(
         id=uuid4(),
         name=DEV_ORGANIZATION_NAME,
+        slug=DEV_ORGANIZATION_SLUG,
         is_active=True,
         created_at=datetime.now(
             UTC
@@ -305,6 +310,11 @@ def main() -> None:
             print(
                 "organization_id="
                 f"{organization.id}"
+            )
+
+            print(
+                "organization_slug="
+                f"{organization.slug}"
             )
 
             print(

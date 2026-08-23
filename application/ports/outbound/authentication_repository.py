@@ -31,7 +31,7 @@ class AuthenticationRepository(
     def find_user_for_login(
         self,
         *,
-        organization_id: UUID,
+        organization_slug: str,
         email: str,
     ) -> (
         UserAuthenticationRecord

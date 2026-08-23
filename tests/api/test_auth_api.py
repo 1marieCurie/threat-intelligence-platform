@@ -31,6 +31,7 @@ from infrastructure.api.auth_router import (
 
 
 ORGANIZATION_ID = uuid4()
+ORGANIZATION_SLUG = "tip-local"
 USER_ID = uuid4()
 
 NOW = datetime(
@@ -128,8 +129,8 @@ def test_login_returns_access_token_and_sets_refresh_cookie(
     response = client.post(
         "/api/v1/auth/login",
         json={
-            "organization_id": str(
-                ORGANIZATION_ID
+            "organization_slug": (
+                ORGANIZATION_SLUG
             ),
             "email": (
                 "staff@tip.local"
@@ -206,8 +207,8 @@ def test_login_returns_access_token_and_sets_refresh_cookie(
     )
 
     service.login.assert_called_once_with(
-        organization_id=(
-            ORGANIZATION_ID
+        organization_slug=(
+            ORGANIZATION_SLUG
         ),
         email=(
             "staff@tip.local"
@@ -216,6 +217,35 @@ def test_login_returns_access_token_and_sets_refresh_cookie(
             "StaffDev2026!"
         ),
     )
+
+
+def test_login_requires_organization_slug(
+) -> None:
+    service = Mock(
+        spec=(
+            UserAuthenticationService
+        )
+    )
+
+    client = _client(
+        service
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": (
+                "staff@tip.local"
+            ),
+            "password": (
+                "StaffDev2026!"
+            ),
+        },
+    )
+
+    assert response.status_code == 422
+
+    service.login.assert_not_called()
 
 
 def test_login_rejects_invalid_credentials(
@@ -239,8 +269,8 @@ def test_login_rejects_invalid_credentials(
     response = client.post(
         "/api/v1/auth/login",
         json={
-            "organization_id": str(
-                ORGANIZATION_ID
+            "organization_slug": (
+                ORGANIZATION_SLUG
             ),
             "email": (
                 "staff@tip.local"

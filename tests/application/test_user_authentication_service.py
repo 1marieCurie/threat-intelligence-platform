@@ -43,6 +43,7 @@ NOW = datetime.now(
 )
 
 ORGANIZATION_ID = uuid4()
+ORGANIZATION_SLUG = "tip-local"
 USER_ID = uuid4()
 
 PASSWORD = (
@@ -63,8 +64,18 @@ class FakeAuthenticationRepository:
             UserAuthenticationRecord
             | None
         ),
+        organization_slug: str = (
+            ORGANIZATION_SLUG
+        ),
+        organization_active: bool = True,
     ) -> None:
         self.record = record
+        self.organization_slug = (
+            organization_slug
+        )
+        self.organization_active = (
+            organization_active
+        )
 
         self.sessions: dict[
             UUID,
@@ -74,15 +85,18 @@ class FakeAuthenticationRepository:
     def find_user_for_login(
         self,
         *,
-        organization_id: UUID,
+        organization_slug: str,
         email: str,
     ):
-        if self.record is None:
+        if (
+            self.record is None
+            or not self.organization_active
+        ):
             return None
 
         if (
-            self.record.user.organization_id
-            != organization_id
+            self.organization_slug
+            != organization_slug
             or self.record.user.email
             != email
         ):
@@ -96,7 +110,10 @@ class FakeAuthenticationRepository:
         organization_id: UUID,
         user_id: UUID,
     ):
-        if self.record is None:
+        if (
+            self.record is None
+            or not self.organization_active
+        ):
             return None
 
         user = self.record.user
@@ -313,6 +330,7 @@ def _build_service(
     user: (
         UserAccount | None
     ) = None,
+    organization_active: bool = True,
 ):
     password_hasher = (
         PasswordHasher()
@@ -336,7 +354,10 @@ def _build_service(
 
     repository = (
         FakeAuthenticationRepository(
-            record=record
+            record=record,
+            organization_active=(
+                organization_active
+            ),
         )
     )
 
@@ -399,8 +420,8 @@ def test_login_creates_session_and_tokens(
     )
 
     result = service.login(
-        organization_id=(
-            ORGANIZATION_ID
+        organization_slug=(
+            " TIP-LOCAL "
         ),
         email="STAFF@TIP.LOCAL",
         password=PASSWORD,
@@ -416,13 +437,8 @@ def test_login_creates_session_and_tokens(
         == "bearer"
     )
 
-    assert (
-        result.access_token
-    )
-
-    assert (
-        result.refresh_token
-    )
+    assert result.access_token
+    assert result.refresh_token
 
     assert len(
         repository.sessions
@@ -467,8 +483,8 @@ def test_login_rejects_wrong_password(
         InvalidCredentialsError
     ):
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password="WrongPassword!",
@@ -478,6 +494,31 @@ def test_login_rejects_wrong_password(
         repository.sessions
         == {}
     )
+
+
+def test_login_rejects_invalid_slug(
+) -> None:
+    (
+        service,
+        repository,
+        _,
+        _,
+    ) = _build_service(
+        user=_user()
+    )
+
+    with pytest.raises(
+        InvalidCredentialsError
+    ):
+        service.login(
+            organization_slug=(
+                "invalid slug!"
+            ),
+            email="staff@tip.local",
+            password=PASSWORD,
+        )
+
+    assert repository.sessions == {}
 
 
 def test_login_rejects_inactive_user(
@@ -497,17 +538,40 @@ def test_login_rejects_inactive_user(
         InvalidCredentialsError
     ):
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password=PASSWORD,
         )
 
-    assert (
-        repository.sessions
-        == {}
+    assert repository.sessions == {}
+
+
+def test_login_rejects_inactive_organization(
+) -> None:
+    (
+        service,
+        repository,
+        _,
+        _,
+    ) = _build_service(
+        user=_user(),
+        organization_active=False,
     )
+
+    with pytest.raises(
+        InvalidCredentialsError
+    ):
+        service.login(
+            organization_slug=(
+                ORGANIZATION_SLUG
+            ),
+            email="staff@tip.local",
+            password=PASSWORD,
+        )
+
+    assert repository.sessions == {}
 
 
 def test_refresh_rotates_refresh_token(
@@ -523,8 +587,8 @@ def test_refresh_rotates_refresh_token(
 
     login_result = (
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password=PASSWORD,
@@ -590,6 +654,37 @@ def test_refresh_rejects_unknown_token(
         )
 
 
+def test_refresh_rejects_deactivated_organization(
+) -> None:
+    (
+        service,
+        repository,
+        _,
+        _,
+    ) = _build_service(
+        user=_user()
+    )
+
+    login_result = service.login(
+        organization_slug=(
+            ORGANIZATION_SLUG
+        ),
+        email="staff@tip.local",
+        password=PASSWORD,
+    )
+
+    repository.organization_active = False
+
+    with pytest.raises(
+        InvalidRefreshTokenError
+    ):
+        service.refresh(
+            refresh_token=(
+                login_result.refresh_token
+            )
+        )
+
+
 def test_authenticate_access_token_returns_user(
 ) -> None:
     (
@@ -603,8 +698,8 @@ def test_authenticate_access_token_returns_user(
 
     login_result = (
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password=PASSWORD,
@@ -632,6 +727,37 @@ def test_authenticate_access_token_returns_user(
     )
 
 
+def test_access_token_rejects_deactivated_organization(
+) -> None:
+    (
+        service,
+        repository,
+        _,
+        _,
+    ) = _build_service(
+        user=_user()
+    )
+
+    login_result = service.login(
+        organization_slug=(
+            ORGANIZATION_SLUG
+        ),
+        email="staff@tip.local",
+        password=PASSWORD,
+    )
+
+    repository.organization_active = False
+
+    with pytest.raises(
+        InvalidAccessTokenError
+    ):
+        service.authenticate_access_token(
+            access_token=(
+                login_result.access_token
+            )
+        )
+
+
 def test_logout_revokes_session(
 ) -> None:
     (
@@ -645,8 +771,8 @@ def test_logout_revokes_session(
 
     login_result = (
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password=PASSWORD,
@@ -692,8 +818,8 @@ def test_access_token_role_change_is_rejected(
 
     login_result = (
         service.login(
-            organization_id=(
-                ORGANIZATION_ID
+            organization_slug=(
+                ORGANIZATION_SLUG
             ),
             email="staff@tip.local",
             password=PASSWORD,

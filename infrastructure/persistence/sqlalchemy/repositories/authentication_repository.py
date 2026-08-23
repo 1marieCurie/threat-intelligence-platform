@@ -23,6 +23,7 @@ from domain.user_account import (
     UserAccount,
 )
 from infrastructure.persistence.models.assets import (
+    OrganizationModel,
     UserAccountModel,
 )
 from infrastructure.persistence.models.auth import (
@@ -46,12 +47,18 @@ class SqlAlchemyAuthenticationRepository:
     def find_user_for_login(
         self,
         *,
-        organization_id: UUID,
+        organization_slug: str,
         email: str,
     ) -> (
         UserAuthenticationRecord
         | None
     ):
+        normalized_slug = (
+            organization_slug
+            .strip()
+            .lower()
+        )
+
         normalized_email = (
             email.strip().lower()
         )
@@ -61,9 +68,17 @@ class SqlAlchemyAuthenticationRepository:
                 self._session.scalar(
                     select(
                         UserAccountModel
-                    ).where(
-                        UserAccountModel.organization_id
-                        == organization_id,
+                    )
+                    .join(
+                        OrganizationModel,
+                        OrganizationModel.id
+                        == UserAccountModel.organization_id,
+                    )
+                    .where(
+                        OrganizationModel.slug
+                        == normalized_slug,
+                        OrganizationModel.is_active
+                        .is_(True),
                         UserAccountModel.email
                         == normalized_email,
                     )
@@ -102,11 +117,19 @@ class SqlAlchemyAuthenticationRepository:
                 self._session.scalar(
                     select(
                         UserAccountModel
-                    ).where(
+                    )
+                    .join(
+                        OrganizationModel,
+                        OrganizationModel.id
+                        == UserAccountModel.organization_id,
+                    )
+                    .where(
                         UserAccountModel.organization_id
                         == organization_id,
                         UserAccountModel.id
                         == user_id,
+                        OrganizationModel.is_active
+                        .is_(True),
                     )
                 )
             )
@@ -302,7 +325,7 @@ class SqlAlchemyAuthenticationRepository:
             ) from error
 
         return (
-            result.rowcount == 1 # pyright: ignore[reportAttributeAccessIssue]
+            result.rowcount == 1  # pyright: ignore[reportAttributeAccessIssue]
         )
 
     def revoke_session(
@@ -338,7 +361,7 @@ class SqlAlchemyAuthenticationRepository:
             ) from error
 
         return (
-            result.rowcount == 1 # pyright: ignore[reportAttributeAccessIssue]
+            result.rowcount == 1  # pyright: ignore[reportAttributeAccessIssue]
         )
 
     @staticmethod

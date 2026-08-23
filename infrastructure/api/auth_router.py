@@ -56,7 +56,10 @@ UserRole = Literal[
 class LoginRequest(
     BaseModel
 ):
-    organization_id: UUID
+    organization_slug: str = Field(
+        min_length=1,
+        max_length=63,
+    )
 
     email: str = Field(
         min_length=3,
@@ -203,9 +206,9 @@ def create_auth_router(
         try:
             result = (
                 service.login(
-                    organization_id=(
+                    organization_slug=(
                         payload
-                        .organization_id
+                        .organization_slug
                     ),
                     email=(
                         payload.email
