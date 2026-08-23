@@ -49,6 +49,10 @@ import {
 } from "./features/url-analysis/URLAnalysisPage";
 
 import {
+  UsersPage,
+} from "./features/users/UsersPage";
+
+import {
   VulnerabilityDetailPage,
 } from "./features/vulnerabilities/VulnerabilityDetailPage";
 
@@ -163,6 +167,13 @@ function SecurityRoutes() {
           path="alertes/:alertId"
           element={
             <AlertDetailPage />
+          }
+        />
+
+        <Route
+          path="utilisateurs"
+          element={
+            <UsersPage />
           }
         />
 

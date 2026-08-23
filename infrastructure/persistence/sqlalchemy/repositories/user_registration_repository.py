@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from uuid import UUID
+
+from sqlalchemy import (
+    func,
+    select,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -63,6 +68,49 @@ class SqlAlchemyUserRegistrationRepository:
 
         return (
             organization_id is not None
+        )
+
+    def user_email_exists(
+        self,
+        *,
+        organization_id: UUID,
+        email: str,
+    ) -> bool:
+        normalized_email = (
+            email.strip().lower()
+        )
+
+        try:
+            user_id = (
+                self._session.scalar(
+                    select(
+                        UserAccountModel.id
+                    )
+                    .where(
+                        UserAccountModel
+                        .organization_id
+                        == organization_id,
+                        func.lower(
+                            UserAccountModel.email
+                        )
+                        == normalized_email,
+                    )
+                    .limit(1)
+                )
+            )
+
+        except SQLAlchemyError as error:
+            raise (
+                UserRegistrationRepositoryError(
+                    (
+                        "Unable to read "
+                        "user email"
+                    )
+                )
+            ) from error
+
+        return (
+            user_id is not None
         )
 
     def add_organization(

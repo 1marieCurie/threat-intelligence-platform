@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
@@ -23,9 +24,13 @@ from application.ports.outbound.user_registration_repository import (
 from application.services.user_registration_service import (
     InvalidRegistrationDataError,
     OrganizationSlugAlreadyExistsError,
+    StaffEmailAlreadyExistsError,
     UserRegistrationService,
 )
 from domain.user_account import UserAccount
+from infrastructure.api.auth_dependencies import (
+    require_security_responsible_user,
+)
 
 
 UserRole = Literal[
@@ -49,6 +54,29 @@ class RegistrationRequest(
     organization_slug: str = Field(
         min_length=1,
         max_length=63,
+    )
+
+    display_name: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+
+    email: str = Field(
+        min_length=3,
+        max_length=320,
+    )
+
+    password: str = Field(
+        min_length=1,
+        max_length=1024,
+    )
+
+
+class StaffAccountRequest(
+    BaseModel
+):
+    model_config = ConfigDict(
+        extra="forbid"
     )
 
     display_name: str = Field(
@@ -116,20 +144,20 @@ def create_registration_router(
         )
 
     router = APIRouter(
-        prefix="/api/v1/auth",
-        tags=[
-            "authentication",
-        ],
+        prefix="/api/v1",
     )
 
     @router.post(
-        "/register",
+        "/auth/register",
         response_model=(
             RegistrationResponse
         ),
         status_code=(
             status.HTTP_201_CREATED
         ),
+        tags=[
+            "authentication",
+        ],
     )
     def register(
         payload: RegistrationRequest,
@@ -167,7 +195,8 @@ def create_registration_router(
         ) as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY
+                    status
+                    .HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=str(error),
             ) from error
@@ -177,7 +206,8 @@ def create_registration_router(
         ) as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    status
+                    .HTTP_503_SERVICE_UNAVAILABLE
                 ),
                 detail=(
                     "Registration service "
@@ -198,6 +228,80 @@ def create_registration_router(
             user=_user_response(
                 result.user
             ),
+        )
+
+    @router.post(
+        "/users/staff",
+        response_model=(
+            RegisteredUserResponse
+        ),
+        status_code=(
+            status.HTTP_201_CREATED
+        ),
+        tags=[
+            "users",
+        ],
+    )
+    def create_staff_account(
+        payload: StaffAccountRequest,
+        current_user: UserAccount = Depends(
+            require_security_responsible_user
+        ),
+    ) -> RegisteredUserResponse:
+        try:
+            user = (
+                service.create_staff_account(
+                    organization_id=(
+                        current_user.organization_id
+                    ),
+                    display_name=(
+                        payload.display_name
+                    ),
+                    email=payload.email,
+                    password=payload.password,
+                )
+            )
+
+        except (
+            StaffEmailAlreadyExistsError
+        ) as error:
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_409_CONFLICT
+                ),
+                detail=(
+                    "Email already exists "
+                    "in organization"
+                ),
+            ) from error
+
+        except (
+            InvalidRegistrationDataError
+        ) as error:
+            raise HTTPException(
+                status_code=(
+                    status
+                    .HTTP_422_UNPROCESSABLE_ENTITY
+                ),
+                detail=str(error),
+            ) from error
+
+        except (
+            UserRegistrationRepositoryError
+        ) as error:
+            raise HTTPException(
+                status_code=(
+                    status
+                    .HTTP_503_SERVICE_UNAVAILABLE
+                ),
+                detail=(
+                    "User provisioning service "
+                    "is temporarily unavailable"
+                ),
+            ) from error
+
+        return _user_response(
+            user
         )
 
     return router

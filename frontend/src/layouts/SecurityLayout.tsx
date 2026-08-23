@@ -45,6 +45,10 @@ const navigationItems:
       path: "/alertes",
     },
     {
+      label: "Utilisateurs",
+      path: "/utilisateurs",
+    },
+    {
       label: "Analyse URL",
       path: "/analyse-url",
     },

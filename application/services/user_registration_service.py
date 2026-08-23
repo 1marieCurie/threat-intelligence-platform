@@ -48,6 +48,12 @@ class OrganizationSlugAlreadyExistsError(
     pass
 
 
+class StaffEmailAlreadyExistsError(
+    UserRegistrationError
+):
+    pass
+
+
 @dataclass(
     frozen=True,
     slots=True,
@@ -244,6 +250,122 @@ class UserRegistrationService:
             organization=organization,
             user=user,
         )
+
+    def create_staff_account(
+        self,
+        *,
+        organization_id: UUID,
+        display_name: str,
+        email: str,
+        password: str,
+    ) -> UserAccount:
+        if not isinstance(
+            organization_id,
+            UUID,
+        ):
+            raise TypeError(
+                "organization_id must be UUID"
+            )
+
+        if organization_id.int == 0:
+            raise ValueError(
+                (
+                    "organization_id must "
+                    "not be nil UUID"
+                )
+            )
+
+        normalized_display_name = (
+            self._normalize_name(
+                display_name,
+                field_name="display_name",
+            )
+        )
+
+        normalized_email = (
+            self._normalize_email(
+                email
+            )
+        )
+
+        normalized_password = (
+            self._validate_password(
+                password
+            )
+        )
+
+        user = UserAccount(
+            id=self._new_id(),
+            organization_id=(
+                organization_id
+            ),
+            email=normalized_email,
+            display_name=(
+                normalized_display_name
+            ),
+            role="staff",
+            is_active=True,
+            created_at=self._now(),
+        )
+
+        password_hash = (
+            self._password_hasher
+            .hash_password(
+                normalized_password
+            )
+        )
+
+        try:
+            with (
+                self._unit_of_work
+                as unit_of_work
+            ):
+                repository = (
+                    unit_of_work.registration
+                )
+
+                if (
+                    repository
+                    .user_email_exists(
+                        organization_id=(
+                            organization_id
+                        ),
+                        email=(
+                            normalized_email
+                        ),
+                    )
+                ):
+                    raise (
+                        StaffEmailAlreadyExistsError(
+                            (
+                                "Email already exists "
+                                "in organization"
+                            )
+                        )
+                    )
+
+                repository.add_user(
+                    user=user,
+                    password_hash=(
+                        password_hash
+                    ),
+                )
+
+                unit_of_work.commit()
+
+        except (
+            UserRegistrationConflictError
+        ) as error:
+            raise (
+                StaffEmailAlreadyExistsError(
+                    (
+                        "Email already exists "
+                        "in organization"
+                    )
+                )
+            ) from error
+
+        return user
 
     @staticmethod
     def _normalize_name(

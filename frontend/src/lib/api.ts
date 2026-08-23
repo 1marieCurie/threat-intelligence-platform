@@ -69,6 +69,13 @@ export type RegistrationResponse = {
 };
 
 
+export type CreateStaffPayload = {
+  display_name: string;
+  email: string;
+  password: string;
+};
+
+
 let accessToken:
   string | null = null;
 
@@ -271,11 +278,7 @@ export async function registerOrganization(
     );
   }
 
-  const result:
-    RegistrationResponse =
-      await response.json();
-
-  return result;
+  return response.json();
 }
 
 
@@ -419,6 +422,58 @@ export async function logout(
 }
 
 
+export async function createStaffAccount(
+  payload: CreateStaffPayload,
+): Promise<AuthUser> {
+  const response =
+    await authenticatedFetch(
+      "/api/v1/users/staff",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify(
+          payload,
+        ),
+      },
+    );
+
+  if (!response.ok) {
+    if (
+      response.status === 409
+    ) {
+      throw new Error(
+        "Cette adresse e-mail est déjà utilisée dans l’organisation.",
+      );
+    }
+
+    if (
+      response.status === 403
+    ) {
+      throw new Error(
+        "Vous n’êtes pas autorisé à créer un compte staff.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Impossible de créer ce compte.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  return response.json();
+}
+
+
 export async function analyzeURL(
   url: string,
 ): Promise<URLAnalysisResult> {
@@ -451,11 +506,7 @@ export async function analyzeURL(
     );
   }
 
-  const payload:
-    URLAnalysisResult =
-      await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
