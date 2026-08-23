@@ -65,8 +65,8 @@ from infrastructure.api.machine_credentials import (
 from infrastructure.bootstrap.machine_vulnerability_processing import (
     build_process_machine_vulnerabilities_service,
 )
-from infrastructure.notifications.disabled_notification_adapter import (
-    DisabledNotificationAdapter,
+from infrastructure.notifications.notification_adapter_factory import (
+    load_notification_port,
 )
 from infrastructure.persistence.sqlalchemy.asset_engine import (
     create_asset_engine,
@@ -76,9 +76,6 @@ from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
 )
 from infrastructure.persistence.sqlalchemy.authentication_unit_of_work import (
     SqlAlchemyAuthenticationUnitOfWork,
-)
-from infrastructure.persistence.sqlalchemy.user_registration_unit_of_work import (
-    SqlAlchemyUserRegistrationUnitOfWork,
 )
 from infrastructure.persistence.sqlalchemy.readers.alert_read_repository import (
     SqlAlchemyAlertReadRepository,
@@ -97,6 +94,9 @@ from infrastructure.persistence.sqlalchemy.readers.vulnerability_read_repository
 )
 from infrastructure.persistence.sqlalchemy.session import (
     create_session_factory,
+)
+from infrastructure.persistence.sqlalchemy.user_registration_unit_of_work import (
+    SqlAlchemyUserRegistrationUnitOfWork,
 )
 
 
@@ -137,7 +137,9 @@ def _require_environment_value(
             f"{name} is not defined"
         )
 
-    normalized = value.strip()
+    normalized = (
+        value.strip()
+    )
 
     if not normalized:
         raise RuntimeError(
@@ -352,7 +354,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Inventaire + traitement automatique des vulnÃ©rabilitÃ©s
+    # Inventaire + traitement automatique des vulnérabilités
     # =========================================================
 
     inventory_unit_of_work = (
@@ -370,7 +372,7 @@ def build_app() -> FastAPI:
     )
 
     notification_port = (
-        DisabledNotificationAdapter()
+        load_notification_port()
     )
 
     vulnerability_processing_service = (
@@ -489,7 +491,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # VulnÃ©rabilitÃ©s
+    # Vulnérabilités
     # =========================================================
 
     vulnerability_repository = (
