@@ -50,6 +50,9 @@ from application.services.list_vulnerabilities_service import (
 from application.services.user_authentication_service import (
     UserAuthenticationService,
 )
+from application.services.user_registration_service import (
+    UserRegistrationService,
+)
 from infrastructure.adapters.outbound.joblib_url_threat_classifier import (
     JoblibURLThreatClassifier,
 )
@@ -73,6 +76,9 @@ from infrastructure.persistence.sqlalchemy.asset_inventory_unit_of_work import (
 )
 from infrastructure.persistence.sqlalchemy.authentication_unit_of_work import (
     SqlAlchemyAuthenticationUnitOfWork,
+)
+from infrastructure.persistence.sqlalchemy.user_registration_unit_of_work import (
+    SqlAlchemyUserRegistrationUnitOfWork,
 )
 from infrastructure.persistence.sqlalchemy.readers.alert_read_repository import (
     SqlAlchemyAlertReadRepository,
@@ -290,6 +296,23 @@ def build_app() -> FastAPI:
         PasswordHasher()
     )
 
+    registration_unit_of_work = (
+        SqlAlchemyUserRegistrationUnitOfWork(
+            session_factory
+        )
+    )
+
+    registration_service = (
+        UserRegistrationService(
+            unit_of_work=(
+                registration_unit_of_work
+            ),
+            password_hasher=(
+                password_hasher
+            ),
+        )
+    )
+
     refresh_token_manager = (
         RefreshTokenManager()
     )
@@ -329,7 +352,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Inventaire + traitement automatique des vulnérabilités
+    # Inventaire + traitement automatique des vulnÃ©rabilitÃ©s
     # =========================================================
 
     inventory_unit_of_work = (
@@ -466,7 +489,7 @@ def build_app() -> FastAPI:
     )
 
     # =========================================================
-    # Vulnérabilités
+    # VulnÃ©rabilitÃ©s
     # =========================================================
 
     vulnerability_repository = (
@@ -557,6 +580,9 @@ def build_app() -> FastAPI:
         ),
         authentication_service=(
             authentication_service
+        ),
+        registration_service=(
+            registration_service
         ),
         auth_refresh_token_ttl_seconds=(
             refresh_token_ttl_seconds

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -9,6 +10,11 @@ from domain._asset_validation import (
     normalize_required_text,
     validate_bool,
     validate_uuid,
+)
+
+
+_SLUG_PATTERN = re.compile(
+    r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
 
 
@@ -22,7 +28,14 @@ class Organization:
     is_active: bool
     created_at: datetime
 
-    def __post_init__(self) -> None:
+    # Valeur par défaut conservée temporairement
+    # pour ne pas casser les anciens chemins métier
+    # qui construisent encore Organization sans slug.
+    slug: str = ""
+
+    def __post_init__(
+        self,
+    ) -> None:
         object.__setattr__(
             self,
             "id",
@@ -31,6 +44,7 @@ class Organization:
                 field_name="id",
             ),
         )
+
         object.__setattr__(
             self,
             "name",
@@ -39,6 +53,7 @@ class Organization:
                 field_name="name",
             ),
         )
+
         object.__setattr__(
             self,
             "is_active",
@@ -47,6 +62,7 @@ class Organization:
                 field_name="is_active",
             ),
         )
+
         object.__setattr__(
             self,
             "created_at",
@@ -55,3 +71,58 @@ class Organization:
                 field_name="created_at",
             ),
         )
+
+        object.__setattr__(
+            self,
+            "slug",
+            self._normalize_slug(
+                self.slug
+            ),
+        )
+
+    @staticmethod
+    def _normalize_slug(
+        value: str,
+    ) -> str:
+        if not isinstance(
+            value,
+            str,
+        ):
+            raise TypeError(
+                "slug must be a string"
+            )
+
+        normalized = (
+            value.strip().lower()
+        )
+
+        # Compatibilité avec les anciens usages
+        # d'Organization qui ne fournissent pas
+        # encore de slug.
+        if not normalized:
+            return ""
+
+        if len(normalized) > 63:
+            raise ValueError(
+                (
+                    "slug must not exceed "
+                    "63 characters"
+                )
+            )
+
+        if (
+            _SLUG_PATTERN.fullmatch(
+                normalized
+            )
+            is None
+        ):
+            raise ValueError(
+                (
+                    "slug must contain only "
+                    "lowercase letters, digits "
+                    "and single hyphens between "
+                    "segments"
+                )
+            )
+
+        return normalized

@@ -41,19 +41,32 @@ const API_BASE_URL =
   ?? "http://127.0.0.1:8000";
 
 
-const DEV_ORGANIZATION_ID =
-  import.meta.env
-    .VITE_DEV_ORGANIZATION_ID;
-
-
 type ApiErrorPayload = {
-  detail?: string;
+  detail?: unknown;
 };
 
 
 type AuthenticationListener = (
   user: AuthUser | null,
 ) => void;
+
+
+export type RegistrationPayload = {
+  organization_name: string;
+  organization_slug: string;
+  display_name: string;
+  email: string;
+  password: string;
+};
+
+
+export type RegistrationResponse = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+
+  user: AuthUser;
+};
 
 
 let accessToken:
@@ -99,7 +112,7 @@ async function readApiError(
 
     if (
       typeof payload.detail
-        === "string"
+      === "string"
       && payload.detail.trim()
     ) {
       return payload.detail;
@@ -109,19 +122,6 @@ async function readApiError(
   }
 
   return fallback;
-}
-
-
-function requireDevelopmentOrganization(
-): string {
-  if (!DEV_ORGANIZATION_ID) {
-    throw new Error(
-      "L'organisation de développement "
-      + "n'est pas configurée.",
-    );
-  }
-
-  return DEV_ORGANIZATION_ID;
 }
 
 
@@ -229,13 +229,61 @@ async function authenticatedFetch(
 }
 
 
+export async function registerOrganization(
+  payload: RegistrationPayload,
+): Promise<RegistrationResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    {
+      method: "POST",
+
+      credentials:
+        "include",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify(
+        payload,
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    if (
+      response.status === 409
+    ) {
+      throw new Error(
+        "Ce slug d’organisation est déjà utilisé.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Inscription impossible.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const result:
+    RegistrationResponse =
+      await response.json();
+
+  return result;
+}
+
+
 export async function login(
+  organizationSlug: string,
   email: string,
   password: string,
 ): Promise<AuthTokenResponse> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
   const response = await fetch(
     `${API_BASE_URL}/api/v1/auth/login`,
     {
@@ -250,8 +298,8 @@ export async function login(
       },
 
       body: JSON.stringify({
-        organization_id:
-          organizationId,
+        organization_slug:
+          organizationSlug,
 
         email,
         password,

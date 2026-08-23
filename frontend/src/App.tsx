@@ -21,6 +21,10 @@ import {
 } from "./features/auth/LoginPage";
 
 import {
+  RegisterPage,
+} from "./features/auth/RegisterPage";
+
+import {
   DashboardPage,
 } from "./features/dashboard/DashboardPage";
 
@@ -213,6 +217,13 @@ function App() {
           path="/connexion"
           element={
             <LoginPage />
+          }
+        />
+
+        <Route
+          path="/inscription"
+          element={
+            <RegisterPage />
           }
         />
 

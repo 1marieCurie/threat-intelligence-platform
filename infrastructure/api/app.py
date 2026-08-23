@@ -41,6 +41,9 @@ from application.services.list_vulnerabilities_service import (
 from application.services.user_authentication_service import (
     UserAuthenticationService,
 )
+from application.services.user_registration_service import (
+    UserRegistrationService,
+)
 
 from infrastructure.api.alerts_router import (
     create_alerts_router,
@@ -62,6 +65,9 @@ from infrastructure.api.inventory_router import (
 )
 from infrastructure.api.machines_router import (
     create_machines_router,
+)
+from infrastructure.api.registration_router import (
+    create_registration_router,
 )
 from infrastructure.api.software_router import (
     create_software_router,
@@ -118,6 +124,9 @@ def create_app(
     authentication_service: (
         UserAuthenticationService | None
     ) = None,
+    registration_service: (
+        UserRegistrationService | None
+    ) = None,
     auth_refresh_token_ttl_seconds: int = (
         30 * 24 * 60 * 60
     ),
@@ -153,6 +162,19 @@ def create_app(
     app.state.user_authentication_service = (
         authentication_service
     )
+
+    app.state.user_registration_service = (
+        registration_service
+    )
+
+    if registration_service is not None:
+        app.include_router(
+            create_registration_router(
+                service=(
+                    registration_service
+                )
+            )
+        )
 
     if authentication_service is not None:
         app.include_router(

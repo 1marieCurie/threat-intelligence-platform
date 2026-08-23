@@ -28,6 +28,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
 
   login: (
+    organizationSlug: string,
     email: string,
     password: string,
   ) => Promise<AuthUser>;
@@ -117,11 +118,13 @@ export function AuthProvider({
 
 
   async function login(
+    organizationSlug: string,
     email: string,
     password: string,
   ): Promise<AuthUser> {
     const result =
       await loginRequest(
+        organizationSlug,
         email,
         password,
       );

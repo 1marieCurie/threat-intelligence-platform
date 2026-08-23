@@ -9,7 +9,6 @@ import type {
 import {
   Link,
   useNavigate,
-  useSearchParams,
 } from "react-router";
 
 import {
@@ -21,30 +20,28 @@ import {
 } from "../../components/ui/Input";
 
 import {
-  useAuth,
-} from "../../context/AuthContext";
+  registerOrganization,
+} from "../../lib/api";
 
 
-export function LoginPage() {
-  const {
-    login,
-  } = useAuth();
-
+export function RegisterPage() {
   const navigate =
     useNavigate();
 
   const [
-    searchParams,
-  ] = useSearchParams();
+    organizationName,
+    setOrganizationName,
+  ] = useState("");
 
   const [
     organizationSlug,
     setOrganizationSlug,
-  ] = useState(
-    searchParams.get(
-      "organization_slug",
-    ) ?? "",
-  );
+  ] = useState("");
+
+  const [
+    displayName,
+    setDisplayName,
+  ] = useState("");
 
   const [
     email,
@@ -70,11 +67,6 @@ export function LoginPage() {
     null,
   );
 
-  const registrationSucceeded =
-    searchParams.get(
-      "registered",
-    ) === "1";
-
 
   async function handleSubmit(
     event: FormEvent,
@@ -90,18 +82,32 @@ export function LoginPage() {
     );
 
     try {
-      const user =
-        await login(
-          organizationSlug,
+      const result =
+        await registerOrganization({
+          organization_name:
+            organizationName,
+
+          organization_slug:
+            organizationSlug,
+
+          display_name:
+            displayName,
+
           email,
           password,
-        );
+        });
+
+      const params =
+        new URLSearchParams({
+          organization_slug:
+            result.organization_slug,
+
+          registered:
+            "1",
+        });
 
       navigate(
-        user.role
-          === "security_responsible"
-          ? "/dashboard"
-          : "/analyse-url",
+        `/connexion?${params.toString()}`,
         {
           replace: true,
         },
@@ -111,7 +117,7 @@ export function LoginPage() {
         caughtError
           instanceof Error
           ? caughtError.message
-          : "Connexion impossible.",
+          : "Inscription impossible.",
       );
     } finally {
       setIsSubmitting(
@@ -123,7 +129,7 @@ export function LoginPage() {
 
   return (
     <main className="auth-page">
-      <section className="auth-panel">
+      <section className="auth-panel auth-panel--register">
         <div className="auth-brand">
           <div className="brand-mark">
             TI
@@ -142,28 +148,19 @@ export function LoginPage() {
 
         <div className="auth-heading">
           <span className="auth-eyebrow">
-            Accès sécurisé
+            Nouvelle organisation
           </span>
 
           <h1>
-            Connexion
+            Inscription
           </h1>
 
           <p>
-            Connectez-vous à votre
-            espace Threat Intelligence.
+            Créez votre organisation
+            et son premier compte
+            responsable sécurité.
           </p>
         </div>
-
-        {registrationSucceeded && (
-          <div
-            className="auth-success"
-            role="status"
-          >
-            Votre organisation a été créée.
-            Vous pouvez maintenant vous connecter.
-          </div>
-        )}
 
         <form
           className="auth-form"
@@ -171,6 +168,35 @@ export function LoginPage() {
             handleSubmit
           }
         >
+          <label
+            className="auth-field"
+          >
+            <span>
+              Nom de l’organisation
+            </span>
+
+            <Input
+              type="text"
+              value={
+                organizationName
+              }
+              autoComplete="organization"
+              placeholder="Mon Entreprise"
+              required
+              maxLength={255}
+              disabled={
+                isSubmitting
+              }
+              onChange={(
+                event,
+              ) => {
+                setOrganizationName(
+                  event.target.value,
+                );
+              }}
+            />
+          </label>
+
           <label
             className="auth-field"
           >
@@ -183,10 +209,14 @@ export function LoginPage() {
               value={
                 organizationSlug
               }
-              autoComplete="organization"
               placeholder="mon-entreprise"
               required
               maxLength={63}
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              title={
+                "Lettres minuscules, chiffres "
+                + "et tirets uniquement."
+              }
               disabled={
                 isSubmitting
               }
@@ -194,6 +224,40 @@ export function LoginPage() {
                 event,
               ) => {
                 setOrganizationSlug(
+                  event.target.value,
+                );
+              }}
+            />
+
+            <small className="auth-help">
+              Identifiant court utilisé
+              lors de la connexion.
+            </small>
+          </label>
+
+          <label
+            className="auth-field"
+          >
+            <span>
+              Votre nom
+            </span>
+
+            <Input
+              type="text"
+              value={
+                displayName
+              }
+              autoComplete="name"
+              placeholder="Nom complet"
+              required
+              maxLength={255}
+              disabled={
+                isSubmitting
+              }
+              onChange={(
+                event,
+              ) => {
+                setDisplayName(
                   event.target.value,
                 );
               }}
@@ -211,8 +275,9 @@ export function LoginPage() {
               type="email"
               value={email}
               autoComplete="email"
-              placeholder="nom@entreprise.ma"
+              placeholder="security@entreprise.ma"
               required
+              maxLength={320}
               disabled={
                 isSubmitting
               }
@@ -236,7 +301,7 @@ export function LoginPage() {
             <Input
               type="password"
               value={password}
-              autoComplete="current-password"
+              autoComplete="new-password"
               required
               disabled={
                 isSubmitting
@@ -268,20 +333,20 @@ export function LoginPage() {
             className="auth-submit"
           >
             {isSubmitting
-              ? "Connexion..."
-              : "Se connecter"}
+              ? "Création..."
+              : "Créer l’organisation"}
           </Button>
         </form>
 
         <div className="auth-switch">
           <span>
-            Nouvelle organisation ?
+            Vous avez déjà un compte ?
           </span>
 
           <Link
-            to="/inscription"
+            to="/connexion"
           >
-            Créer un compte
+            Se connecter
           </Link>
         </div>
       </section>
