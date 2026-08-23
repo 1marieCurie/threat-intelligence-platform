@@ -28,6 +28,44 @@ def test_asset_core_tables_use_threat_intel_schema() -> None:
     )
 
 
+def test_organization_has_required_unique_slug() -> None:
+    table = OrganizationModel.__table__
+
+    assert table.c.slug.nullable is False
+    assert table.c.slug.type.length == 63 # pyright: ignore[reportAttributeAccessIssue]
+
+    unique_names = {
+        constraint.name
+        for constraint
+        in table.constraints # pyright: ignore[reportAttributeAccessIssue]
+        if constraint.__class__.__name__
+        == "UniqueConstraint"
+    }
+
+    assert (
+        "uq_organization_slug"
+        in unique_names
+    )
+
+    check_names = {
+        constraint.name
+        for constraint
+        in table.constraints # pyright: ignore[reportAttributeAccessIssue]
+        if constraint.__class__.__name__
+        == "CheckConstraint"
+    }
+
+    assert (
+        "ck_organization_slug_normalized"
+        in check_names
+    )
+
+    assert (
+        "ck_organization_slug_format_valid"
+        in check_names
+    )
+
+
 def test_inventory_state_is_one_to_one_with_machine() -> None:
     table = MachineInventoryStateModel.__table__
 
@@ -77,7 +115,7 @@ def test_alert_has_tenant_aware_foreign_keys() -> None:
     constraint_names = {
         constraint.name
         for constraint
-        in AlertModel.__table__.foreign_key_constraints # type: ignore
+        in AlertModel.__table__.foreign_key_constraints  # type: ignore
     }
 
     assert "fk_alert_organization_machine" in constraint_names
@@ -87,7 +125,7 @@ def test_alert_has_tenant_aware_foreign_keys() -> None:
 def test_software_component_has_distinct_identity_indexes() -> None:
     index_names = {
         index.name
-        for index in SoftwareComponentModel.__table__.indexes # type: ignore
+        for index in SoftwareComponentModel.__table__.indexes  # type: ignore
     }
 
     assert (

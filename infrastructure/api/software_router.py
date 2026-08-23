@@ -4,13 +4,11 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
-from pydantic import (
-    BaseModel,
-)
+from pydantic import BaseModel
 
 from application.ports.outbound.software_read_repository import (
     SoftwareReadRepositoryError,
@@ -18,15 +16,16 @@ from application.ports.outbound.software_read_repository import (
 from application.services.list_software_service import (
     ListSoftwareService,
 )
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
+)
 
 
 class SoftwareSummaryResponse(
     BaseModel
 ):
     component_type: str
-
     name: str
-
     version: str | None
 
     vendor: str | None
@@ -64,8 +63,8 @@ def create_software_router(
         status_code=status.HTTP_200_OK,
     )
     def list_software(
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> SoftwareListResponse:
         try:
@@ -77,9 +76,7 @@ def create_software_router(
                 )
             )
 
-        except (
-            SoftwareReadRepositoryError
-        ) as error:
+        except SoftwareReadRepositoryError as error:
             raise HTTPException(
                 status_code=(
                     status
@@ -100,7 +97,9 @@ def create_software_router(
                     name=item.name,
                     version=item.version,
                     vendor=item.vendor,
-                    ecosystem=item.ecosystem,
+                    ecosystem=(
+                        item.ecosystem
+                    ),
                     machine_count=(
                         item.machine_count
                     ),

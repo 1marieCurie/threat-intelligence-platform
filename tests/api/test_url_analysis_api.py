@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import Mock
+from uuid import uuid4
 
 from fastapi.testclient import (
     TestClient,
@@ -27,6 +28,9 @@ from application.services.import_machine_inventory_service import (
 from infrastructure.api.app import (
     create_app,
 )
+from tests.api.auth_test_support import (
+    allow_staff_user,
+)
 
 
 def _client(
@@ -35,11 +39,15 @@ def _client(
     Mock,
 ]:
     import_service = Mock(
-        spec=ImportMachineInventoryService
+        spec=(
+            ImportMachineInventoryService
+        )
     )
 
     authenticator = Mock(
-        spec=MachineApiKeyAuthenticator
+        spec=(
+            MachineApiKeyAuthenticator
+        )
     )
 
     analyze_service = Mock(
@@ -52,6 +60,11 @@ def _client(
         analyze_url_service=(
             analyze_service
         ),
+    )
+
+    allow_staff_user(
+        app,
+        organization_id=uuid4(),
     )
 
     return (

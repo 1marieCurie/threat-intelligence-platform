@@ -38,9 +38,18 @@ from application.services.list_software_service import (
 from application.services.list_vulnerabilities_service import (
     ListVulnerabilitiesService,
 )
+from application.services.user_authentication_service import (
+    UserAuthenticationService,
+)
+from application.services.user_registration_service import (
+    UserRegistrationService,
+)
 
 from infrastructure.api.alerts_router import (
     create_alerts_router,
+)
+from infrastructure.api.auth_router import (
+    create_auth_router,
 )
 from infrastructure.api.dashboard_router import (
     create_dashboard_router,
@@ -56,6 +65,9 @@ from infrastructure.api.inventory_router import (
 )
 from infrastructure.api.machines_router import (
     create_machines_router,
+)
+from infrastructure.api.registration_router import (
+    create_registration_router,
 )
 from infrastructure.api.software_router import (
     create_software_router,
@@ -109,6 +121,16 @@ def create_app(
     alert_detail_service: (
         GetAlertDetailService | None
     ) = None,
+    authentication_service: (
+        UserAuthenticationService | None
+    ) = None,
+    registration_service: (
+        UserRegistrationService | None
+    ) = None,
+    auth_refresh_token_ttl_seconds: int = (
+        30 * 24 * 60 * 60
+    ),
+    auth_cookie_secure: bool = False,
 ) -> FastAPI:
     if import_service is None:
         raise ValueError(
@@ -121,7 +143,9 @@ def create_app(
         )
 
     app = FastAPI(
-        title="Threat Intelligence Platform",
+        title=(
+            "Threat Intelligence Platform"
+        ),
         version="0.1.0",
     )
 
@@ -130,13 +154,45 @@ def create_app(
         allow_origins=(
             DEV_FRONTEND_ORIGINS
         ),
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Import direct venant d'une machine
-    # authentifiée par machine API key.
+    app.state.user_authentication_service = (
+        authentication_service
+    )
+
+    app.state.user_registration_service = (
+        registration_service
+    )
+
+    if registration_service is not None:
+        app.include_router(
+            create_registration_router(
+                service=(
+                    registration_service
+                )
+            )
+        )
+
+    if authentication_service is not None:
+        app.include_router(
+            create_auth_router(
+                service=(
+                    authentication_service
+                ),
+                refresh_token_ttl_seconds=(
+                    auth_refresh_token_ttl_seconds
+                ),
+                cookie_secure=(
+                    auth_cookie_secure
+                ),
+            )
+        )
+
+    # Import direct des machines :
+    # reste authentifié par machine API key.
     app.include_router(
         create_inventory_router(
             import_service=(
@@ -148,8 +204,9 @@ def create_app(
         )
     )
 
-    # Import manuel JSON depuis
-    # l'espace responsable sécurité.
+    # Import manuel :
+    # protection utilisateur ajoutée
+    # à l'étape suivante.
     app.include_router(
         create_inventory_imports_router(
             import_service=(
@@ -158,8 +215,6 @@ def create_app(
         )
     )
 
-    # Distribution du collecteur officiel
-    # Windows utilisé par l'interface React.
     app.include_router(
         create_inventory_agent_router()
     )
@@ -234,7 +289,9 @@ def create_app(
             )
         )
 
-    @app.get("/health")
+    @app.get(
+        "/health"
+    )
     def health() -> dict[
         str,
         str,

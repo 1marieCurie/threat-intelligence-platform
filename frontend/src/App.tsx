@@ -5,8 +5,8 @@ import {
 } from "react-router";
 
 import {
-  useRole,
-} from "./context/RoleContext";
+  useAuth,
+} from "./context/AuthContext";
 
 import {
   AlertDetailPage,
@@ -15,6 +15,14 @@ import {
 import {
   AlertsPage,
 } from "./features/alerts/AlertsPage";
+
+import {
+  LoginPage,
+} from "./features/auth/LoginPage";
+
+import {
+  RegisterPage,
+} from "./features/auth/RegisterPage";
 
 import {
   DashboardPage,
@@ -39,6 +47,10 @@ import {
 import {
   URLAnalysisPage,
 } from "./features/url-analysis/URLAnalysisPage";
+
+import {
+  UsersPage,
+} from "./features/users/UsersPage";
 
 import {
   VulnerabilityDetailPage,
@@ -159,6 +171,13 @@ function SecurityRoutes() {
         />
 
         <Route
+          path="utilisateurs"
+          element={
+            <UsersPage />
+          }
+        />
+
+        <Route
           path="analyse-url"
           element={
             <URLAnalysisPage />
@@ -182,17 +201,66 @@ function SecurityRoutes() {
 
 function App() {
   const {
-    role,
-  } = useRole();
+    user,
+    isBootstrapping,
+  } = useAuth();
+
 
   if (
-    role
+    isBootstrapping
+  ) {
+    return (
+      <main className="auth-page">
+        <div className="auth-loading">
+          Vérification de la session...
+        </div>
+      </main>
+    );
+  }
+
+
+  if (
+    user === null
+  ) {
+    return (
+      <Routes>
+        <Route
+          path="/connexion"
+          element={
+            <LoginPage />
+          }
+        />
+
+        <Route
+          path="/inscription"
+          element={
+            <RegisterPage />
+          }
+        />
+
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to="/connexion"
+              replace
+            />
+          }
+        />
+      </Routes>
+    );
+  }
+
+
+  if (
+    user.role
     === "security_responsible"
   ) {
     return (
       <SecurityRoutes />
     );
   }
+
 
   return (
     <StaffRoutes />

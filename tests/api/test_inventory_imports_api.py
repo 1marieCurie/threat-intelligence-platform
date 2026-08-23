@@ -24,6 +24,9 @@ from application.services.import_machine_inventory_service import (
 from infrastructure.api.app import (
     create_app,
 )
+from tests.api.auth_test_support import (
+    allow_security_user,
+)
 
 
 NOW = datetime(
@@ -41,45 +44,50 @@ def _payload(
     machine_uid: UUID,
 ) -> dict:
     return {
-        "schema_version": (
-            "inventory/v1"
-        ),
+        "schema_version":
+            "inventory/v1",
+
         "inventory_id": str(
             uuid4()
         ),
-        "collected_at": (
-            NOW.isoformat()
-        ),
+
+        "collected_at":
+            NOW.isoformat(),
+
         "agent": {
-            "name": (
-                "tip-windows-agent"
-            ),
-            "version": (
-                "0.1.0"
-            ),
+            "name":
+                "tip-windows-agent",
+
+            "version":
+                "0.1.0",
         },
+
         "machine": {
             "machine_uid": str(
                 machine_uid
             ),
-            "hostname": (
-                "TEST-PC"
-            ),
-            "os_name": (
-                "Windows 11 Pro"
-            ),
-            "os_version": (
-                "25H2"
-            ),
-            "architecture": (
-                "x86_64"
-            ),
+
+            "hostname":
+                "TEST-PC",
+
+            "os_name":
+                "Windows 11 Pro",
+
+            "os_version":
+                "25H2",
+
+            "architecture":
+                "x86_64",
         },
+
         "components": [],
     }
 
 
-def _client() -> tuple[
+def _client(
+    *,
+    organization_id: UUID,
+) -> tuple[
     TestClient,
     Mock,
 ]:
@@ -109,38 +117,36 @@ def _client() -> tuple[
     )
 
     app = create_app(
-        import_service=(
-            service
-        ),
-        authenticator=(
-            authenticator
+        import_service=service,
+        authenticator=authenticator,
+    )
+
+    allow_security_user(
+        app,
+        organization_id=(
+            organization_id
         ),
     )
 
     return (
-        TestClient(
-            app
-        ),
+        TestClient(app),
         service,
     )
 
 
-def test_inventory_import_uses_organization_header(
+def test_inventory_import_uses_authenticated_organization(
 ) -> None:
-    client, service = (
-        _client()
-    )
-
     organization_id = uuid4()
     machine_uid = uuid4()
 
+    client, service = _client(
+        organization_id=(
+            organization_id
+        )
+    )
+
     response = client.post(
         "/api/v1/inventory-imports",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
         json=_payload(
             machine_uid=(
                 machine_uid
@@ -148,10 +154,7 @@ def test_inventory_import_uses_organization_header(
         ),
     )
 
-    assert (
-        response.status_code
-        == 200
-    )
+    assert response.status_code == 200
 
     (
         service
@@ -193,8 +196,8 @@ def test_inventory_import_uses_organization_header(
 
 def test_inventory_import_returns_result(
 ) -> None:
-    client, service = (
-        _client()
+    client, service = _client(
+        organization_id=uuid4()
     )
 
     result = (
@@ -216,139 +219,75 @@ def test_inventory_import_returns_result(
 
     response = client.post(
         "/api/v1/inventory-imports",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
         json=_payload(
-            machine_uid=(
-                uuid4()
-            )
+            machine_uid=uuid4()
         ),
     )
 
-    assert (
-        response.status_code
-        == 200
-    )
+    assert response.status_code == 200
 
-    payload = (
-        response.json()
-    )
+    payload = response.json()
 
     assert (
-        payload[
-            "machine_id"
-        ]
+        payload["machine_id"]
         == str(
             result.machine_id
         )
     )
 
     assert (
-        payload[
-            "inventory_id"
-        ]
+        payload["inventory_id"]
         == str(
             result.inventory_id
         )
     )
 
     assert (
-        payload[
-            "status"
-        ]
+        payload["status"]
         == "imported"
     )
 
     assert (
-        payload[
-            "machine_created"
-        ]
+        payload["machine_created"]
         is True
     )
 
     assert (
-        payload[
-            "inserted_components"
-        ]
+        payload["inserted_components"]
         == 12
     )
 
     assert (
-        payload[
-            "updated_components"
-        ]
+        payload["updated_components"]
         == 3
     )
 
     assert (
-        payload[
-            "deleted_components"
-        ]
+        payload["deleted_components"]
         == 2
     )
 
     assert (
-        payload[
-            "component_count"
-        ]
+        payload["component_count"]
         == 13
-    )
-
-
-def test_inventory_import_requires_organization_header(
-) -> None:
-    client, service = (
-        _client()
-    )
-
-    response = client.post(
-        "/api/v1/inventory-imports",
-        json=_payload(
-            machine_uid=(
-                uuid4()
-            )
-        ),
-    )
-
-    assert (
-        response.status_code
-        == 422
-    )
-
-    (
-        service
-        .import_inventory
-        .assert_not_called()
     )
 
 
 def test_inventory_import_rejects_invalid_contract(
 ) -> None:
-    client, service = (
-        _client()
+    client, service = _client(
+        organization_id=uuid4()
     )
 
     response = client.post(
         "/api/v1/inventory-imports",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
         json={
-            "schema_version": (
-                "wrong-version"
-            ),
+            "schema_version":
+                "wrong-version",
         },
     )
 
-    assert (
-        response.status_code
-        == 422
-    )
+    assert response.status_code == 422
 
     (
         service

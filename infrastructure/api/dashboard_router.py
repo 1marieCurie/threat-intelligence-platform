@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
@@ -20,6 +20,9 @@ from application.ports.outbound.dashboard_read_repository import (
 )
 from application.services.get_dashboard_summary_service import (
     GetDashboardSummaryService,
+)
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
 )
 
 
@@ -37,9 +40,18 @@ class TopMachineResponse(
 ):
     machine_id: UUID
     hostname: str
-    exposure_count: int = Field(ge=0)
-    critical_count: int = Field(ge=0)
-    kev_count: int = Field(ge=0)
+
+    exposure_count: int = Field(
+        ge=0
+    )
+
+    critical_count: int = Field(
+        ge=0
+    )
+
+    kev_count: int = Field(
+        ge=0
+    )
 
 
 class PriorityActionResponse(
@@ -165,17 +177,23 @@ def create_dashboard_router(
 
     router = APIRouter(
         prefix="/api/v1",
-        tags=["dashboard"],
+        tags=[
+            "dashboard",
+        ],
     )
 
     @router.get(
         "/dashboard",
-        response_model=DashboardResponse,
-        status_code=status.HTTP_200_OK,
+        response_model=(
+            DashboardResponse
+        ),
+        status_code=(
+            status.HTTP_200_OK
+        ),
     )
     def get_dashboard(
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> DashboardResponse:
         try:
@@ -219,13 +237,16 @@ def create_dashboard_router(
                 .critical_exposure_count
             ),
             kev_exposure_count=(
-                summary.kev_exposure_count
+                summary
+                .kev_exposure_count
             ),
             pending_alert_count=(
-                summary.pending_alert_count
+                summary
+                .pending_alert_count
             ),
             failed_alert_count=(
-                summary.failed_alert_count
+                summary
+                .failed_alert_count
             ),
             priority_distribution=(
                 PriorityDistributionResponse(
@@ -268,7 +289,8 @@ def create_dashboard_router(
                         .critical_count
                     ),
                     kev_count=(
-                        machine.kev_count
+                        machine
+                        .kev_count
                     ),
                 )
                 for machine

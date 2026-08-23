@@ -4,6 +4,11 @@ import type {
 } from "../types/alert";
 
 import type {
+  AuthTokenResponse,
+  AuthUser,
+} from "../types/auth";
+
+import type {
   DashboardSummary,
 } from "../types/dashboard";
 
@@ -36,14 +41,72 @@ const API_BASE_URL =
   ?? "http://127.0.0.1:8000";
 
 
-const DEV_ORGANIZATION_ID =
-  import.meta.env
-    .VITE_DEV_ORGANIZATION_ID;
-
-
 type ApiErrorPayload = {
-  detail?: string;
+  detail?: unknown;
 };
+
+
+type AuthenticationListener = (
+  user: AuthUser | null,
+) => void;
+
+
+export type RegistrationPayload = {
+  organization_name: string;
+  organization_slug: string;
+  display_name: string;
+  email: string;
+  password: string;
+};
+
+
+export type RegistrationResponse = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+
+  user: AuthUser;
+};
+
+
+export type CreateStaffPayload = {
+  display_name: string;
+  email: string;
+  password: string;
+};
+
+
+let accessToken:
+  string | null = null;
+
+
+let authenticationListener:
+  AuthenticationListener | null = null;
+
+
+let bootstrapPromise:
+  Promise<AuthUser | null>
+  | null = null;
+
+
+export function setAuthenticationListener(
+  listener: AuthenticationListener | null,
+): void {
+  authenticationListener =
+    listener;
+}
+
+
+function updateAuthentication(
+  token: string | null,
+  user: AuthUser | null,
+): void {
+  accessToken = token;
+
+  authenticationListener?.(
+    user,
+  );
+}
 
 
 async function readApiError(
@@ -55,40 +118,182 @@ async function readApiError(
       await response.json();
 
     if (
-      typeof payload.detail === "string"
+      typeof payload.detail
+      === "string"
       && payload.detail.trim()
     ) {
       return payload.detail;
     }
   } catch {
-    // Réponse non JSON :
-    // conserver le message générique.
+    // Réponse non JSON.
   }
 
   return fallback;
 }
 
 
-function requireDevelopmentOrganization(
-): string {
-  if (!DEV_ORGANIZATION_ID) {
-    throw new Error(
-      "L'organisation de développement "
-      + "n'est pas configurée.",
+function authorizationHeaders(
+  headers?: HeadersInit,
+): Headers {
+  const result =
+    new Headers(
+      headers,
+    );
+
+  if (accessToken) {
+    result.set(
+      "Authorization",
+      `Bearer ${accessToken}`,
     );
   }
 
-  return DEV_ORGANIZATION_ID;
+  return result;
 }
 
 
-export async function analyzeURL(
-  url: string,
-): Promise<URLAnalysisResult> {
+async function rawRefresh(
+): Promise<AuthTokenResponse> {
   const response = await fetch(
-    `${API_BASE_URL}/api/v1/url-analysis`,
+    `${API_BASE_URL}/api/v1/auth/refresh`,
     {
       method: "POST",
+
+      credentials:
+        "include",
+    },
+  );
+
+  if (!response.ok) {
+    updateAuthentication(
+      null,
+      null,
+    );
+
+    const message =
+      await readApiError(
+        response,
+        "Votre session a expiré.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload:
+    AuthTokenResponse =
+      await response.json();
+
+  updateAuthentication(
+    payload.access_token,
+    payload.user,
+  );
+
+  return payload;
+}
+
+
+async function authenticatedFetch(
+  path: string,
+  init: RequestInit = {},
+  retryOnUnauthorized = true,
+): Promise<Response> {
+  if (!accessToken) {
+    throw new Error(
+      "Authentification requise.",
+    );
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}${path}`,
+    {
+      ...init,
+
+      credentials:
+        "include",
+
+      headers:
+        authorizationHeaders(
+          init.headers,
+        ),
+    },
+  );
+
+  if (
+    response.status === 401
+    && retryOnUnauthorized
+  ) {
+    await rawRefresh();
+
+    return authenticatedFetch(
+      path,
+      init,
+      false,
+    );
+  }
+
+  return response;
+}
+
+
+export async function registerOrganization(
+  payload: RegistrationPayload,
+): Promise<RegistrationResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/register`,
+    {
+      method: "POST",
+
+      credentials:
+        "include",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify(
+        payload,
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    if (
+      response.status === 409
+    ) {
+      throw new Error(
+        "Ce slug d’organisation est déjà utilisé.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Inscription impossible.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  return response.json();
+}
+
+
+export async function login(
+  organizationSlug: string,
+  email: string,
+  password: string,
+): Promise<AuthTokenResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/auth/login`,
+    {
+      method: "POST",
+
+      credentials:
+        "include",
 
       headers: {
         "Content-Type":
@@ -96,10 +301,198 @@ export async function analyzeURL(
       },
 
       body: JSON.stringify({
-        url,
+        organization_slug:
+          organizationSlug,
+
+        email,
+        password,
       }),
     },
   );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Connexion impossible.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const payload:
+    AuthTokenResponse =
+      await response.json();
+
+  updateAuthentication(
+    payload.access_token,
+    payload.user,
+  );
+
+  return payload;
+}
+
+
+export async function refreshAuthentication(
+): Promise<AuthTokenResponse> {
+  return rawRefresh();
+}
+
+
+export async function getCurrentUser(
+): Promise<AuthUser> {
+  const response =
+    await authenticatedFetch(
+      "/api/v1/auth/me",
+      {
+        method: "GET",
+      },
+    );
+
+  if (!response.ok) {
+    const message =
+      await readApiError(
+        response,
+        "Impossible de vérifier la session.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const user: AuthUser =
+    await response.json();
+
+  authenticationListener?.(
+    user,
+  );
+
+  return user;
+}
+
+
+export function bootstrapAuthentication(
+): Promise<AuthUser | null> {
+  if (bootstrapPromise) {
+    return bootstrapPromise;
+  }
+
+  bootstrapPromise = (
+    async () => {
+      try {
+        await rawRefresh();
+
+        return await getCurrentUser();
+      } catch {
+        updateAuthentication(
+          null,
+          null,
+        );
+
+        return null;
+      }
+    }
+  )();
+
+  return bootstrapPromise;
+}
+
+
+export async function logout(
+): Promise<void> {
+  try {
+    if (accessToken) {
+      await authenticatedFetch(
+        "/api/v1/auth/logout",
+        {
+          method: "POST",
+        },
+        false,
+      );
+    }
+  } finally {
+    updateAuthentication(
+      null,
+      null,
+    );
+  }
+}
+
+
+export async function createStaffAccount(
+  payload: CreateStaffPayload,
+): Promise<AuthUser> {
+  const response =
+    await authenticatedFetch(
+      "/api/v1/users/staff",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify(
+          payload,
+        ),
+      },
+    );
+
+  if (!response.ok) {
+    if (
+      response.status === 409
+    ) {
+      throw new Error(
+        "Cette adresse e-mail est déjà utilisée dans l’organisation.",
+      );
+    }
+
+    if (
+      response.status === 403
+    ) {
+      throw new Error(
+        "Vous n’êtes pas autorisé à créer un compte staff.",
+      );
+    }
+
+    const message =
+      await readApiError(
+        response,
+        "Impossible de créer ce compte.",
+      );
+
+    throw new Error(
+      message,
+    );
+  }
+
+  return response.json();
+}
+
+
+export async function analyzeURL(
+  url: string,
+): Promise<URLAnalysisResult> {
+  const response =
+    await authenticatedFetch(
+      "/api/v1/url-analysis",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          url,
+        }),
+      },
+    );
 
   if (!response.ok) {
     const message =
@@ -113,29 +506,16 @@ export async function analyzeURL(
     );
   }
 
-  const payload: URLAnalysisResult =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getDashboard(
 ): Promise<DashboardSummary> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/dashboard`,
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      "/api/v1/dashboard",
+    );
 
   if (!response.ok) {
     const message =
@@ -149,29 +529,16 @@ export async function getDashboard(
     );
   }
 
-  const payload: DashboardSummary =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getMachines(
 ): Promise<MachineListResponse> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/machines`,
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      "/api/v1/machines",
+    );
 
   if (!response.ok) {
     const message =
@@ -185,36 +552,22 @@ export async function getMachines(
     );
   }
 
-  const payload: MachineListResponse =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getMachineDetail(
   machineId: string,
 ): Promise<MachineDetail> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    (
-      `${API_BASE_URL}`
-      + "/api/v1/machines/"
-      + encodeURIComponent(
-        machineId,
-      )
-    ),
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      (
+        "/api/v1/machines/"
+        + encodeURIComponent(
+          machineId,
+        )
+      ),
+    );
 
   if (!response.ok) {
     if (
@@ -236,29 +589,16 @@ export async function getMachineDetail(
     );
   }
 
-  const payload: MachineDetail =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getSoftware(
 ): Promise<SoftwareListResponse> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/software`,
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      "/api/v1/software",
+    );
 
   if (!response.ok) {
     const message =
@@ -272,29 +612,16 @@ export async function getSoftware(
     );
   }
 
-  const payload: SoftwareListResponse =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getVulnerabilities(
 ): Promise<VulnerabilityListResponse> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/vulnerabilities`,
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      "/api/v1/vulnerabilities",
+    );
 
   if (!response.ok) {
     const message =
@@ -308,36 +635,22 @@ export async function getVulnerabilities(
     );
   }
 
-  const payload: VulnerabilityListResponse =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getVulnerabilityDetail(
   vulnerabilityId: string,
 ): Promise<VulnerabilityDetail> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    (
-      `${API_BASE_URL}`
-      + "/api/v1/vulnerabilities/"
-      + encodeURIComponent(
-        vulnerabilityId,
-      )
-    ),
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      (
+        "/api/v1/vulnerabilities/"
+        + encodeURIComponent(
+          vulnerabilityId,
+        )
+      ),
+    );
 
   if (!response.ok) {
     if (
@@ -359,29 +672,16 @@ export async function getVulnerabilityDetail(
     );
   }
 
-  const payload: VulnerabilityDetail =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getAlerts(
 ): Promise<AlertListResponse> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/alerts`,
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      "/api/v1/alerts",
+    );
 
   if (!response.ok) {
     const message =
@@ -395,36 +695,22 @@ export async function getAlerts(
     );
   }
 
-  const payload: AlertListResponse =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getAlertDetail(
   alertId: string,
 ): Promise<AlertDetail> {
-  const organizationId =
-    requireDevelopmentOrganization();
-
-  const response = await fetch(
-    (
-      `${API_BASE_URL}`
-      + "/api/v1/alerts/"
-      + encodeURIComponent(
-        alertId,
-      )
-    ),
-    {
-      method: "GET",
-
-      headers: {
-        "X-Organization-Id":
-          organizationId,
-      },
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      (
+        "/api/v1/alerts/"
+        + encodeURIComponent(
+          alertId,
+        )
+      ),
+    );
 
   if (!response.ok) {
     if (
@@ -446,24 +732,19 @@ export async function getAlertDetail(
     );
   }
 
-  const payload: AlertDetail =
-    await response.json();
-
-  return payload;
+  return response.json();
 }
 
 
 export async function getWindowsInventoryScript(
 ): Promise<string> {
-  const response = await fetch(
-    (
-      `${API_BASE_URL}`
-      + "/api/v1/inventory-agent/windows/script"
-    ),
-    {
-      method: "GET",
-    },
-  );
+  const response =
+    await authenticatedFetch(
+      (
+        "/api/v1/"
+        + "inventory-agent/windows/script"
+      ),
+    );
 
   if (!response.ok) {
     const message =
@@ -484,30 +765,22 @@ export async function getWindowsInventoryScript(
 export async function importInventory(
   inventory: MachineInventoryPayload,
 ): Promise<InventoryImportResult> {
-  const organizationId =
-    requireDevelopmentOrganization();
+  const response =
+    await authenticatedFetch(
+      "/api/v1/inventory-imports",
+      {
+        method: "POST",
 
-  const response = await fetch(
-    (
-      `${API_BASE_URL}`
-      + "/api/v1/inventory-imports"
-    ),
-    {
-      method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
 
-      headers: {
-        "Content-Type":
-          "application/json",
-
-        "X-Organization-Id":
-          organizationId,
+        body: JSON.stringify(
+          inventory,
+        ),
       },
-
-      body: JSON.stringify(
-        inventory,
-      ),
-    },
-  );
+    );
 
   if (!response.ok) {
     const message =
@@ -521,8 +794,5 @@ export async function importInventory(
     );
   }
 
-  const payload: InventoryImportResult =
-    await response.json();
-
-  return payload;
+  return response.json();
 }

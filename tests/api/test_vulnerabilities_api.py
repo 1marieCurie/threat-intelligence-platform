@@ -41,6 +41,9 @@ from application.services.list_vulnerabilities_service import (
 from infrastructure.api.app import (
     create_app,
 )
+from tests.api.auth_test_support import (
+    allow_security_user,
+)
 
 
 NOW = datetime(
@@ -55,6 +58,8 @@ NOW = datetime(
 
 def _client(
     service: ListVulnerabilitiesService,
+    *,
+    organization_id: UUID,
     detail_service: (
         GetVulnerabilityDetailService
         | None
@@ -83,9 +88,14 @@ def _client(
         ),
     )
 
-    return TestClient(
-        app
+    allow_security_user(
+        app,
+        organization_id=(
+            organization_id
+        ),
     )
+
+    return TestClient(app)
 
 
 def _detail(
@@ -222,16 +232,14 @@ def test_list_vulnerabilities_returns_items(
     )
 
     client = _client(
-        service
+        service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/vulnerabilities",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        "/api/v1/vulnerabilities"
     )
 
     assert response.status_code == 200
@@ -296,25 +304,10 @@ def test_list_vulnerabilities_returns_items(
     )
 
 
-def test_list_vulnerabilities_requires_header(
-) -> None:
-    service = Mock(
-        spec=ListVulnerabilitiesService
-    )
-
-    client = _client(
-        service
-    )
-
-    response = client.get(
-        "/api/v1/vulnerabilities"
-    )
-
-    assert response.status_code == 422
-
-
 def test_list_vulnerabilities_maps_repository_error(
 ) -> None:
+    organization_id = uuid4()
+
     service = Mock(
         spec=ListVulnerabilitiesService
     )
@@ -326,16 +319,14 @@ def test_list_vulnerabilities_maps_repository_error(
     )
 
     client = _client(
-        service
+        service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/vulnerabilities",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+        "/api/v1/vulnerabilities"
     )
 
     assert response.status_code == 503
@@ -375,19 +366,19 @@ def test_get_vulnerability_returns_detail(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/vulnerabilities/"
             f"{canonical_id}"
-        ),
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        )
     )
 
     assert response.status_code == 200
@@ -508,6 +499,9 @@ def test_get_vulnerability_returns_detail(
 
 def test_get_vulnerability_returns_404_when_not_visible(
 ) -> None:
+    organization_id = uuid4()
+    canonical_id = uuid4()
+
     list_service = Mock(
         spec=ListVulnerabilitiesService
     )
@@ -524,19 +518,19 @@ def test_get_vulnerability_returns_404_when_not_visible(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/vulnerabilities/"
-            f"{uuid4()}"
-        ),
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+            f"{canonical_id}"
+        )
     )
 
     assert (
@@ -550,34 +544,25 @@ def test_get_vulnerability_returns_404_when_not_visible(
         )
     }
 
-
-def test_get_vulnerability_requires_header(
-) -> None:
-    list_service = Mock(
-        spec=ListVulnerabilitiesService
-    )
-
-    detail_service = Mock(
-        spec=GetVulnerabilityDetailService
-    )
-
-    client = _client(
-        list_service,
-        detail_service,
-    )
-
-    response = client.get(
-        (
-            "/api/v1/vulnerabilities/"
-            f"{uuid4()}"
+    (
+        detail_service
+        .get_vulnerability
+        .assert_called_once_with(
+            organization_id=(
+                organization_id
+            ),
+            canonical_vulnerability_id=(
+                canonical_id
+            ),
         )
     )
-
-    assert response.status_code == 422
 
 
 def test_get_vulnerability_maps_repository_error(
 ) -> None:
+    organization_id = uuid4()
+    canonical_id = uuid4()
+
     list_service = Mock(
         spec=ListVulnerabilitiesService
     )
@@ -598,19 +583,19 @@ def test_get_vulnerability_maps_repository_error(
 
     client = _client(
         list_service,
-        detail_service,
+        organization_id=(
+            organization_id
+        ),
+        detail_service=(
+            detail_service
+        ),
     )
 
     response = client.get(
         (
             "/api/v1/vulnerabilities/"
-            f"{uuid4()}"
-        ),
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+            f"{canonical_id}"
+        )
     )
 
     assert response.status_code == 503
@@ -621,3 +606,16 @@ def test_get_vulnerability_maps_repository_error(
             "temporarily unavailable"
         )
     }
+
+    (
+        detail_service
+        .get_vulnerability
+        .assert_called_once_with(
+            organization_id=(
+                organization_id
+            ),
+            canonical_vulnerability_id=(
+                canonical_id
+            ),
+        )
+    )

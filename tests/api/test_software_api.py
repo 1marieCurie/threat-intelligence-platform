@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import (
+    UUID,
+    uuid4,
+)
 
 from fastapi.testclient import (
     TestClient,
@@ -25,34 +28,44 @@ from application.services.list_software_service import (
 from infrastructure.api.app import (
     create_app,
 )
+from tests.api.auth_test_support import (
+    allow_security_user,
+)
 
 
 def _client(
     software_service: ListSoftwareService,
+    *,
+    organization_id: UUID,
 ) -> TestClient:
     import_service = Mock(
-        spec=ImportMachineInventoryService
+        spec=(
+            ImportMachineInventoryService
+        )
     )
 
     authenticator = Mock(
-        spec=MachineApiKeyAuthenticator
+        spec=(
+            MachineApiKeyAuthenticator
+        )
     )
 
     app = create_app(
-        import_service=(
-            import_service
-        ),
-        authenticator=(
-            authenticator
-        ),
+        import_service=import_service,
+        authenticator=authenticator,
         software_service=(
             software_service
         ),
     )
 
-    return TestClient(
-        app
+    allow_security_user(
+        app,
+        organization_id=(
+            organization_id
+        ),
     )
+
+    return TestClient(app)
 
 
 def test_list_software_returns_items(
@@ -78,16 +91,14 @@ def test_list_software_returns_items(
     )
 
     client = _client(
-        software_service
+        software_service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/software",
-        headers={
-            "X-Organization-Id": str(
-                organization_id
-            ),
-        },
+        "/api/v1/software"
     )
 
     assert response.status_code == 200
@@ -119,25 +130,10 @@ def test_list_software_returns_items(
     )
 
 
-def test_list_software_requires_organization_header(
-) -> None:
-    software_service = Mock(
-        spec=ListSoftwareService
-    )
-
-    client = _client(
-        software_service
-    )
-
-    response = client.get(
-        "/api/v1/software"
-    )
-
-    assert response.status_code == 422
-
-
 def test_list_software_maps_repository_error_to_503(
 ) -> None:
+    organization_id = uuid4()
+
     software_service = Mock(
         spec=ListSoftwareService
     )
@@ -149,16 +145,14 @@ def test_list_software_maps_repository_error_to_503(
     )
 
     client = _client(
-        software_service
+        software_service,
+        organization_id=(
+            organization_id
+        ),
     )
 
     response = client.get(
-        "/api/v1/software",
-        headers={
-            "X-Organization-Id": str(
-                uuid4()
-            ),
-        },
+        "/api/v1/software"
     )
 
     assert response.status_code == 503

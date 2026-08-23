@@ -4,11 +4,19 @@ from pathlib import Path
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
 from fastapi.responses import (
     PlainTextResponse,
+)
+
+from domain.user_account import (
+    UserAccount,
+)
+from infrastructure.api.auth_dependencies import (
+    require_security_responsible_user,
 )
 
 
@@ -40,6 +48,9 @@ def create_inventory_agent_router(
         status_code=status.HTTP_200_OK,
     )
     def get_windows_inventory_script(
+        _: UserAccount = Depends(
+            require_security_responsible_user
+        ),
     ) -> PlainTextResponse:
         try:
             content = (

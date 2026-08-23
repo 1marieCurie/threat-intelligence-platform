@@ -25,6 +25,13 @@ from infrastructure.persistence.models.base import Base
 SCHEMA = "threat_intel"
 
 
+def _default_organization_slug() -> str:
+    return (
+        "org-"
+        + uuid.uuid4().hex[:20]
+    )
+
+
 class OrganizationModel(Base):
     __tablename__ = "organization"
 
@@ -32,6 +39,21 @@ class OrganizationModel(Base):
         CheckConstraint(
             "char_length(btrim(name)) > 0",
             name="name_not_blank",
+        ),
+        CheckConstraint(
+            "slug = lower(btrim(slug))",
+            name="slug_normalized",
+        ),
+        CheckConstraint(
+            (
+                "slug ~ "
+                "'^[a-z0-9]+(-[a-z0-9]+)*$'"
+            ),
+            name="slug_format_valid",
+        ),
+        UniqueConstraint(
+            "slug",
+            name="uq_organization_slug",
         ),
         {
             "schema": SCHEMA,
@@ -47,6 +69,14 @@ class OrganizationModel(Base):
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    slug: Mapped[str] = mapped_column(
+        String(63),
+        nullable=False,
+        default=(
+            _default_organization_slug
+        ),
     )
 
     is_active: Mapped[bool] = mapped_column(
@@ -82,6 +112,14 @@ class UserAccountModel(Base):
             ),
             name="email_normalized",
         ),
+        CheckConstraint(
+            (
+                "char_length("
+                "btrim(password_hash)"
+                ") > 0"
+            ),
+            name="password_hash_not_blank",
+        ),
         Index(
             "ix_user_account_organization_id",
             "organization_id",
@@ -114,6 +152,14 @@ class UserAccountModel(Base):
     display_name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(512),
+        nullable=False,
+        default=(
+            "!authentication-not-configured!"
+        ),
     )
 
     role: Mapped[str] = mapped_column(

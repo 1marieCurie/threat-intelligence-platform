@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import (
     APIRouter,
     Body,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
@@ -27,6 +27,9 @@ from application.services.import_machine_inventory_service import (
     OrganizationInactiveError,
     OrganizationNotFoundError,
     StaleMachineInventoryError,
+)
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
 )
 
 
@@ -67,8 +70,8 @@ def create_inventory_imports_router(
             str,
             Any,
         ] = Body(...),
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> InventoryImportResponse:
         inventory = _parse_inventory(
@@ -77,11 +80,14 @@ def create_inventory_imports_router(
 
         try:
             result = (
-                import_service.import_inventory(
+                import_service
+                .import_inventory(
                     organization_id=(
                         organization_id
                     ),
-                    inventory_payload=inventory,
+                    inventory_payload=(
+                        inventory
+                    ),
                 )
             )
 
@@ -108,25 +114,23 @@ def create_inventory_imports_router(
                 status_code=(
                     status.HTTP_409_CONFLICT
                 ),
-                detail=str(
-                    error
-                ),
+                detail=str(error),
             ) from error
 
         except DuplicateInventoryComponentError as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_422_UNPROCESSABLE_CONTENT
+                    status
+                    .HTTP_422_UNPROCESSABLE_CONTENT
                 ),
-                detail=str(
-                    error
-                ),
+                detail=str(error),
             ) from error
 
         except AssetInventoryRepositoryError as error:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    status
+                    .HTTP_503_SERVICE_UNAVAILABLE
                 ),
                 detail=(
                     "Inventory persistence "
@@ -149,7 +153,8 @@ def _parse_inventory(
 ) -> MachineInventoryV1:
     try:
         return (
-            MachineInventoryV1.from_mapping(
+            MachineInventoryV1
+            .from_mapping(
                 payload
             )
         )
@@ -160,11 +165,10 @@ def _parse_inventory(
     ) as error:
         raise HTTPException(
             status_code=(
-                status.HTTP_422_UNPROCESSABLE_CONTENT
+                status
+                .HTTP_422_UNPROCESSABLE_CONTENT
             ),
-            detail=str(
-                error
-            ),
+            detail=str(error),
         ) from error
 
 

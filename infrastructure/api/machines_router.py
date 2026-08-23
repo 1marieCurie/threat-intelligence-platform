@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Header,
+    Depends,
     HTTPException,
     status,
 )
@@ -17,11 +17,14 @@ from pydantic import (
 from application.ports.outbound.machine_read_repository import (
     MachineReadRepositoryError,
 )
+from application.services.get_machine_detail_service import (
+    GetMachineDetailService,
+)
 from application.services.list_machines_service import (
     ListMachinesService,
 )
-from application.services.get_machine_detail_service import (
-    GetMachineDetailService,
+from infrastructure.api.auth_dependencies import (
+    require_security_organization_id,
 )
 
 
@@ -45,10 +48,8 @@ class MachineSummaryResponse(
         ge=0
     )
 
-    critical_exposure_count: int = (
-        Field(
-            ge=0
-        )
+    critical_exposure_count: int = Field(
+        ge=0
     )
 
     kev_exposure_count: int = Field(
@@ -62,7 +63,8 @@ class MachineListResponse(
     items: list[
         MachineSummaryResponse
     ]
-    
+
+
 class MachineComponentResponse(
     BaseModel
 ):
@@ -130,7 +132,6 @@ def create_machines_router(
     list_service: ListMachinesService,
     detail_service: GetMachineDetailService,
 ) -> APIRouter:
-    
     if list_service is None:
         raise ValueError(
             "list_service must not be None"
@@ -152,8 +153,8 @@ def create_machines_router(
         status_code=status.HTTP_200_OK,
     )
     def list_machines(
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> MachineListResponse:
         try:
@@ -216,27 +217,27 @@ def create_machines_router(
                         .kev_exposure_count
                     ),
                 )
-                for machine
-                in machines
+                for machine in machines
             ]
         )
-    
+
     @router.get(
         "/machines/{machine_id}",
         response_model=MachineDetailResponse,
         status_code=status.HTTP_200_OK,
     )
-    
     def get_machine(
         machine_id: UUID,
-        organization_id: UUID = Header(
-            alias="X-Organization-Id"
+        organization_id: UUID = Depends(
+            require_security_organization_id
         ),
     ) -> MachineDetailResponse:
         try:
             machine = (
                 detail_service.get_machine(
-                    organization_id=organization_id,
+                    organization_id=(
+                        organization_id
+                    ),
                     machine_id=machine_id,
                 )
             )
@@ -267,47 +268,70 @@ def create_machines_router(
             hostname=machine.hostname,
             os_name=machine.os_name,
             os_version=machine.os_version,
-            architecture=machine.architecture,
+            architecture=(
+                machine.architecture
+            ),
             last_inventory_at=(
                 machine.last_inventory_at
             ),
             components=[
                 MachineComponentResponse(
-                    component_id=item.component_id,
-                    component_type=item.component_type,
+                    component_id=(
+                        item.component_id
+                    ),
+                    component_type=(
+                        item.component_type
+                    ),
                     name=item.name,
                     version=item.version,
                     vendor=item.vendor,
                     ecosystem=item.ecosystem,
                     scope=item.scope,
-                    detected_by=item.detected_by,
+                    detected_by=(
+                        item.detected_by
+                    ),
                 )
-                for item in machine.components
+                for item
+                in machine.components
             ],
             exposures=[
                 MachineExposureResponse(
-                    exposure_id=item.exposure_id,
+                    exposure_id=(
+                        item.exposure_id
+                    ),
                     canonical_vulnerability_id=(
-                        item.canonical_vulnerability_id
+                        item
+                        .canonical_vulnerability_id
                     ),
                     primary_identifier=(
                         item.primary_identifier
                     ),
-                    component_id=item.component_id,
-                    component_name=item.component_name,
-                    component_version=item.component_version,
+                    component_id=(
+                        item.component_id
+                    ),
+                    component_name=(
+                        item.component_name
+                    ),
+                    component_version=(
+                        item.component_version
+                    ),
                     applicability_status=(
-                        item.applicability_status
+                        item
+                        .applicability_status
                     ),
                     severity=item.severity,
                     priority=item.priority,
                     is_kev=item.is_kev,
-                    match_rule=item.match_rule,
-                    match_version=item.match_version,
+                    match_rule=(
+                        item.match_rule
+                    ),
+                    match_version=(
+                        item.match_version
+                    ),
                 )
-                for item in machine.exposures
+                for item
+                in machine.exposures
             ],
         )
 
     return router
-

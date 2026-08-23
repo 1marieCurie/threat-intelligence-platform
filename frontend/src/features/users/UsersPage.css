@@ -1,0 +1,146 @@
+.users-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.users-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.users-header h1 {
+  margin: 4px 0 8px;
+  color: #10233f;
+  font-size: 1.85rem;
+}
+
+.users-header p {
+  max-width: 620px;
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.users-eyebrow {
+  color: #315f9b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.users-header-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #315f9b;
+}
+
+.users-create-card {
+  width: min(100%, 680px);
+  padding: 26px;
+}
+
+.users-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.users-card-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: #eef4fb;
+  color: #315f9b;
+}
+
+.users-card-heading h2 {
+  margin: 0 0 5px;
+  color: #172033;
+  font-size: 1.05rem;
+}
+
+.users-card-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.users-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.users-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.users-field > span {
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.users-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.users-error {
+  padding: 11px 13px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.86rem;
+}
+
+.users-success {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 0.84rem;
+}
+
+@media (
+  max-width: 700px
+) {
+  .users-header-icon {
+    display: none;
+  }
+
+  .users-create-card {
+    padding: 20px;
+  }
+
+  .users-actions {
+    justify-content: stretch;
+  }
+
+  .users-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
