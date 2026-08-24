@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    String,
+    and_,
+    cast,
+    func,
     literal,
+    or_,
     select,
     tuple_,
 )
@@ -14,8 +19,16 @@ from application.models.github_advisory_canonical_source_record import (
 from application.ports.outbound.github_advisory_canonical_source import (
     GitHubAdvisoryCanonicalSource,
 )
+from infrastructure.persistence.models.canonical import (
+    CanonicalVulnerabilityEvidenceModel,
+)
 from infrastructure.persistence.models.normalized import (
     GitHubAdvisoryVulnerabilityModel,
+)
+
+
+GITHUB_ADVISORY_EVIDENCE_SOURCE = (
+    "github_advisory"
 )
 
 
@@ -26,12 +39,21 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
     Reader PostgreSQL des advisories GitHub destinés
     à la couche canonique.
 
-    La requête :
-    - utilise une pagination keyset ;
-    - filtre les advisories retirés en SQL ;
-    - sélectionne uniquement sept colonnes ;
-    - transporte les références CWE normalisées ;
-    - n'accède jamais au schéma raw.
+    Mode complet, par défaut :
+        conserve le comportement historique et lit toutes
+        les lignes normalisées non retirées.
+
+    Mode incremental_only :
+        - conserve uniquement la version normalisée la plus
+          récente de chaque GHSA ;
+        - ignore les GHSA dont l'evidence canonique référence
+          déjà exactement cette version normalisée ;
+        - retourne donc uniquement les advisories nouveaux
+          ou réellement actualisés.
+
+    Aucun état scheduler supplémentaire n'est nécessaire :
+    canonical_vulnerability_evidence sert naturellement
+    de preuve du dernier record canonicalisé.
     """
 
     DEFAULT_BATCH_SIZE = 500
@@ -41,13 +63,25 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
         self,
         *,
         session: Session,
+        incremental_only: bool = False,
     ) -> None:
         if session is None:
             raise ValueError(
                 "session must not be None"
             )
 
+        if not isinstance(
+            incremental_only,
+            bool,
+        ):
+            raise TypeError(
+                "incremental_only must be a boolean"
+            )
+
         self._session = session
+        self._incremental_only = (
+            incremental_only
+        )
 
     def read_batch(
         self,
@@ -73,66 +107,35 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
             )
         )
 
-        statement = (
-            select(
-                GitHubAdvisoryVulnerabilityModel.id,
-                GitHubAdvisoryVulnerabilityModel
-                .ghsa_id,
-                GitHubAdvisoryVulnerabilityModel
-                .cve_id,
-                GitHubAdvisoryVulnerabilityModel
-                .cwe_ids,
-                GitHubAdvisoryVulnerabilityModel
-                .published_at,
-                GitHubAdvisoryVulnerabilityModel
-                .updated_at,
-                GitHubAdvisoryVulnerabilityModel
-                .normalized_at,
-            )
-            .where(
-                GitHubAdvisoryVulnerabilityModel
-                .withdrawn_at
-                .is_(None)
-            )
-        )
-
-        if normalized_cursor is not None:
-            statement = statement.where(
-                tuple_(
-                    GitHubAdvisoryVulnerabilityModel
-                    .ghsa_id,
-                    GitHubAdvisoryVulnerabilityModel
-                    .id,
-                )
-                > tuple_(
-                    literal(
-                        normalized_cursor.ghsa_id
-                    ),
-                    literal(
+        if self._incremental_only:
+            statement = (
+                self._build_incremental_statement(
+                    after_cursor=(
                         normalized_cursor
-                        .normalized_record_id
+                    ),
+                    limit=(
+                        normalized_limit
                     ),
                 )
             )
 
-        statement = (
-            statement
-            .order_by(
-                GitHubAdvisoryVulnerabilityModel
-                .ghsa_id
-                .asc(),
-                GitHubAdvisoryVulnerabilityModel
-                .id
-                .asc(),
+        else:
+            statement = (
+                self._build_complete_statement(
+                    after_cursor=(
+                        normalized_cursor
+                    ),
+                    limit=(
+                        normalized_limit
+                    ),
+                )
             )
-            .limit(
-                normalized_limit
-            )
-        )
 
         rows = (
             self._session
-            .execute(statement)
+            .execute(
+                statement
+            )
             .tuples()
             .all()
         )
@@ -165,13 +168,252 @@ class SqlAlchemyGitHubAdvisoryCanonicalSource(
             in rows
         )
 
+    @staticmethod
+    def _build_complete_statement(
+        *,
+        after_cursor: (
+            GitHubAdvisoryCanonicalCursor
+            | None
+        ),
+        limit: int,
+    ):
+        statement = (
+            select(
+                GitHubAdvisoryVulnerabilityModel.id,
+                GitHubAdvisoryVulnerabilityModel
+                .ghsa_id,
+                GitHubAdvisoryVulnerabilityModel
+                .cve_id,
+                GitHubAdvisoryVulnerabilityModel
+                .cwe_ids,
+                GitHubAdvisoryVulnerabilityModel
+                .published_at,
+                GitHubAdvisoryVulnerabilityModel
+                .updated_at,
+                GitHubAdvisoryVulnerabilityModel
+                .normalized_at,
+            )
+            .where(
+                GitHubAdvisoryVulnerabilityModel
+                .withdrawn_at
+                .is_(None)
+            )
+        )
+
+        if after_cursor is not None:
+            statement = (
+                statement.where(
+                    tuple_(
+                        GitHubAdvisoryVulnerabilityModel
+                        .ghsa_id,
+                        GitHubAdvisoryVulnerabilityModel
+                        .id,
+                    )
+                    > tuple_(
+                        literal(
+                            after_cursor.ghsa_id
+                        ),
+                        literal(
+                            after_cursor
+                            .normalized_record_id
+                        ),
+                    )
+                )
+            )
+
+        return (
+            statement
+            .order_by(
+                GitHubAdvisoryVulnerabilityModel
+                .ghsa_id
+                .asc(),
+                GitHubAdvisoryVulnerabilityModel
+                .id
+                .asc(),
+            )
+            .limit(
+                limit
+            )
+        )
+
+    @staticmethod
+    def _build_incremental_statement(
+        *,
+        after_cursor: (
+            GitHubAdvisoryCanonicalCursor
+            | None
+        ),
+        limit: int,
+    ):
+        """
+        Construit un ensemble contenant uniquement
+        la version la plus récente de chaque GHSA.
+
+        updated_at est prioritaire car il reflète
+        la version fournisseur.
+
+        normalized_at puis id stabilisent le choix
+        lorsque updated_at est absent ou identique.
+        """
+
+        ranked_records = (
+            select(
+                GitHubAdvisoryVulnerabilityModel
+                .id
+                .label(
+                    "id"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .ghsa_id
+                .label(
+                    "ghsa_id"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .cve_id
+                .label(
+                    "cve_id"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .cwe_ids
+                .label(
+                    "cwe_ids"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .published_at
+                .label(
+                    "published_at"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .updated_at
+                .label(
+                    "updated_at"
+                ),
+                GitHubAdvisoryVulnerabilityModel
+                .normalized_at
+                .label(
+                    "normalized_at"
+                ),
+                func.row_number()
+                .over(
+                    partition_by=(
+                        GitHubAdvisoryVulnerabilityModel
+                        .ghsa_id
+                    ),
+                    order_by=(
+                        GitHubAdvisoryVulnerabilityModel
+                        .updated_at
+                        .desc()
+                        .nullslast(),
+                        GitHubAdvisoryVulnerabilityModel
+                        .normalized_at
+                        .desc(),
+                        GitHubAdvisoryVulnerabilityModel
+                        .id
+                        .desc(),
+                    ),
+                )
+                .label(
+                    "version_rank"
+                ),
+            )
+            .where(
+                GitHubAdvisoryVulnerabilityModel
+                .withdrawn_at
+                .is_(None)
+            )
+            .subquery(
+                "latest_github_advisory"
+            )
+        )
+
+        evidence = (
+            CanonicalVulnerabilityEvidenceModel
+        )
+
+        statement = (
+            select(
+                ranked_records.c.id,
+                ranked_records.c.ghsa_id,
+                ranked_records.c.cve_id,
+                ranked_records.c.cwe_ids,
+                ranked_records.c.published_at,
+                ranked_records.c.updated_at,
+                ranked_records.c.normalized_at,
+            )
+            .select_from(
+                ranked_records
+            )
+            .outerjoin(
+                evidence,
+                and_(
+                    evidence.source
+                    == (
+                        GITHUB_ADVISORY_EVIDENCE_SOURCE
+                    ),
+                    evidence.source_record_key
+                    == func.upper(
+                        ranked_records.c.ghsa_id
+                    ),
+                ),
+            )
+            .where(
+                ranked_records.c.version_rank
+                == 1
+            )
+            .where(
+                or_(
+                    evidence.id.is_(None),
+                    evidence.normalized_record_id
+                    != cast(
+                        ranked_records.c.id,
+                        String,
+                    ),
+                )
+            )
+        )
+
+        if after_cursor is not None:
+            statement = (
+                statement.where(
+                    tuple_(
+                        ranked_records.c.ghsa_id,
+                        ranked_records.c.id,
+                    )
+                    > tuple_(
+                        literal(
+                            after_cursor.ghsa_id
+                        ),
+                        literal(
+                            after_cursor
+                            .normalized_record_id
+                        ),
+                    )
+                )
+            )
+
+        return (
+            statement
+            .order_by(
+                ranked_records.c.ghsa_id
+                .asc(),
+                ranked_records.c.id
+                .asc(),
+            )
+            .limit(
+                limit
+            )
+        )
+
     @classmethod
     def _validate_limit(
         cls,
         value: int,
     ) -> int:
         if (
-            isinstance(value, bool)
+            isinstance(
+                value,
+                bool,
+            )
             or not isinstance(
                 value,
                 int,

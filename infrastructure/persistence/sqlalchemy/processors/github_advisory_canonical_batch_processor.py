@@ -31,9 +31,12 @@ class SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor:
     Traite un seul lot canonique GitHub Advisory avec
     une session SQLAlchemy de lecture à durée courte.
 
-    La session n'est jamais conservée dans l'instance.
-    Les écritures canoniques restent gérées par les Unit
-    of Work injectées dans les services applicatifs.
+    Le mode incremental_only est destiné au scheduler :
+    il évite de reparcourir les advisories déjà
+    canonicalisés et inchangés.
+
+    Le mode False conserve le comportement historique
+    nécessaire aux backfills complets.
     """
 
     def __init__(
@@ -47,6 +50,7 @@ class SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor:
         cwe_enrichment_service: (
             CanonicalCWEEnrichmentService
         ),
+        incremental_only: bool = False,
     ) -> None:
         if session_factory is None:
             raise ValueError(
@@ -76,15 +80,30 @@ class SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor:
                 "must not be None"
             )
 
+        if not isinstance(
+            incremental_only,
+            bool,
+        ):
+            raise TypeError(
+                "incremental_only must be a boolean"
+            )
+
         self._session_factory = (
             session_factory
         )
+
         self._builder = builder
+
         self._correlation_service = (
             correlation_service
         )
+
         self._cwe_enrichment_service = (
             cwe_enrichment_service
+        )
+
+        self._incremental_only = (
+            incremental_only
         )
 
     def process_batch(
@@ -101,14 +120,29 @@ class SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor:
     ) -> (
         GitHubAdvisoryCanonicalCorrelationBatchResult
     ):
-        session = self._session_factory()
+        session = (
+            self._session_factory()
+        )
 
         try:
-            source = (
-                SqlAlchemyGitHubAdvisoryCanonicalSource(
-                    session=session,
+            if self._incremental_only:
+                source = (
+                    SqlAlchemyGitHubAdvisoryCanonicalSource(
+                        session=session,
+                        incremental_only=True,
+                    )
                 )
-            )
+
+            else:
+                # Important :
+                # on conserve l'appel historique sans argument
+                # additionnel afin de ne pas casser les tests,
+                # mocks et usages existants de backfill.
+                source = (
+                    SqlAlchemyGitHubAdvisoryCanonicalSource(
+                        session=session,
+                    )
+                )
 
             batch_service = (
                 GitHubAdvisoryCanonicalCorrelationBatchService(
@@ -123,9 +157,11 @@ class SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor:
                 )
             )
 
-            return batch_service.process_batch(
-                after_cursor=after_cursor,
-                limit=limit,
+            return (
+                batch_service.process_batch(
+                    after_cursor=after_cursor,
+                    limit=limit,
+                )
             )
 
         finally:
