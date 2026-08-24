@@ -6,10 +6,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parents[2]
+)
 
 load_dotenv(
-    dotenv_path=PROJECT_ROOT / ".env",
+    dotenv_path=(
+        PROJECT_ROOT / ".env"
+    ),
     override=False,
 )
 
@@ -54,6 +60,7 @@ GITHUB_ADVISORY_CANONICAL_MAX_BATCHES_ENV = (
     "GITHUB_ADVISORY_CANONICAL_MAX_BATCHES"
 )
 
+
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_MAX_BATCHES = 10_000
 
@@ -62,55 +69,83 @@ MAX_ALLOWED_MAX_BATCHES = 100_000
 
 
 def build_github_advisory_canonical_correlation_job(
+    *,
+    incremental_only: bool = False,
 ) -> GitHubAdvisoryCanonicalCorrelationJob:
     """
     Assemble le pipeline canonique GitHub Advisory.
 
+    incremental_only=False :
+        comportement historique / backfill complet.
+
+    incremental_only=True :
+        comportement scheduler. Seuls les advisories
+        nouveaux ou dont la version normalisée a changé
+        sont proposés à la canonicalisation.
+
     La configuration est intégralement validée avant
     la création du pool PostgreSQL.
-
-    Un seul engine et une seule session_factory sont créés.
-    Les différents Unit of Work partagent la factory, mais
-    ouvrent des sessions et transactions indépendantes.
     """
 
-    batch_size = _read_bounded_positive_integer(
-        variable_name=(
-            GITHUB_ADVISORY_CANONICAL_BATCH_SIZE_ENV
-        ),
-        default=DEFAULT_BATCH_SIZE,
-        maximum=MAX_ALLOWED_BATCH_SIZE,
+    if not isinstance(
+        incremental_only,
+        bool,
+    ):
+        raise TypeError(
+            "incremental_only must be a boolean"
+        )
+
+    batch_size = (
+        _read_bounded_positive_integer(
+            variable_name=(
+                GITHUB_ADVISORY_CANONICAL_BATCH_SIZE_ENV
+            ),
+            default=DEFAULT_BATCH_SIZE,
+            maximum=MAX_ALLOWED_BATCH_SIZE,
+        )
     )
 
-    max_batches = _read_bounded_positive_integer(
-        variable_name=(
-            GITHUB_ADVISORY_CANONICAL_MAX_BATCHES_ENV
-        ),
-        default=DEFAULT_MAX_BATCHES,
-        maximum=MAX_ALLOWED_MAX_BATCHES,
+    max_batches = (
+        _read_bounded_positive_integer(
+            variable_name=(
+                GITHUB_ADVISORY_CANONICAL_MAX_BATCHES_ENV
+            ),
+            default=DEFAULT_MAX_BATCHES,
+            maximum=MAX_ALLOWED_MAX_BATCHES,
+        )
     )
 
-    engine = create_ingestion_engine()
+    engine = (
+        create_ingestion_engine()
+    )
 
-    session_factory = create_session_factory(
-        engine
+    session_factory = (
+        create_session_factory(
+            engine
+        )
     )
 
     correlation_unit_of_work = (
         SqlAlchemyUnitOfWork(
-            session_factory=session_factory,
+            session_factory=(
+                session_factory
+            ),
         )
     )
 
     cwe_lookup_unit_of_work = (
         SqlAlchemyUnitOfWork(
-            session_factory=session_factory,
+            session_factory=(
+                session_factory
+            ),
         )
     )
 
     cwe_enrichment_unit_of_work = (
         SqlAlchemyUnitOfWork(
-            session_factory=session_factory,
+            session_factory=(
+                session_factory
+            ),
         )
     )
 
@@ -119,12 +154,18 @@ def build_github_advisory_canonical_correlation_job(
             unit_of_work=(
                 correlation_unit_of_work
             ),
-            max_observations=batch_size,
+            max_observations=(
+                batch_size
+            ),
         )
     )
 
-    cwe_lookup_service = CWELookupService(
-        unit_of_work=cwe_lookup_unit_of_work,
+    cwe_lookup_service = (
+        CWELookupService(
+            unit_of_work=(
+                cwe_lookup_unit_of_work
+            ),
+        )
     )
 
     association_builder = (
@@ -142,7 +183,9 @@ def build_github_advisory_canonical_correlation_job(
             builder=(
                 association_builder
             ),
-            max_records=batch_size,
+            max_records=(
+                batch_size
+            ),
         )
     )
 
@@ -152,21 +195,30 @@ def build_github_advisory_canonical_correlation_job(
 
     processor = (
         SqlAlchemyGitHubAdvisoryCanonicalBatchProcessor(
-            session_factory=session_factory,
-            builder=observation_builder,
+            session_factory=(
+                session_factory
+            ),
+            builder=(
+                observation_builder
+            ),
             correlation_service=(
                 correlation_service
             ),
             cwe_enrichment_service=(
                 cwe_enrichment_service
             ),
+            incremental_only=(
+                incremental_only
+            ),
         )
     )
 
-    return GitHubAdvisoryCanonicalCorrelationJob(
-        processor=processor,
-        batch_size=batch_size,
-        max_batches=max_batches,
+    return (
+        GitHubAdvisoryCanonicalCorrelationJob(
+            processor=processor,
+            batch_size=batch_size,
+            max_batches=max_batches,
+        )
     )
 
 
@@ -176,14 +228,6 @@ def _read_bounded_positive_integer(
     default: int,
     maximum: int,
 ) -> int:
-    """
-    Lit une variable entière strictement positive et bornée.
-
-    Une variable absente utilise la valeur par défaut.
-    Une variable présente mais vide ou invalide provoque
-    un échec immédiat avant toute connexion PostgreSQL.
-    """
-
     raw_value = os.environ.get(
         variable_name
     )
@@ -191,7 +235,9 @@ def _read_bounded_positive_integer(
     if raw_value is None:
         return default
 
-    normalized_value = raw_value.strip()
+    normalized_value = (
+        raw_value.strip()
+    )
 
     if not normalized_value:
         raise RuntimeError(

@@ -44,13 +44,17 @@ data/
 # Documentation locale
 docs/
 
-#ml data
+# ml data
 .ml-data/
 
 # Local development inventory data
 .dev-agent-state/
 .dev-data/
+
 # Local inventory development artifacts
 /.tip-agent-state/
 /inventory*.json
 /collect_inventory.ps1
+
+# Local scheduler evidence used for report/redaction only
+/artifacts/reports/scheduler/
