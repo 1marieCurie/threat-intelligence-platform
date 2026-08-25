@@ -132,14 +132,12 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(
+  const fetchDashboard = useCallback(
     async () => {
-      setIsLoading(true);
-      setError(null);
-
       try {
         const result = await getDashboard();
         setDashboard(result);
+        setError(null);
       } catch (caughtError) {
         setDashboard(null);
         setError(
@@ -154,9 +152,15 @@ export function DashboardPage() {
     [],
   );
 
+  function reloadDashboard() {
+    setIsLoading(true);
+    setError(null);
+    void fetchDashboard();
+  }
+
   useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+    void fetchDashboard();
+  }, [fetchDashboard]);
 
   const header = (
     <header className="security-page-header dashboard-page-header">
@@ -181,9 +185,7 @@ export function DashboardPage() {
             <Button
               type="button"
               className="dashboard-refresh-button"
-              onClick={() => {
-                void loadDashboard();
-              }}
+              onClick={reloadDashboard}
             >
               <RefreshCw size={14} />
               Actualiser
@@ -238,9 +240,7 @@ export function DashboardPage() {
             </div>
             <Button
               type="button"
-              onClick={() => {
-                void loadDashboard();
-              }}
+              onClick={reloadDashboard}
             >
               Réessayer
             </Button>
