@@ -23,6 +23,7 @@ import "./final-ui-polish.css";
 import "./features/help/security-help.css";
 import "./security-console-polish.css";
 import "./icon-alignment.css";
+import "./security-visual-balance.css";
 
 
 createRoot(
