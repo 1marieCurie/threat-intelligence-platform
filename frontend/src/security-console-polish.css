@@ -136,6 +136,100 @@
   line-height: 1.3;
 }
 
+/* Inventory page */
+.security-shell .inventory-flow {
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.security-shell .inventory-flow-step__number,
+.security-shell .inventory-section-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .inventory-flow-step strong {
+  font-size: 13px;
+}
+
+.security-shell .inventory-flow-step p {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-section-header h2 {
+  font-size: 17px;
+}
+
+.security-shell .inventory-section-header p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-platform-badge {
+  font-size: 11.5px;
+}
+
+.security-shell .inventory-code-file strong,
+.security-shell .inventory-command-heading strong,
+.security-shell .inventory-file-picker strong,
+.security-shell .inventory-fact__content strong,
+.security-shell .inventory-inline-error strong,
+.security-shell .inventory-success-header strong {
+  font-size: 12.5px;
+}
+
+.security-shell .inventory-code-file span,
+.security-shell .inventory-command-heading p,
+.security-shell .inventory-note p,
+.security-shell .inventory-file-picker > span:last-child,
+.security-shell .inventory-fact__content span,
+.security-shell .inventory-inline-error span,
+.security-shell .inventory-success-header span {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.security-shell .button.inventory-code-button,
+.security-shell .inventory-copy-command {
+  font-size: 11.5px;
+}
+
+.security-shell .inventory-code,
+.security-shell .inventory-command code {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* User management page */
+.security-shell .users-page {
+  gap: 20px;
+}
+
+.security-shell .users-header h1 {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.security-shell .users-header p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.security-shell .users-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .users-card-heading h2 {
+  font-size: 17px;
+}
+
+.security-shell .users-card-heading p,
+.security-shell .users-field > span,
+.security-shell .users-error,
+.security-shell .users-success {
+  font-size: 13px;
+}
+
 @media (max-width: 700px) {
   .security-shell .security-content {
     font-size: 13.5px;
