@@ -1,0 +1,194 @@
+/* Final dashboard composition: fewer repeated bar charts and clearer text hierarchy. */
+
+.dashboard-workspace--balanced {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 20px;
+}
+
+.dashboard-priority-panel,
+.dashboard-alerts-panel {
+  min-height: 210px;
+}
+
+.dashboard-panel .dashboard-section-header h2 {
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.dashboard-panel .dashboard-section-header p {
+  margin-top: 7px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.dashboard-panel .dashboard-section-link {
+  font-size: 13.5px;
+}
+
+.dashboard-empty--roomy {
+  padding: 28px 0 18px;
+}
+
+.dashboard-empty strong {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+
+.dashboard-empty span {
+  display: block;
+  margin-top: 7px;
+  color: var(--ti-text-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.priority-activity__item,
+.alert-activity__item {
+  min-height: 66px;
+}
+
+.priority-activity .activity-content strong,
+.alert-activity .activity-content strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.priority-activity .activity-content > span,
+.alert-activity .activity-content > span {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.dashboard-alert-meta {
+  font-size: 11.5px !important;
+}
+
+/* Applicability: vertical histogram to avoid another horizontal progress chart. */
+.applicability-histogram {
+  min-height: 220px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr)) minmax(150px, 0.8fr);
+  align-items: end;
+  gap: 24px;
+  padding: 8px 4px 2px;
+}
+
+.applicability-histogram__column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.applicability-histogram__plot {
+  width: 84px;
+  height: 126px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--ti-border-strong);
+  background:
+    linear-gradient(to top, rgba(15, 32, 51, 0.035) 1px, transparent 1px);
+  background-size: 100% 31px;
+}
+
+.applicability-histogram__bar {
+  width: 48px;
+  min-height: 0;
+  border-radius: 9px 9px 3px 3px;
+  transition: height 180ms ease;
+}
+
+.applicability-histogram__bar--confirmed {
+  background: var(--ti-green);
+  box-shadow: 0 8px 18px rgba(39, 135, 91, 0.16);
+}
+
+.applicability-histogram__bar--potential {
+  background: var(--ti-orange);
+  box-shadow: 0 8px 18px rgba(192, 131, 25, 0.14);
+}
+
+.applicability-histogram__column > strong {
+  color: var(--ti-text);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.applicability-histogram__column > span {
+  margin-top: 7px;
+  color: var(--ti-text);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.applicability-histogram__column > small {
+  margin-top: 4px;
+  color: var(--ti-text-muted);
+  font-size: 11.5px;
+}
+
+.applicability-histogram__summary {
+  align-self: center;
+  min-width: 0;
+  padding: 18px 0 18px 24px;
+  border-left: 1px solid var(--ti-border);
+}
+
+.applicability-histogram__summary strong,
+.applicability-histogram__summary span {
+  display: block;
+}
+
+.applicability-histogram__summary strong {
+  color: var(--ti-text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.applicability-histogram__summary span {
+  margin-top: 8px;
+  color: var(--ti-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1120px) {
+  .dashboard-workspace--balanced {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-workspace--balanced .dashboard-side-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .applicability-histogram {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+
+  .applicability-histogram__summary {
+    grid-column: 1 / -1;
+    padding: 15px 0 0;
+    border-top: 1px solid var(--ti-border);
+    border-left: 0;
+    text-align: center;
+  }
+
+  .dashboard-workspace--balanced .dashboard-side-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .applicability-histogram__bar {
+    transition: none;
+  }
+}

@@ -1,0 +1,243 @@
+/* Final typography harmonization for the security responsible workspace. */
+.security-shell .security-content {
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.security-shell .security-page p,
+.security-shell .security-page li,
+.security-shell .security-page dd {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.security-shell .security-page label,
+.security-shell .security-page summary,
+.security-shell .security-page input,
+.security-shell .security-page select,
+.security-shell .security-page textarea {
+  font-size: 13px;
+}
+
+.security-shell .security-page a {
+  font-size: 13px;
+}
+
+.security-shell .security-page small,
+.security-shell .table-secondary,
+.security-shell [class*="-secondary"],
+.security-shell [class*="-meta"] {
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.security-shell .dashboard-header-link,
+.security-shell .dashboard-section-link,
+.security-shell .dashboard-empty-link,
+.security-shell .machines-header-link,
+.security-shell .machines-empty-action,
+.security-shell .machine-help-link,
+.security-shell .machine-section-help,
+.security-shell .software-header-link,
+.security-shell .software-empty-action,
+.security-shell .vulnerability-help-link,
+.security-shell .vulnerability-empty-link,
+.security-shell .alerts-help-link,
+.security-shell .alerts-empty-link,
+.security-shell .url-analysis-help-link {
+  font-size: 12.5px;
+}
+
+.security-shell .machine-vulnerability-link,
+.security-shell .software-exposure-link,
+.security-shell .vulnerability-id--link,
+.security-shell .alerts-vulnerability-link,
+.security-shell .alerts-machine-link,
+.security-shell .alerts-event-link {
+  font-size: 12.5px;
+}
+
+.security-shell .dashboard-loading-state strong,
+.security-shell .dashboard-error-state strong,
+.security-shell .dashboard-empty-state strong,
+.security-shell .machines-loading-state strong,
+.security-shell .machines-error-state strong,
+.security-shell .software-loading-state strong,
+.security-shell .software-error-state strong,
+.security-shell .vulnerability-loading-state strong,
+.security-shell .vulnerability-error-state strong,
+.security-shell .alerts-loading-state strong,
+.security-shell .alerts-error-state strong {
+  font-size: 14px;
+}
+
+.security-shell .dashboard-loading-state div > span,
+.security-shell .dashboard-error-state div > span,
+.security-shell .dashboard-empty-state div > span,
+.security-shell .machines-loading-state div > span,
+.security-shell .machines-error-state div > span,
+.security-shell .software-loading-state div > span,
+.security-shell .software-error-state div > span,
+.security-shell .vulnerability-loading-state div > span,
+.security-shell .vulnerability-error-state div > span,
+.security-shell .alerts-loading-state div > span,
+.security-shell .alerts-error-state div > span {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.security-shell :is(
+  .priority-tag,
+  .applicability-badge,
+  .component-type,
+  .vulnerability-priority-tag,
+  .vulnerability-severity-tag,
+  .vulnerability-kev,
+  .alerts-priority,
+  .alerts-status,
+  .alerts-kev,
+  .activity-status
+) {
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.security-shell .dashboard-alert-meta,
+.security-shell .url-result-disclaimer {
+  font-size: 11.5px !important;
+  line-height: 1.5;
+}
+
+.security-shell .software-reset-filters,
+.security-shell .software-reset-empty,
+.security-shell .vulnerability-reset-filters,
+.security-shell .vulnerability-reset-empty,
+.security-shell .alerts-reset-filters,
+.security-shell .alerts-reset-empty,
+.security-shell .machines-reset-search {
+  font-size: 12px;
+}
+
+.security-shell .data-table th {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.security-shell .data-table td {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.security-shell .security-page h2 {
+  line-height: 1.25;
+}
+
+.security-shell .security-page h3 {
+  line-height: 1.3;
+}
+
+/* Inventory page */
+.security-shell .inventory-flow {
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.security-shell .inventory-flow-step__number,
+.security-shell .inventory-section-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .inventory-flow-step strong {
+  font-size: 13px;
+}
+
+.security-shell .inventory-flow-step p {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-section-header h2 {
+  font-size: 17px;
+}
+
+.security-shell .inventory-section-header p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-platform-badge {
+  font-size: 11.5px;
+}
+
+.security-shell .inventory-code-file strong,
+.security-shell .inventory-command-heading strong,
+.security-shell .inventory-file-picker strong,
+.security-shell .inventory-fact__content strong,
+.security-shell .inventory-inline-error strong,
+.security-shell .inventory-success-header strong {
+  font-size: 12.5px;
+}
+
+.security-shell .inventory-code-file span,
+.security-shell .inventory-command-heading p,
+.security-shell .inventory-note p,
+.security-shell .inventory-file-picker > span:last-child,
+.security-shell .inventory-fact__content span,
+.security-shell .inventory-inline-error span,
+.security-shell .inventory-success-header span {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.security-shell .button.inventory-code-button,
+.security-shell .inventory-copy-command {
+  font-size: 11.5px;
+}
+
+.security-shell .inventory-code,
+.security-shell .inventory-command code {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* User management page */
+.security-shell .users-page {
+  gap: 20px;
+}
+
+.security-shell .users-header h1 {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.security-shell .users-header p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.security-shell .users-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .users-card-heading h2 {
+  font-size: 17px;
+}
+
+.security-shell .users-card-heading p,
+.security-shell .users-field > span,
+.security-shell .users-error,
+.security-shell .users-success {
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .security-shell .security-content {
+    font-size: 13.5px;
+  }
+
+  .security-shell .security-page p,
+  .security-shell .security-page li,
+  .security-shell .security-page dd {
+    font-size: 13px;
+  }
+}

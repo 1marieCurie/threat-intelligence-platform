@@ -1,0 +1,235 @@
+.dashboard-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.dashboard-page-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-header-link,
+.dashboard-section-link,
+.dashboard-empty-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  color: var(--ti-blue);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 650;
+
+  transition: color 120ms ease;
+}
+
+.dashboard-header-link:hover,
+.dashboard-section-link:hover,
+.dashboard-empty-link:hover {
+  color: var(--ti-blue-hover);
+}
+
+.dashboard-header-link {
+  min-height: 38px;
+  padding: 0 11px;
+
+  color: var(--ti-text-secondary);
+  background: var(--ti-surface-soft);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+}
+
+.dashboard-header-link:hover {
+  color: var(--ti-text);
+  background: #f4f6f8;
+}
+
+.dashboard-refresh-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-loading-state,
+.dashboard-error-state,
+.dashboard-empty-state {
+  min-height: 120px;
+}
+
+.dashboard-loading-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-loading-state strong,
+.dashboard-loading-state span,
+.dashboard-error-state strong,
+.dashboard-error-state span,
+.dashboard-empty-state strong,
+.dashboard-empty-state span {
+  display: block;
+}
+
+.dashboard-loading-state strong,
+.dashboard-error-state strong,
+.dashboard-empty-state strong {
+  color: var(--ti-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.dashboard-loading-state div > span,
+.dashboard-error-state div > span,
+.dashboard-empty-state div > span {
+  margin-top: 4px;
+  color: var(--ti-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dashboard-error-state,
+.dashboard-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-error-state > svg {
+  flex: 0 0 auto;
+  color: var(--ti-red);
+}
+
+.dashboard-error-state > div,
+.dashboard-empty-state > div {
+  flex: 1;
+}
+
+.dashboard-empty-state > svg {
+  flex: 0 0 auto;
+  color: var(--ti-text-muted);
+}
+
+.dashboard-statistics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.dashboard-statistic {
+  min-height: 68px;
+  padding: 13px 14px;
+
+  background: var(--ti-surface);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(18, 28, 38, 0.025);
+}
+
+.dashboard-statistic__label {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.dashboard-section-header--with-link {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-section-header p {
+  margin: 5px 0 0;
+  color: var(--ti-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.dashboard-section-link {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.dashboard-alert-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: background 120ms ease;
+}
+
+.dashboard-alert-link:hover {
+  background: var(--ti-surface-soft);
+}
+
+.dashboard-alert-meta {
+  color: var(--ti-text-muted) !important;
+  font-size: 8px !important;
+}
+
+@media (max-width: 1120px) {
+  .dashboard-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-side-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .dashboard-side-column .chart-container,
+  .dashboard-side-column .card {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-page-header__row,
+  .dashboard-section-header--with-link,
+  .dashboard-error-state,
+  .dashboard-empty-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-page-header__actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-statistics,
+  .dashboard-side-column {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-section-link {
+    width: fit-content;
+  }
+
+  .dashboard-error-state .button {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-page-header__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-header-link,
+  .dashboard-refresh-button {
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

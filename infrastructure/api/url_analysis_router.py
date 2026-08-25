@@ -79,16 +79,8 @@ def create_url_analysis_router(
         tags=["url-analysis"],
     )
 
-    @router.post(
-        "/url-analysis",
-        response_model=URLAnalysisResponse,
-        status_code=status.HTTP_200_OK,
-    )
-    def analyze_url(
+    def run_analysis(
         payload: URLAnalysisRequest,
-        _: UserAccount = Depends(
-            require_authenticated_user
-        ),
     ) -> URLAnalysisResponse:
         try:
             result = (
@@ -132,6 +124,33 @@ def create_url_analysis_router(
             model_version=(
                 result.model_version
             ),
+        )
+
+    @router.post(
+        "/public/url-analysis",
+        response_model=URLAnalysisResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    def analyze_public_url(
+        payload: URLAnalysisRequest,
+    ) -> URLAnalysisResponse:
+        return run_analysis(
+            payload
+        )
+
+    @router.post(
+        "/url-analysis",
+        response_model=URLAnalysisResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    def analyze_url(
+        payload: URLAnalysisRequest,
+        _: UserAccount = Depends(
+            require_authenticated_user
+        ),
+    ) -> URLAnalysisResponse:
+        return run_analysis(
+            payload
         )
 
     return router

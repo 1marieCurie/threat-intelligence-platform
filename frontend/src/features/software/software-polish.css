@@ -1,0 +1,213 @@
+.software-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.software-page-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.software-header-link,
+.software-empty-action,
+.software-exposure-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.software-header-link {
+  min-height: 38px;
+  padding: 0 11px;
+  color: var(--ti-text-secondary);
+  background: var(--ti-surface-soft);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.software-header-link:hover {
+  color: var(--ti-text);
+  background: #f4f6f8;
+}
+
+.software-header-link--primary {
+  color: #ffffff;
+  background: var(--ti-blue);
+  border-color: var(--ti-blue);
+}
+
+.software-header-link--primary:hover {
+  color: #ffffff;
+  background: var(--ti-blue-hover);
+  border-color: var(--ti-blue-hover);
+}
+
+.software-loading-state,
+.software-error-state {
+  min-height: 110px;
+}
+
+.software-loading-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.software-loading-state strong,
+.software-loading-state span,
+.software-error-state strong,
+.software-error-state span {
+  display: block;
+}
+
+.software-loading-state strong,
+.software-error-state strong {
+  color: var(--ti-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.software-loading-state div > span,
+.software-error-state div > span {
+  margin-top: 4px;
+  color: var(--ti-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.software-error-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.software-error-state > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.software-error-state .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.software-statistics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.software-statistic {
+  min-height: 66px;
+  padding: 12px 14px;
+  background: var(--ti-surface);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(18, 28, 38, 0.025);
+}
+
+.software-reset-filters,
+.software-reset-empty {
+  padding: 0;
+  color: var(--ti-blue);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.software-reset-filters {
+  min-height: 36px;
+  align-self: flex-end;
+}
+
+.software-reset-filters:hover,
+.software-reset-empty:hover {
+  color: var(--ti-blue-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.software-reset-empty {
+  margin-top: 12px;
+}
+
+.software-empty-action {
+  min-height: 36px;
+  margin-top: 14px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: var(--ti-blue);
+  border: 1px solid var(--ti-blue);
+  border-radius: 3px;
+}
+
+.software-empty-action:hover {
+  background: var(--ti-blue-hover);
+  border-color: var(--ti-blue-hover);
+}
+
+.software-exposure-link {
+  justify-content: flex-end;
+  color: var(--ti-red);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.software-exposure-link:hover {
+  color: #a93636;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .software-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .software-page-header__row,
+  .software-error-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .software-page-header__actions {
+    justify-content: flex-start;
+  }
+
+  .software-error-state .button {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 520px) {
+  .software-page-header__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .software-header-link {
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .software-statistics {
+    grid-template-columns: 1fr;
+  }
+}

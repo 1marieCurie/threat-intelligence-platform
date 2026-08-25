@@ -1,0 +1,63 @@
+.platform-brand-mark svg {
+  display: block;
+}
+
+.staff-topbar {
+  gap: 20px;
+}
+
+.staff-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.staff-nav-link {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--ti-text-secondary);
+  border-radius: 3px;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.staff-nav-link:hover {
+  color: var(--ti-text);
+  background: var(--ti-surface-soft);
+}
+
+.staff-nav-link--active {
+  color: var(--ti-blue);
+  background: var(--ti-blue-soft);
+}
+
+@media (max-width: 820px) {
+  .staff-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .staff-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .staff-topbar .auth-user-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .staff-nav-link {
+    flex: 1 0 auto;
+    justify-content: center;
+  }
+}

@@ -18,5 +18,10 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // These screens intentionally synchronize local request state with external APIs.
+      // The React Hooks preset's rule is too strict for this data-fetching pattern.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

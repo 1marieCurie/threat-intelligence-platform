@@ -11,59 +11,51 @@ import {
 import {
   AlertDetailPage,
 } from "./features/alerts/AlertDetailPage";
-
 import {
   AlertsPage,
 } from "./features/alerts/AlertsPage";
-
 import {
   LoginPage,
 } from "./features/auth/LoginPage";
-
 import {
   RegisterPage,
 } from "./features/auth/RegisterPage";
-
 import {
   DashboardPage,
 } from "./features/dashboard/DashboardPage";
-
+import {
+  HelpCenterPage,
+} from "./features/help/HelpCenterPage";
 import {
   InventoryPage,
 } from "./features/inventory/InventoryPage";
-
 import {
   MachineDetailPage,
 } from "./features/machines/MachineDetailPage";
-
 import {
   MachinesPage,
 } from "./features/machines/MachinesPage";
-
+import {
+  LandingPage,
+} from "./features/public/LandingPage";
 import {
   SoftwarePage,
 } from "./features/software/SoftwarePage";
-
 import {
   URLAnalysisPage,
 } from "./features/url-analysis/URLAnalysisPage";
-
 import {
   UsersPage,
 } from "./features/users/UsersPage";
-
 import {
   VulnerabilityDetailPage,
 } from "./features/vulnerabilities/VulnerabilityDetailPage";
-
 import {
   VulnerabilitiesPage,
 } from "./features/vulnerabilities/VulnerabilitiesPage";
-
 import {
   SecurityLayout,
 } from "./layouts/SecurityLayout";
-
 import {
   StaffLayout,
 } from "./layouts/StaffLayout";
@@ -72,18 +64,15 @@ import {
 function StaffRoutes() {
   return (
     <Routes>
-      <Route
-        element={
-          <StaffLayout />
-        }
-      >
+      <Route element={<StaffLayout />}>
         <Route
           path="analyse-url"
-          element={
-            <URLAnalysisPage />
-          }
+          element={<URLAnalysisPage />}
         />
-
+        <Route
+          path="aide"
+          element={<HelpCenterPage />}
+        />
         <Route
           path="*"
           element={
@@ -102,88 +91,55 @@ function StaffRoutes() {
 function SecurityRoutes() {
   return (
     <Routes>
-      <Route
-        element={
-          <SecurityLayout />
-        }
-      >
+      <Route element={<SecurityLayout />}>
         <Route
           path="dashboard"
-          element={
-            <DashboardPage />
-          }
+          element={<DashboardPage />}
         />
-
         <Route
           path="machines"
-          element={
-            <MachinesPage />
-          }
+          element={<MachinesPage />}
         />
-
         <Route
           path="machines/:machineId"
-          element={
-            <MachineDetailPage />
-          }
+          element={<MachineDetailPage />}
         />
-
         <Route
           path="inventaires"
-          element={
-            <InventoryPage />
-          }
+          element={<InventoryPage />}
         />
-
         <Route
           path="logiciels"
-          element={
-            <SoftwarePage />
-          }
+          element={<SoftwarePage />}
         />
-
         <Route
           path="vulnerabilites"
-          element={
-            <VulnerabilitiesPage />
-          }
+          element={<VulnerabilitiesPage />}
         />
-
         <Route
           path="vulnerabilites/:vulnerabilityId"
-          element={
-            <VulnerabilityDetailPage />
-          }
+          element={<VulnerabilityDetailPage />}
         />
-
         <Route
           path="alertes"
-          element={
-            <AlertsPage />
-          }
+          element={<AlertsPage />}
         />
-
         <Route
           path="alertes/:alertId"
-          element={
-            <AlertDetailPage />
-          }
+          element={<AlertDetailPage />}
         />
-
         <Route
           path="utilisateurs"
-          element={
-            <UsersPage />
-          }
+          element={<UsersPage />}
         />
-
         <Route
           path="analyse-url"
-          element={
-            <URLAnalysisPage />
-          }
+          element={<URLAnalysisPage />}
         />
-
+        <Route
+          path="aide"
+          element={<HelpCenterPage />}
+        />
         <Route
           path="*"
           element={
@@ -205,10 +161,7 @@ function App() {
     isBootstrapping,
   } = useAuth();
 
-
-  if (
-    isBootstrapping
-  ) {
+  if (isBootstrapping) {
     return (
       <main className="auth-page">
         <div className="auth-loading">
@@ -218,31 +171,30 @@ function App() {
     );
   }
 
-
-  if (
-    user === null
-  ) {
+  if (user === null) {
     return (
       <Routes>
         <Route
-          path="/connexion"
-          element={
-            <LoginPage />
-          }
+          path="/"
+          element={<LandingPage />}
         />
-
+        <Route
+          path="/aide"
+          element={<HelpCenterPage />}
+        />
+        <Route
+          path="/connexion"
+          element={<LoginPage />}
+        />
         <Route
           path="/inscription"
-          element={
-            <RegisterPage />
-          }
+          element={<RegisterPage />}
         />
-
         <Route
           path="*"
           element={
             <Navigate
-              to="/connexion"
+              to="/"
               replace
             />
           }
@@ -251,20 +203,14 @@ function App() {
     );
   }
 
-
   if (
     user.role
     === "security_responsible"
   ) {
-    return (
-      <SecurityRoutes />
-    );
+    return <SecurityRoutes />;
   }
 
-
-  return (
-    <StaffRoutes />
-  );
+  return <StaffRoutes />;
 }
 
 

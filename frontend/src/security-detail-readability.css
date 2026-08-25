@@ -1,0 +1,186 @@
+/* Readability for dense security lists and detail pages. */
+
+/* =========================================================
+   Alerts list
+   ========================================================= */
+.security-shell .alerts-search .input {
+  min-height: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.security-shell .alerts-filter > span {
+  font-size: 12px;
+}
+
+.security-shell .alerts-filter select {
+  min-height: 42px;
+  height: 42px;
+  border-radius: var(--ti-radius-control);
+  font-size: 13px;
+}
+
+.security-shell .alerts-results-meta span {
+  font-size: 11.5px;
+}
+
+.security-shell .alerts-date {
+  font-size: 11.5px;
+}
+
+.security-shell .alerts-event {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.security-shell .alerts-vulnerability-id,
+.security-shell .alerts-component,
+.security-shell .alerts-machine {
+  font-size: 12.5px;
+}
+
+.security-shell .alerts-secondary {
+  font-size: 10.5px;
+}
+
+.security-shell .alerts-priority,
+.security-shell .alerts-kev,
+.security-shell .alerts-muted,
+.security-shell .alerts-status {
+  font-size: 11px;
+}
+
+/* =========================================================
+   Vulnerability detail
+   ========================================================= */
+.security-shell .vulnerability-detail-back {
+  font-size: 12.5px;
+}
+
+.security-shell .vulnerability-detail-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .vulnerability-detail-fact__content strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.security-shell .vulnerability-detail-fact__content span {
+  font-size: 12px;
+}
+
+.security-shell .vulnerability-detail-priority,
+.security-shell .vulnerability-detail-severity,
+.security-shell .vulnerability-detail-kev {
+  font-size: 11px;
+}
+
+.security-shell .vulnerability-detail-panel {
+  border-radius: var(--ti-radius-card);
+  box-shadow: var(--ti-shadow-card);
+}
+
+.security-shell .vulnerability-detail-section-header h2 {
+  font-size: 17.5px;
+}
+
+.security-shell .vulnerability-detail-section-header p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.security-shell .vulnerability-identifier-namespace {
+  font-size: 11px;
+}
+
+.security-shell .vulnerability-identifier-row strong {
+  font-size: 12.5px;
+}
+
+/* Common dense elements inside vulnerability detail. */
+.security-shell .vulnerability-detail-panel p,
+.security-shell .vulnerability-detail-panel li,
+.security-shell .vulnerability-detail-panel td {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.security-shell .vulnerability-detail-panel small,
+.security-shell .vulnerability-detail-panel [class*="secondary"],
+.security-shell .vulnerability-detail-panel [class*="meta"] {
+  font-size: 11.5px;
+}
+
+/* =========================================================
+   Alert detail
+   ========================================================= */
+.security-shell .alert-detail-back {
+  font-size: 12.5px;
+}
+
+.security-shell .alert-detail-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .alert-detail-status {
+  font-size: 11px;
+}
+
+.security-shell .alert-detail-fact__content strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.security-shell .alert-detail-fact__content span {
+  font-size: 11.5px;
+}
+
+.security-shell .alert-detail-trigger__label {
+  font-size: 10.5px;
+}
+
+.security-shell .alert-detail-trigger h2 {
+  font-size: 17px;
+}
+
+.security-shell .alert-detail-trigger p {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.security-shell .alert-detail-panel {
+  border-radius: var(--ti-radius-card);
+  box-shadow: var(--ti-shadow-card);
+}
+
+.security-shell .alert-detail-section-header h2 {
+  font-size: 17px;
+}
+
+.security-shell .alert-detail-section-header p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.security-shell .alert-detail-properties span {
+  font-size: 11.5px;
+}
+
+.security-shell .alert-detail-properties strong,
+.security-shell .alert-detail-properties a {
+  font-size: 13px;
+}
+
+.security-shell .alert-detail-panel p,
+.security-shell .alert-detail-panel li {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  .security-shell .vulnerability-detail-facts,
+  .security-shell .alert-detail-facts {
+    row-gap: 18px;
+  }
+}

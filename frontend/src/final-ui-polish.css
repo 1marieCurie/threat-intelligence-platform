@@ -1,0 +1,470 @@
+:root {
+  --ti-radius-control: 8px;
+  --ti-radius-card: 12px;
+  --ti-shadow-card: 0 10px 28px rgba(15, 32, 51, 0.055);
+  --ti-shadow-card-hover: 0 16px 36px rgba(15, 32, 51, 0.085);
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-size: 15.5px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Global surfaces and controls */
+.card,
+.chart-container {
+  padding: 22px;
+  border-radius: var(--ti-radius-card);
+  box-shadow: var(--ti-shadow-card);
+}
+
+.chart-container__header {
+  margin-bottom: 20px;
+}
+
+.chart-container__header h2,
+.dashboard-section-header h2 {
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.chart-container__header p,
+.dashboard-section-header p {
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: var(--ti-radius-control);
+  font-size: 14px;
+  font-weight: 650;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.button:hover:not(:disabled) {
+  box-shadow: 0 7px 18px rgba(36, 148, 228, 0.16);
+  transform: translateY(-1px);
+}
+
+.input,
+.role-switcher select {
+  border-radius: var(--ti-radius-control);
+  font-size: 14px;
+}
+
+.input {
+  min-height: 44px;
+  padding: 0 13px;
+}
+
+.form-label,
+.auth-field > span {
+  font-size: 13px;
+}
+
+/* App shell typography */
+.sidebar-brand strong {
+  font-size: 14px;
+}
+
+.sidebar-brand span {
+  font-size: 11.5px;
+}
+
+.sidebar-section-label {
+  font-size: 10.5px;
+}
+
+.security-nav {
+  gap: 3px;
+}
+
+.security-nav-link {
+  min-height: 41px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.sidebar-footer span,
+.sidebar-footer strong {
+  font-size: 11px;
+}
+
+.security-topbar {
+  min-height: 62px;
+  padding: 9px 26px;
+}
+
+.security-topbar__eyebrow {
+  font-size: 10.5px;
+}
+
+.security-topbar__title {
+  font-size: 14.5px;
+}
+
+.role-switcher label {
+  font-size: 12px;
+}
+
+.role-switcher select {
+  min-height: 38px;
+  font-size: 13px;
+}
+
+.staff-nav-link {
+  min-height: 38px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.security-content {
+  min-height: calc(100vh - 62px);
+  padding: 26px 28px 44px;
+}
+
+.security-page-header {
+  margin-bottom: 22px;
+  padding: 22px 24px;
+  border-radius: var(--ti-radius-card);
+  box-shadow: var(--ti-shadow-card);
+}
+
+.security-page-header h1 {
+  font-size: clamp(24px, 2.5vw, 29px);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.security-page-header p {
+  max-width: 840px;
+  margin-top: 9px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Reusable page actions and help links */
+.dashboard-header-link,
+.dashboard-section-link,
+.dashboard-empty-link,
+.machines-header-link,
+.machines-empty-action,
+.machine-help-link,
+.machine-vulnerability-link,
+.machine-section-help,
+.software-header-link,
+.software-empty-action,
+.software-exposure-link,
+.vulnerability-help-link,
+.vulnerability-empty-link,
+.alerts-help-link,
+.alerts-empty-link,
+.alerts-vulnerability-link,
+.alerts-machine-link,
+.url-analysis-help-link {
+  font-size: 12.5px;
+}
+
+.dashboard-header-link,
+.machines-header-link,
+.machine-help-link,
+.software-header-link,
+.vulnerability-help-link,
+.alerts-help-link,
+.url-analysis-help-link {
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+.dashboard-loading-state strong,
+.dashboard-error-state strong,
+.dashboard-empty-state strong,
+.machines-loading-state strong,
+.machines-error-state strong,
+.software-loading-state strong,
+.software-error-state strong,
+.vulnerability-loading-state strong,
+.vulnerability-error-state strong,
+.alerts-loading-state strong,
+.alerts-error-state strong {
+  font-size: 14.5px;
+}
+
+.dashboard-loading-state div > span,
+.dashboard-error-state div > span,
+.dashboard-empty-state div > span,
+.machines-loading-state div > span,
+.machines-error-state div > span,
+.software-loading-state div > span,
+.software-error-state div > span,
+.vulnerability-loading-state div > span,
+.vulnerability-error-state div > span,
+.alerts-loading-state div > span,
+.alerts-error-state div > span {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.dashboard-alert-meta {
+  font-size: 11px !important;
+}
+
+.url-result-disclaimer {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.machines-reset-search,
+.software-reset-filters,
+.software-reset-empty,
+.vulnerability-reset-filters,
+.vulnerability-reset-empty,
+.alerts-reset-filters,
+.alerts-reset-empty {
+  font-size: 12px;
+}
+
+/* Dashboard: less cramped and easier to scan */
+.dashboard-statistics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.dashboard-statistic {
+  gap: 12px;
+  padding: 16px;
+  background: var(--ti-surface);
+  border: 1px solid var(--ti-border);
+  border-radius: var(--ti-radius-card);
+  box-shadow: 0 6px 18px rgba(15, 32, 51, 0.04);
+}
+
+.dashboard-statistic__icon {
+  width: 38px;
+  height: 38px;
+  flex-basis: 38px;
+}
+
+.dashboard-statistic__value {
+  font-size: 21px;
+}
+
+.dashboard-statistic__label {
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+.dashboard-workspace {
+  gap: 18px;
+}
+
+.priority-activity__item,
+.alert-activity__item {
+  min-height: 60px;
+}
+
+.activity-content strong {
+  font-size: 13.5px;
+}
+
+.activity-content span {
+  font-size: 12px;
+}
+
+/* Summary cards on business pages */
+.software-statistics,
+.vulnerability-statistics,
+.alerts-statistics {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.software-statistic,
+.vulnerability-statistic,
+.alert-statistic {
+  min-height: 78px;
+  padding: 15px 16px;
+  border-radius: var(--ti-radius-card);
+  box-shadow: 0 6px 18px rgba(15, 32, 51, 0.04);
+}
+
+.software-statistic__content strong,
+.vulnerability-statistic__content strong,
+.alert-statistic__content strong {
+  font-size: 20px;
+}
+
+.software-statistic__content span,
+.vulnerability-statistic__content span,
+.alert-statistic__content span {
+  font-size: 12.5px;
+}
+
+/* Tables */
+.table-container {
+  border-radius: var(--ti-radius-card);
+  box-shadow: 0 6px 18px rgba(15, 32, 51, 0.035);
+}
+
+.data-table th {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.data-table td {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.table-secondary {
+  font-size: 11.5px;
+}
+
+/* Generic states */
+.loading-state,
+.empty-state,
+.error-state {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.loading-state strong,
+.empty-state strong,
+.error-state strong {
+  font-size: 15px;
+}
+
+/* KPI cards used by secondary pages */
+.kpi-card {
+  border-radius: var(--ti-radius-card);
+  box-shadow: 0 6px 18px rgba(15, 32, 51, 0.04);
+}
+
+.kpi-card__label,
+.kpi-card__detail {
+  font-size: 12.5px;
+}
+
+.kpi-card__value {
+  font-size: 25px;
+}
+
+/* Auth pages */
+.auth-page {
+  background:
+    radial-gradient(circle at 18% 10%, rgba(36, 148, 228, 0.08), transparent 30%),
+    var(--ti-background);
+}
+
+.auth-panel,
+.auth-loading {
+  border-radius: 14px;
+  box-shadow: 0 18px 45px rgba(15, 32, 51, 0.08);
+}
+
+.auth-panel {
+  padding: 34px;
+}
+
+.auth-back-link {
+  font-size: 12.5px;
+}
+
+.auth-brand strong {
+  font-size: 15px;
+}
+
+.auth-brand span {
+  font-size: 12px;
+}
+
+.auth-eyebrow {
+  font-size: 10.5px;
+}
+
+.auth-heading h1 {
+  font-size: 29px;
+}
+
+.auth-heading p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.auth-help {
+  font-size: 11.5px;
+}
+
+.auth-error,
+.auth-success,
+.auth-switch,
+.auth-help-center-link,
+.auth-loading {
+  font-size: 12.5px;
+}
+
+.auth-user-summary strong {
+  font-size: 13px;
+}
+
+.auth-user-summary span {
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .security-content {
+    padding: 20px 16px 36px;
+  }
+
+  .security-topbar {
+    padding-inline: 16px;
+  }
+
+  .security-page-header {
+    padding: 19px;
+  }
+
+  .dashboard-statistics {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel {
+    padding: 26px 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .button {
+    transition: none;
+  }
+
+  .button:hover:not(:disabled) {
+    transform: none;
+  }
+}

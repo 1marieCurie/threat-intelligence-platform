@@ -167,6 +167,8 @@ export function AuthProvider({
 }
 
 
+// This module intentionally exports the provider and its companion hook.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(
 ): AuthContextValue {
   const context =

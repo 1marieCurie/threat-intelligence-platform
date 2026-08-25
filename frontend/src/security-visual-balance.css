@@ -1,0 +1,482 @@
+/* Final visual balance for the authenticated security workspace.
+ * Keep statistics open and lightweight; reserve cards for actual content panels.
+ */
+
+/* =========================================================
+   Statistics — values without small KPI cards
+   ========================================================= */
+.security-shell .dashboard-statistics,
+.security-shell .software-statistics,
+.security-shell .vulnerability-statistics,
+.security-shell .alerts-statistics {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ti-border);
+  box-shadow: none;
+  padding: 2px 0 18px;
+}
+
+.security-shell .dashboard-statistic,
+.security-shell .software-statistic,
+.security-shell .vulnerability-statistic,
+.security-shell .alert-statistic {
+  min-height: 0;
+  padding: 5px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.security-shell .dashboard-statistics {
+  gap: 18px 30px;
+  margin-bottom: 22px;
+}
+
+.security-shell .software-statistics,
+.security-shell .vulnerability-statistics,
+.security-shell .alerts-statistics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px 46px;
+  margin: 2px 0 22px;
+}
+
+.security-shell .dashboard-statistic__icon,
+.security-shell .software-statistic__icon,
+.security-shell .vulnerability-statistic__icon,
+.security-shell .alert-statistic__icon {
+  box-shadow: none;
+}
+
+/* KPI component: if used inside the responsible workspace, keep the data but remove the mini-card shell. */
+.security-shell .kpi-card {
+  padding: 5px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.security-shell .inventory-result-stats {
+  padding: 14px 0 0;
+  border-top: 1px solid var(--ti-border);
+}
+
+/* =========================================================
+   Machine list and detail
+   ========================================================= */
+.security-shell .machines-count span {
+  font-size: 12px;
+}
+
+.security-shell .machines-search .input,
+.security-shell .machine-component-search .input {
+  min-height: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.security-shell .machine-name-link {
+  font-size: 13.5px;
+}
+
+.security-shell .machine-name-cell span {
+  font-size: 10.5px;
+}
+
+.security-shell .machine-os-cell strong {
+  font-size: 13px;
+}
+
+.security-shell .machine-os-cell span {
+  font-size: 11.5px;
+}
+
+.security-shell .machine-back-link {
+  font-size: 12.5px;
+}
+
+.security-shell .machine-detail-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .machine-header-id {
+  font-size: 11.5px;
+}
+
+.security-shell .machine-facts {
+  gap: 22px 28px;
+  margin-bottom: 30px;
+}
+
+.security-shell .machine-fact {
+  gap: 11px;
+}
+
+.security-shell .machine-fact__value {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.security-shell .machine-fact__value--compact {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.security-shell .machine-fact__label {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.security-shell .machine-section-header h2 {
+  font-size: 17.5px;
+}
+
+.security-shell .machine-section-header p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.security-shell .machine-empty-panel strong {
+  font-size: 14px;
+}
+
+.security-shell .machine-empty-panel span {
+  font-size: 12.5px;
+}
+
+.security-shell .component-name,
+.security-shell .vulnerability-identifier {
+  font-size: 13.5px;
+}
+
+.security-shell .machine-exposure-component {
+  font-size: 13px;
+}
+
+.security-shell .detector-value,
+.security-shell .table-secondary {
+  font-size: 11.5px;
+}
+
+.security-shell .component-type,
+.security-shell .applicability-badge,
+.security-shell .priority-tag,
+.security-shell .kev-indicator {
+  font-size: 11px;
+}
+
+/* =========================================================
+   Software list
+   ========================================================= */
+.security-shell .software-search .input {
+  min-height: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.security-shell .software-filter > span {
+  font-size: 12px;
+}
+
+.security-shell .software-filter select {
+  min-height: 42px;
+  height: 42px;
+  border-radius: var(--ti-radius-control);
+  font-size: 13px;
+}
+
+.security-shell .software-results-meta span {
+  font-size: 11.5px;
+}
+
+.security-shell .software-name {
+  font-size: 13.5px;
+}
+
+.security-shell .software-version,
+.security-shell .software-vendor {
+  font-size: 13px;
+}
+
+.security-shell .software-type {
+  font-size: 11px;
+}
+
+.security-shell .software-exposure-active,
+.security-shell .software-exposure-empty {
+  font-size: 12px;
+}
+
+.security-shell .software-empty-panel strong {
+  font-size: 14px;
+}
+
+.security-shell .software-empty-panel p {
+  font-size: 12.5px;
+}
+
+/* =========================================================
+   Vulnerability list
+   ========================================================= */
+.security-shell .vulnerability-search .input {
+  min-height: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.security-shell .vulnerability-filter > span {
+  font-size: 12px;
+}
+
+.security-shell .vulnerability-filter select {
+  min-height: 42px;
+  height: 42px;
+  border-radius: var(--ti-radius-control);
+  font-size: 13px;
+}
+
+.security-shell .vulnerability-kev-toggle {
+  min-height: 42px;
+}
+
+.security-shell .vulnerability-kev-toggle__label {
+  font-size: 12px;
+}
+
+.security-shell .vulnerability-results-meta span {
+  font-size: 11.5px;
+}
+
+.security-shell .vulnerability-id {
+  font-size: 13.5px;
+}
+
+.security-shell .vulnerability-short-id {
+  font-size: 10.5px;
+}
+
+.security-shell .vulnerability-score {
+  font-size: 13.5px;
+}
+
+.security-shell .vulnerability-score-detail {
+  font-size: 10.5px;
+}
+
+.security-shell .vulnerability-epss,
+.security-shell .vulnerability-table-count {
+  font-size: 13px;
+}
+
+.security-shell .vulnerability-priority-tag,
+.security-shell .vulnerability-severity-tag,
+.security-shell .vulnerability-kev,
+.security-shell .vulnerability-muted {
+  font-size: 11px;
+}
+
+.security-shell .vulnerability-applicability__confirmed {
+  font-size: 12px;
+}
+
+.security-shell .vulnerability-applicability__potential {
+  font-size: 11px;
+}
+
+.security-shell .vulnerability-cwe-list span {
+  font-size: 10.5px;
+}
+
+.security-shell .vulnerability-empty-panel strong {
+  font-size: 14px;
+}
+
+.security-shell .vulnerability-empty-panel p {
+  font-size: 12.5px;
+}
+
+/* =========================================================
+   Inventory — keep code compact, not microscopic
+   ========================================================= */
+.security-shell .inventory-flow-step__number,
+.security-shell .inventory-section-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .inventory-flow-step strong {
+  font-size: 14px;
+}
+
+.security-shell .inventory-flow-step p {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-section-header h2 {
+  font-size: 17px;
+}
+
+.security-shell .inventory-section-header p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.security-shell .inventory-platform-badge {
+  font-size: 11px;
+}
+
+.security-shell .inventory-code-file strong,
+.security-shell .inventory-command-heading strong,
+.security-shell .inventory-file-picker strong,
+.security-shell .inventory-fact__content strong,
+.security-shell .inventory-success-header strong {
+  font-size: 12.5px;
+}
+
+.security-shell .inventory-code-file span,
+.security-shell .inventory-command-heading p,
+.security-shell .inventory-note p,
+.security-shell .inventory-file-picker > span:last-child,
+.security-shell .inventory-fact__content span,
+.security-shell .inventory-success-header span {
+  font-size: 11.5px;
+}
+
+.security-shell .button.inventory-code-button,
+.security-shell .inventory-copy-command {
+  font-size: 11.5px;
+}
+
+.security-shell .inventory-code,
+.security-shell .inventory-command code {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.security-shell .inventory-inline-error strong {
+  font-size: 13px;
+}
+
+.security-shell .inventory-inline-error span {
+  font-size: 12px;
+}
+
+/* =========================================================
+   Authenticated URL analysis
+   ========================================================= */
+.security-shell .url-analysis-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .url-analysis-header h1 {
+  font-size: 29px;
+}
+
+.security-shell .url-analysis-header p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.security-shell .url-analysis-workspace__heading > div > strong {
+  font-size: 14px;
+}
+
+.security-shell .url-analysis-workspace__heading > div > span {
+  font-size: 12px;
+}
+
+.security-shell .url-analysis-form .form-label {
+  font-size: 13px;
+}
+
+.security-shell .url-analysis-input .input {
+  min-height: 44px;
+  height: 44px;
+  font-size: 14px;
+}
+
+.security-shell .url-analysis-loading strong,
+.security-shell .url-analysis-error > div > strong {
+  font-size: 13.5px;
+}
+
+.security-shell .url-analysis-loading div > span,
+.security-shell .url-analysis-error > div > span {
+  font-size: 12px;
+}
+
+.security-shell .url-result__verdict > span {
+  font-size: 10.5px;
+}
+
+.security-shell .url-result__verdict h2 {
+  font-size: 20px;
+}
+
+.security-shell .url-result__verdict p {
+  font-size: 13px;
+}
+
+.security-shell .url-result__status {
+  font-size: 11px;
+}
+
+.security-shell .url-result-fact > div > strong {
+  font-size: 13.5px;
+}
+
+.security-shell .url-result-fact > div > span {
+  font-size: 11.5px;
+}
+
+/* =========================================================
+   Users
+   ========================================================= */
+.security-shell .users-header p {
+  font-size: 14px;
+}
+
+.security-shell .users-eyebrow {
+  font-size: 10.5px;
+}
+
+.security-shell .users-card-heading h2 {
+  font-size: 17px;
+}
+
+.security-shell .users-card-heading p,
+.security-shell .users-field > span,
+.security-shell .users-error,
+.security-shell .users-success {
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .security-shell .dashboard-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .security-shell .software-statistics,
+  .security-shell .vulnerability-statistics,
+  .security-shell .alerts-statistics {
+    gap: 18px 30px;
+  }
+}
+
+@media (max-width: 560px) {
+  .security-shell .dashboard-statistics {
+    grid-template-columns: 1fr;
+  }
+
+  .security-shell .software-statistics,
+  .security-shell .vulnerability-statistics,
+  .security-shell .alerts-statistics {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+}
