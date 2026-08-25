@@ -52,6 +52,10 @@ const navigationItems:
       label: "Analyse URL",
       path: "/analyse-url",
     },
+    {
+      label: "Centre d'aide",
+      path: "/aide",
+    },
   ];
 
 
