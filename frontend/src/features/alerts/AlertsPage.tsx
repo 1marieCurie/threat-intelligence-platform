@@ -71,57 +71,36 @@ function displayAlertType(value: AlertType): string {
   if (value === "new_confirmed_critical_exposure") {
     return "Nouvelle exposition critique";
   }
-
   if (value === "confirmed_exposure_entered_kev") {
     return "Entrée dans CISA KEV";
   }
-
   return "Passage en priorité critique";
 }
 
 function displayStatus(value: AlertStatus): string {
-  if (value === "pending") {
-    return "En attente";
-  }
-
-  if (value === "sent") {
-    return "Envoyée";
-  }
-
+  if (value === "pending") return "En attente";
+  if (value === "sent") return "Envoyée";
   return "Échec";
 }
 
 function displayIdentifier(alert: AlertSummary): string {
-  return alert.primary_identifier
-    ?? alert.canonical_vulnerability_id.slice(0, 8);
+  return alert.primary_identifier ?? alert.canonical_vulnerability_id.slice(0, 8);
 }
 
 function displayDate(value: string | null): string {
-  if (value === null) {
-    return "—";
-  }
-
+  if (value === null) return "—";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString(
-    "fr-FR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  );
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-
 type AlertStatisticTone = "default" | "warning" | "success" | "critical";
-
 type AlertStatisticProps = {
   icon: LucideIcon;
   value: number;
@@ -156,14 +135,11 @@ function alertTypeIcon(type: AlertType) {
   if (type === "confirmed_exposure_entered_kev") {
     return <Zap size={14} strokeWidth={1.9} />;
   }
-
   if (type === "priority_transition_to_critical") {
     return <TriangleAlert size={14} strokeWidth={1.8} />;
   }
-
   return <ShieldAlert size={14} strokeWidth={1.8} />;
 }
-
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
@@ -173,13 +149,11 @@ export function AlertsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAlerts = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
+  const fetchAlerts = useCallback(async () => {
     try {
       const response = await getAlerts();
       setAlerts(response.items);
+      setError(null);
     } catch (caughtError) {
       setAlerts([]);
       setError(
@@ -192,25 +166,22 @@ export function AlertsPage() {
     }
   }, []);
 
+  function reloadAlerts() {
+    setIsLoading(true);
+    setError(null);
+    void fetchAlerts();
+  }
+
   useEffect(() => {
-    void loadAlerts();
-  }, [loadAlerts]);
+    void fetchAlerts();
+  }, [fetchAlerts]);
 
   const visibleAlerts = useMemo(() => {
     const searchValue = search.trim().toLowerCase();
-
     return alerts.filter((alert) => {
-      if (statusFilter !== "all" && alert.status !== statusFilter) {
-        return false;
-      }
-
-      if (typeFilter !== "all" && alert.alert_type !== typeFilter) {
-        return false;
-      }
-
-      if (!searchValue) {
-        return true;
-      }
+      if (statusFilter !== "all" && alert.status !== statusFilter) return false;
+      if (typeFilter !== "all" && alert.alert_type !== typeFilter) return false;
+      if (!searchValue) return true;
 
       const searchable = [
         alert.primary_identifier,
@@ -241,11 +212,7 @@ export function AlertsPage() {
     [alerts],
   );
 
-  const filtersAreActive = (
-    search.trim() !== ""
-    || statusFilter !== "all"
-    || typeFilter !== "all"
-  );
+  const filtersAreActive = search.trim() !== "" || statusFilter !== "all" || typeFilter !== "all";
 
   function resetFilters() {
     setSearch("");
@@ -259,11 +226,8 @@ export function AlertsPage() {
         <div className="alerts-page-header__row">
           <div>
             <h1>Alertes</h1>
-            <p>
-              Centre opérationnel des notifications déclenchées par les changements de risque et d'exploitation connus.
-            </p>
+            <p>Centre opérationnel des notifications déclenchées par les changements de risque et d'exploitation connus.</p>
           </div>
-
           <Link to="/aide#alertes" className="alerts-help-link">
             <BookOpen size={15} />
             Comprendre les alertes
@@ -290,12 +254,7 @@ export function AlertsPage() {
               <strong>Alertes indisponibles</strong>
               <span>{error}</span>
             </div>
-            <Button
-              type="button"
-              onClick={() => {
-                void loadAlerts();
-              }}
-            >
+            <Button type="button" onClick={reloadAlerts}>
               <RefreshCw size={14} />
               Réessayer
             </Button>
@@ -307,12 +266,8 @@ export function AlertsPage() {
         <Card className="alerts-empty-panel">
           <CircleCheck size={25} strokeWidth={1.6} />
           <strong>Aucune alerte enregistrée</strong>
-          <p>
-            Aucun changement correspondant aux règles d'alerte n'est actuellement enregistré pour cette organisation.
-          </p>
-          <Link to="/aide#alertes" className="alerts-empty-link">
-            Voir quand une alerte est déclenchée
-          </Link>
+          <p>Aucun changement correspondant aux règles d'alerte n'est actuellement enregistré pour cette organisation.</p>
+          <Link to="/aide#alertes" className="alerts-empty-link">Voir quand une alerte est déclenchée</Link>
         </Card>
       )}
 
@@ -320,90 +275,38 @@ export function AlertsPage() {
         <>
           <section className="alerts-statistics" aria-label="Résumé des alertes">
             <AlertStatistic icon={BellRing} value={alerts.length} label="Total" />
-            <AlertStatistic
-              icon={Clock3}
-              value={pendingCount}
-              label="En attente"
-              tone={pendingCount > 0 ? "warning" : "default"}
-            />
-            <AlertStatistic
-              icon={CircleCheck}
-              value={sentCount}
-              label="Envoyées"
-              tone="success"
-            />
-            <AlertStatistic
-              icon={CircleX}
-              value={failedCount}
-              label="Échecs d'envoi"
-              tone={failedCount > 0 ? "critical" : "default"}
-            />
+            <AlertStatistic icon={Clock3} value={pendingCount} label="En attente" tone={pendingCount > 0 ? "warning" : "default"} />
+            <AlertStatistic icon={CircleCheck} value={sentCount} label="Envoyées" tone="success" />
+            <AlertStatistic icon={CircleX} value={failedCount} label="Échecs d'envoi" tone={failedCount > 0 ? "critical" : "default"} />
           </section>
 
           <section className="alerts-controls">
             <div className="alerts-search">
               <Search size={15} strokeWidth={1.8} aria-hidden="true" />
-              <Input
-                type="search"
-                placeholder="Rechercher CVE, logiciel ou machine..."
-                aria-label="Rechercher une alerte"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              <Input type="search" placeholder="Rechercher CVE, logiciel ou machine..." aria-label="Rechercher une alerte" value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
 
             <div className="alerts-filters">
               <label className="alerts-filter">
                 <span>Statut</span>
-                <select
-                  value={statusFilter}
-                  onChange={(event) => {
-                    if (isAlertStatusFilter(event.target.value)) {
-                      setStatusFilter(event.target.value);
-                    }
-                  }}
-                >
-                  <option value="all">Tous</option>
-                  <option value="pending">En attente</option>
-                  <option value="sent">Envoyées</option>
-                  <option value="failed">Échecs</option>
+                <select value={statusFilter} onChange={(event) => { if (isAlertStatusFilter(event.target.value)) setStatusFilter(event.target.value); }}>
+                  <option value="all">Tous</option><option value="pending">En attente</option><option value="sent">Envoyées</option><option value="failed">Échecs</option>
                 </select>
               </label>
-
               <label className="alerts-filter">
                 <span>Type</span>
-                <select
-                  value={typeFilter}
-                  onChange={(event) => {
-                    if (isAlertTypeFilter(event.target.value)) {
-                      setTypeFilter(event.target.value);
-                    }
-                  }}
-                >
-                  <option value="all">Tous</option>
-                  <option value="new_confirmed_critical_exposure">Nouvelle critique</option>
-                  <option value="confirmed_exposure_entered_kev">Entrée KEV</option>
-                  <option value="priority_transition_to_critical">Passage critique</option>
+                <select value={typeFilter} onChange={(event) => { if (isAlertTypeFilter(event.target.value)) setTypeFilter(event.target.value); }}>
+                  <option value="all">Tous</option><option value="new_confirmed_critical_exposure">Nouvelle critique</option><option value="confirmed_exposure_entered_kev">Entrée KEV</option><option value="priority_transition_to_critical">Passage critique</option>
                 </select>
               </label>
-
               {filtersAreActive && (
-                <button
-                  type="button"
-                  className="alerts-reset-filters"
-                  onClick={resetFilters}
-                >
-                  Réinitialiser
-                </button>
+                <button type="button" className="alerts-reset-filters" onClick={resetFilters}>Réinitialiser</button>
               )}
             </div>
           </section>
 
           <div className="alerts-results-meta">
-            <span>
-              {visibleAlerts.length} alerte{visibleAlerts.length !== 1 ? "s" : ""}
-              {visibleAlerts.length !== alerts.length ? ` sur ${alerts.length}` : ""}
-            </span>
+            <span>{visibleAlerts.length} alerte{visibleAlerts.length !== 1 ? "s" : ""}{visibleAlerts.length !== alerts.length ? ` sur ${alerts.length}` : ""}</span>
           </div>
 
           {visibleAlerts.length === 0 ? (
@@ -411,95 +314,33 @@ export function AlertsPage() {
               <Search size={22} strokeWidth={1.6} />
               <strong>Aucun résultat</strong>
               <p>Aucune alerte ne correspond aux filtres sélectionnés.</p>
-              <button
-                type="button"
-                className="alerts-reset-empty"
-                onClick={resetFilters}
-              >
-                Effacer les filtres
-              </button>
+              <button type="button" className="alerts-reset-empty" onClick={resetFilters}>Effacer les filtres</button>
             </Card>
           ) : (
             <Table className="alerts-table">
               <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Événement</th>
-                  <th>Vulnérabilité</th>
-                  <th>Logiciel</th>
-                  <th>Machine</th>
-                  <th>Priorité</th>
-                  <th>KEV</th>
-                  <th>Notification</th>
-                </tr>
+                <tr><th>Date</th><th>Événement</th><th>Vulnérabilité</th><th>Logiciel</th><th>Machine</th><th>Priorité</th><th>KEV</th><th>Notification</th></tr>
               </thead>
-
               <tbody>
                 {visibleAlerts.map((alert) => (
                   <tr key={alert.alert_id}>
+                    <td><span className="alerts-date">{displayDate(alert.created_at)}</span></td>
                     <td>
-                      <span className="alerts-date">{displayDate(alert.created_at)}</span>
-                    </td>
-                    <td>
-                      <Link
-                        to={`/alertes/${alert.alert_id}`}
-                        className="alerts-event-link"
-                      >
-                        <span
-                          className={
-                            alert.alert_type === "confirmed_exposure_entered_kev"
-                              ? "alerts-event-icon alerts-event-icon--critical"
-                              : "alerts-event-icon"
-                          }
-                        >
+                      <Link to={`/alertes/${alert.alert_id}`} className="alerts-event-link">
+                        <span className={alert.alert_type === "confirmed_exposure_entered_kev" ? "alerts-event-icon alerts-event-icon--critical" : "alerts-event-icon"}>
                           {alertTypeIcon(alert.alert_type)}
                         </span>
-                        <strong className="alerts-event">
-                          {displayAlertType(alert.alert_type)}
-                        </strong>
+                        <strong className="alerts-event">{displayAlertType(alert.alert_type)}</strong>
                       </Link>
                     </td>
-                    <td>
-                      <Link
-                        to={`/vulnerabilites/${alert.canonical_vulnerability_id}`}
-                        className="alerts-vulnerability-link"
-                      >
-                        {displayIdentifier(alert)}
-                      </Link>
-                    </td>
+                    <td><Link to={`/vulnerabilites/${alert.canonical_vulnerability_id}`} className="alerts-vulnerability-link">{displayIdentifier(alert)}</Link></td>
                     <td>
                       <strong className="alerts-component">{alert.component_name ?? "—"}</strong>
-                      {alert.component_version && (
-                        <span className="alerts-secondary">Version {alert.component_version}</span>
-                      )}
+                      {alert.component_version && <span className="alerts-secondary">Version {alert.component_version}</span>}
                     </td>
-                    <td>
-                      <Link
-                        to={`/machines/${alert.machine_id}`}
-                        className="alerts-machine-link"
-                      >
-                        {alert.machine_hostname}
-                      </Link>
-                    </td>
-                    <td>
-                      {alert.current_priority ? (
-                        <span className={priorityClass(alert.current_priority)}>
-                          {alert.current_priority}
-                        </span>
-                      ) : (
-                        <span className="alerts-muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {alert.is_kev === true ? (
-                        <span className="alerts-kev">
-                          <Zap size={11} strokeWidth={1.9} />
-                          KEV
-                        </span>
-                      ) : (
-                        <span className="alerts-muted">—</span>
-                      )}
-                    </td>
+                    <td><Link to={`/machines/${alert.machine_id}`} className="alerts-machine-link">{alert.machine_hostname}</Link></td>
+                    <td>{alert.current_priority ? <span className={priorityClass(alert.current_priority)}>{alert.current_priority}</span> : <span className="alerts-muted">—</span>}</td>
+                    <td>{alert.is_kev === true ? <span className="alerts-kev"><Zap size={11} strokeWidth={1.9} />KEV</span> : <span className="alerts-muted">—</span>}</td>
                     <td>
                       <div className="alerts-notification">
                         <span className={`alerts-status alerts-status--${alert.status}`}>
@@ -508,9 +349,7 @@ export function AlertsPage() {
                           {alert.status === "failed" && <CircleX size={11} strokeWidth={1.9} />}
                           {displayStatus(alert.status)}
                         </span>
-                        {alert.sent_at && (
-                          <span className="alerts-secondary">{displayDate(alert.sent_at)}</span>
-                        )}
+                        {alert.sent_at && <span className="alerts-secondary">{displayDate(alert.sent_at)}</span>}
                       </div>
                     </td>
                   </tr>
