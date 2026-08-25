@@ -33,7 +33,7 @@ import {
 } from "../../components/ui/Input";
 import {
   analyzePublicURL,
-} from "../../lib/api";
+} from "../../lib/publicApi";
 import type {
   URLAnalysisResult,
 } from "../../types/urlAnalysis";
