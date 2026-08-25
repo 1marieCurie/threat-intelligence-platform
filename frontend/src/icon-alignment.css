@@ -14,7 +14,14 @@
 .software-row-icon,
 .vulnerability-row-icon,
 .alerts-event-icon,
-.activity-icon {
+.activity-icon,
+.inventory-flow-step__icon,
+.inventory-section-icon,
+.inventory-file-picker__icon,
+.inventory-fact__icon,
+.inventory-success-icon,
+.users-header-icon,
+.users-card-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -37,7 +44,14 @@
 .software-row-icon > svg,
 .vulnerability-row-icon > svg,
 .alerts-event-icon > svg,
-.activity-icon > svg {
+.activity-icon > svg,
+.inventory-flow-step__icon > svg,
+.inventory-section-icon > svg,
+.inventory-file-picker__icon > svg,
+.inventory-fact__icon > svg,
+.inventory-success-icon > svg,
+.users-header-icon > svg,
+.users-card-icon > svg {
   display: block;
   flex: 0 0 auto;
   margin: auto;
