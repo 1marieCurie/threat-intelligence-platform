@@ -47,11 +47,9 @@ import {
 import {
   PriorityDonut,
 } from "./PriorityDonut";
-import {
-  TopMachinesChart,
-} from "./TopMachinesChart";
 
 import "./dashboard-polish.css";
+import "./dashboard-final-polish.css";
 
 
 type StatisticTone =
@@ -345,18 +343,11 @@ export function DashboardPage() {
         />
       </section>
 
-      <section className="dashboard-workspace">
+      <section className="dashboard-workspace dashboard-workspace--balanced">
         <div className="dashboard-main-column">
           <ChartContainer
-            title="Machines les plus exposées"
-            description="Top 5 selon le nombre d'expositions détectées."
-          >
-            <TopMachinesChart machines={dashboard.top_machines} />
-          </ChartContainer>
-
-          <ChartContainer
             title="Applicabilité"
-            description="Répartition entre les expositions confirmed et potential."
+            description="Comparaison des expositions confirmed et potential."
           >
             <ApplicabilityChart
               confirmed={dashboard.confirmed_exposure_count}
@@ -364,7 +355,7 @@ export function DashboardPage() {
             />
           </ChartContainer>
 
-          <Card className="dashboard-panel">
+          <Card className="dashboard-panel dashboard-priority-panel">
             <div className="dashboard-section-header dashboard-section-header--with-link">
               <div>
                 <h2>Actions prioritaires</h2>
@@ -380,7 +371,7 @@ export function DashboardPage() {
             </div>
 
             {dashboard.priority_actions.length === 0 ? (
-              <div className="dashboard-empty">
+              <div className="dashboard-empty dashboard-empty--roomy">
                 <strong>Aucune action prioritaire</strong>
                 <span>Aucun élément ne nécessite une attention immédiate.</span>
               </div>
@@ -424,7 +415,7 @@ export function DashboardPage() {
             <PriorityDonut distribution={dashboard.priority_distribution} />
           </ChartContainer>
 
-          <Card className="dashboard-panel">
+          <Card className="dashboard-panel dashboard-alerts-panel">
             <div className="dashboard-section-header dashboard-section-header--with-link">
               <div>
                 <h2>Dernières alertes</h2>
@@ -440,7 +431,7 @@ export function DashboardPage() {
             </div>
 
             {dashboard.latest_alerts.length === 0 ? (
-              <div className="dashboard-empty">
+              <div className="dashboard-empty dashboard-empty--roomy">
                 <strong>Aucune alerte</strong>
                 <span>Aucune alerte n'est actuellement enregistrée.</span>
               </div>
