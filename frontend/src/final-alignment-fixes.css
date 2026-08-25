@@ -1,0 +1,149 @@
+/* Final alignment pass after visual review. */
+
+/* =========================================================
+   Dashboard — keep the existing width ratio, but align rows
+   ========================================================= */
+@media (min-width: 1121px) {
+  .dashboard-workspace--balanced {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+    grid-template-areas:
+      "applicability priorities"
+      "actions alerts";
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  /* Flatten the two visual columns so all four panels share the same grid rows. */
+  .dashboard-workspace--balanced > .dashboard-main-column,
+  .dashboard-workspace--balanced > .dashboard-side-column {
+    display: contents;
+  }
+
+  .dashboard-workspace--balanced .dashboard-main-column > .chart-container {
+    grid-area: applicability;
+  }
+
+  .dashboard-workspace--balanced .dashboard-main-column > .dashboard-priority-panel {
+    grid-area: actions;
+  }
+
+  .dashboard-workspace--balanced .dashboard-side-column > .chart-container {
+    grid-area: priorities;
+  }
+
+  .dashboard-workspace--balanced .dashboard-side-column > .dashboard-alerts-panel {
+    grid-area: alerts;
+  }
+
+  .dashboard-workspace--balanced .chart-container,
+  .dashboard-workspace--balanced .dashboard-panel {
+    height: 100%;
+    margin-bottom: 0;
+  }
+}
+
+/* =========================================================
+   Staff URL analysis — same typography scale as security view
+   ========================================================= */
+.app-shell .url-analysis-eyebrow {
+  font-size: 10.5px;
+}
+
+.app-shell .url-analysis-header h1 {
+  font-size: 29px;
+  line-height: 1.15;
+}
+
+.app-shell .url-analysis-header p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.app-shell .url-analysis-workspace__heading > div > strong {
+  font-size: 14px;
+}
+
+.app-shell .url-analysis-workspace__heading > div > span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.app-shell .url-analysis-form .form-label {
+  font-size: 13px;
+}
+
+.app-shell .url-analysis-input .input {
+  min-height: 44px;
+  height: 44px;
+  font-size: 14px;
+}
+
+.app-shell .url-analysis-submit {
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.app-shell .url-analysis-loading strong,
+.app-shell .url-analysis-error > div > strong {
+  font-size: 13.5px;
+}
+
+.app-shell .url-analysis-loading div > span,
+.app-shell .url-analysis-error > div > span {
+  font-size: 12px;
+}
+
+.app-shell .url-result__verdict > span {
+  font-size: 10.5px;
+}
+
+.app-shell .url-result__verdict h2 {
+  font-size: 20px;
+}
+
+.app-shell .url-result__verdict p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.app-shell .url-result__status {
+  font-size: 11px;
+}
+
+.app-shell .url-result-fact > div > strong {
+  font-size: 13.5px;
+}
+
+.app-shell .url-result-fact > div > span {
+  font-size: 11.5px;
+}
+
+/* =========================================================
+   Buttons — optical vertical centering, especially auth forms
+   ========================================================= */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.auth-submit {
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.auth-submit > * {
+  align-self: center;
+}
+
+@media (max-width: 700px) {
+  .app-shell .url-analysis-header h1 {
+    font-size: 27px;
+  }
+}
