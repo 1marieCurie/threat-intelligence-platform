@@ -71,14 +71,12 @@ export function MachinesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadMachines = useCallback(
+  const fetchMachines = useCallback(
     async () => {
-      setIsLoading(true);
-      setError(null);
-
       try {
         const response = await getMachines();
         setMachines(response.items);
+        setError(null);
       } catch (caughtError) {
         setMachines([]);
         setError(
@@ -93,9 +91,15 @@ export function MachinesPage() {
     [],
   );
 
+  function reloadMachines() {
+    setIsLoading(true);
+    setError(null);
+    void fetchMachines();
+  }
+
   useEffect(() => {
-    void loadMachines();
-  }, [loadMachines]);
+    void fetchMachines();
+  }, [fetchMachines]);
 
   const filteredMachines = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -170,9 +174,7 @@ export function MachinesPage() {
             </div>
             <Button
               type="button"
-              onClick={() => {
-                void loadMachines();
-              }}
+              onClick={reloadMachines}
             >
               <RefreshCw size={14} />
               Réessayer
