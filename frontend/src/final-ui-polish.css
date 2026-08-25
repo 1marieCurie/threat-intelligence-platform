@@ -126,6 +126,13 @@ body {
   font-size: 13px;
 }
 
+.staff-nav-link {
+  min-height: 38px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
 .security-content {
   min-height: calc(100vh - 62px);
   padding: 26px 28px 44px;
@@ -149,6 +156,87 @@ body {
   margin-top: 9px;
   font-size: 14px;
   line-height: 1.6;
+}
+
+/* Reusable page actions and help links */
+.dashboard-header-link,
+.dashboard-section-link,
+.dashboard-empty-link,
+.machines-header-link,
+.machines-empty-action,
+.machine-help-link,
+.machine-vulnerability-link,
+.machine-section-help,
+.software-header-link,
+.software-empty-action,
+.software-exposure-link,
+.vulnerability-help-link,
+.vulnerability-empty-link,
+.alerts-help-link,
+.alerts-empty-link,
+.alerts-vulnerability-link,
+.alerts-machine-link,
+.url-analysis-help-link {
+  font-size: 12.5px;
+}
+
+.dashboard-header-link,
+.machines-header-link,
+.machine-help-link,
+.software-header-link,
+.vulnerability-help-link,
+.alerts-help-link,
+.url-analysis-help-link {
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+.dashboard-loading-state strong,
+.dashboard-error-state strong,
+.dashboard-empty-state strong,
+.machines-loading-state strong,
+.machines-error-state strong,
+.software-loading-state strong,
+.software-error-state strong,
+.vulnerability-loading-state strong,
+.vulnerability-error-state strong,
+.alerts-loading-state strong,
+.alerts-error-state strong {
+  font-size: 14.5px;
+}
+
+.dashboard-loading-state div > span,
+.dashboard-error-state div > span,
+.dashboard-empty-state div > span,
+.machines-loading-state div > span,
+.machines-error-state div > span,
+.software-loading-state div > span,
+.software-error-state div > span,
+.vulnerability-loading-state div > span,
+.vulnerability-error-state div > span,
+.alerts-loading-state div > span,
+.alerts-error-state div > span {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.dashboard-alert-meta {
+  font-size: 11px !important;
+}
+
+.url-result-disclaimer {
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.machines-reset-search,
+.software-reset-filters,
+.software-reset-empty,
+.vulnerability-reset-filters,
+.vulnerability-reset-empty,
+.alerts-reset-filters,
+.alerts-reset-empty {
+  font-size: 12px;
 }
 
 /* Dashboard: less cramped and easier to scan */
@@ -197,6 +285,35 @@ body {
 
 .activity-content span {
   font-size: 12px;
+}
+
+/* Summary cards on business pages */
+.software-statistics,
+.vulnerability-statistics,
+.alerts-statistics {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.software-statistic,
+.vulnerability-statistic,
+.alert-statistic {
+  min-height: 78px;
+  padding: 15px 16px;
+  border-radius: var(--ti-radius-card);
+  box-shadow: 0 6px 18px rgba(15, 32, 51, 0.04);
+}
+
+.software-statistic__content strong,
+.vulnerability-statistic__content strong,
+.alert-statistic__content strong {
+  font-size: 20px;
+}
+
+.software-statistic__content span,
+.vulnerability-statistic__content span,
+.alert-statistic__content span {
+  font-size: 12.5px;
 }
 
 /* Tables */
