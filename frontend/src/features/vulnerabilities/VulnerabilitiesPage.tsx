@@ -58,7 +58,6 @@ const PRIORITY_RANK: Record<string, number> = {
   LOW: 1,
 };
 
-
 function isPriorityFilter(value: string): value is PriorityFilter {
   return ["all", "LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(value);
 }
@@ -83,7 +82,6 @@ function displayIdentifier(vulnerability: VulnerabilitySummary): string {
   return vulnerability.primary_identifier
     ?? vulnerability.canonical_vulnerability_id.slice(0, 8);
 }
-
 
 type VulnerabilityStatisticProps = {
   icon: LucideIcon;
@@ -119,7 +117,6 @@ function severityClass(value: string | null): string {
   return `vulnerability-severity-tag vulnerability-severity-tag--${(value ?? "unknown").toLowerCase()}`;
 }
 
-
 export function VulnerabilitiesPage() {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilitySummary[]>([]);
   const [search, setSearch] = useState("");
@@ -130,13 +127,11 @@ export function VulnerabilitiesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadVulnerabilities = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
+  const fetchVulnerabilities = useCallback(async () => {
     try {
       const response = await getVulnerabilities();
       setVulnerabilities(response.items);
+      setError(null);
     } catch (caughtError) {
       setVulnerabilities([]);
       setError(
@@ -149,9 +144,15 @@ export function VulnerabilitiesPage() {
     }
   }, []);
 
+  function reloadVulnerabilities() {
+    setIsLoading(true);
+    setError(null);
+    void fetchVulnerabilities();
+  }
+
   useEffect(() => {
-    void loadVulnerabilities();
-  }, [loadVulnerabilities]);
+    void fetchVulnerabilities();
+  }, [fetchVulnerabilities]);
 
   const visibleVulnerabilities = useMemo(() => {
     const searchValue = search.trim().toLowerCase();
@@ -160,39 +161,23 @@ export function VulnerabilitiesPage() {
       if (priorityFilter !== "all" && item.priority !== priorityFilter) {
         return false;
       }
-
-      if (
-        applicabilityFilter === "confirmed"
-        && item.confirmed_exposure_count === 0
-      ) {
+      if (applicabilityFilter === "confirmed" && item.confirmed_exposure_count === 0) {
         return false;
       }
-
-      if (
-        applicabilityFilter === "potential"
-        && item.potential_exposure_count === 0
-      ) {
+      if (applicabilityFilter === "potential" && item.potential_exposure_count === 0) {
         return false;
       }
-
       if (kevOnly && !item.is_kev) {
         return false;
       }
-
       if (!searchValue) {
         return true;
       }
 
-      const searchable = [
-        item.primary_identifier,
-        item.severity,
-        item.priority,
-        ...item.cwe_ids,
-      ]
+      const searchable = [item.primary_identifier, item.severity, item.priority, ...item.cwe_ids]
         .filter((value): value is string => typeof value === "string")
         .join(" ")
         .toLowerCase();
-
       return searchable.includes(searchValue);
     });
 
@@ -200,19 +185,15 @@ export function VulnerabilitiesPage() {
       if (sort === "identifier") {
         return displayIdentifier(left).localeCompare(displayIdentifier(right), "fr");
       }
-
       if (sort === "cvss") {
         return (right.cvss_score ?? -1) - (left.cvss_score ?? -1);
       }
-
       if (sort === "epss") {
         return (right.epss_score ?? -1) - (left.epss_score ?? -1);
       }
-
       if (sort === "machines") {
         return right.machine_count - left.machine_count;
       }
-
       const rightRank = right.priority ? PRIORITY_RANK[right.priority] ?? 0 : 0;
       const leftRank = left.priority ? PRIORITY_RANK[left.priority] ?? 0 : 0;
       return rightRank - leftRank;
@@ -223,12 +204,10 @@ export function VulnerabilitiesPage() {
     () => vulnerabilities.filter((item) => item.priority === "CRITICAL").length,
     [vulnerabilities],
   );
-
   const kevCount = useMemo(
     () => vulnerabilities.filter((item) => item.is_kev).length,
     [vulnerabilities],
   );
-
   const confirmedCount = useMemo(
     () => vulnerabilities.filter((item) => item.confirmed_exposure_count > 0).length,
     [vulnerabilities],
@@ -256,15 +235,9 @@ export function VulnerabilitiesPage() {
         <div className="vulnerability-page-header__row">
           <div>
             <h1>Vulnérabilités</h1>
-            <p>
-              Vue agrégée des vulnérabilités affectant les machines et logiciels de l'organisation.
-            </p>
+            <p>Vue agrégée des vulnérabilités affectant les machines et logiciels de l'organisation.</p>
           </div>
-
-          <Link
-            to="/aide#vulnerabilites"
-            className="vulnerability-help-link"
-          >
+          <Link to="/aide#vulnerabilites" className="vulnerability-help-link">
             <BookOpen size={15} />
             Comprendre les scores et priorités
           </Link>
@@ -290,12 +263,7 @@ export function VulnerabilitiesPage() {
               <strong>Vulnérabilités indisponibles</strong>
               <span>{error}</span>
             </div>
-            <Button
-              type="button"
-              onClick={() => {
-                void loadVulnerabilities();
-              }}
-            >
+            <Button type="button" onClick={reloadVulnerabilities}>
               <RefreshCw size={14} />
               Réessayer
             </Button>
@@ -307,9 +275,7 @@ export function VulnerabilitiesPage() {
         <Card className="vulnerability-empty-panel">
           <ShieldCheck size={25} strokeWidth={1.6} />
           <strong>Aucune exposition détectée</strong>
-          <p>
-            Sur la base de l'inventaire actuellement disponible, aucune vulnérabilité n'est associée aux composants de l'organisation.
-          </p>
+          <p>Sur la base de l'inventaire actuellement disponible, aucune vulnérabilité n'est associée aux composants de l'organisation.</p>
           <Link to="/aide#vulnerabilites" className="vulnerability-empty-link">
             Comment interpréter ce résultat ?
           </Link>
@@ -318,118 +284,45 @@ export function VulnerabilitiesPage() {
 
       {!isLoading && !error && vulnerabilities.length > 0 && (
         <>
-          <section
-            className="vulnerability-statistics"
-            aria-label="Résumé des vulnérabilités"
-          >
-            <VulnerabilityStatistic
-              icon={ShieldOff}
-              value={vulnerabilities.length}
-              label="Vulnérabilités"
-            />
-            <VulnerabilityStatistic
-              icon={BadgeCheck}
-              value={confirmedCount}
-              label="Confirmed"
-              tone="success"
-            />
-            <VulnerabilityStatistic
-              icon={TriangleAlert}
-              value={criticalCount}
-              label="Priorité CRITICAL"
-              tone={criticalCount > 0 ? "critical" : "default"}
-            />
-            <VulnerabilityStatistic
-              icon={Zap}
-              value={kevCount}
-              label="Présentes dans KEV"
-              tone={kevCount > 0 ? "critical" : "default"}
-            />
+          <section className="vulnerability-statistics" aria-label="Résumé des vulnérabilités">
+            <VulnerabilityStatistic icon={ShieldOff} value={vulnerabilities.length} label="Vulnérabilités" />
+            <VulnerabilityStatistic icon={BadgeCheck} value={confirmedCount} label="Confirmed" tone="success" />
+            <VulnerabilityStatistic icon={TriangleAlert} value={criticalCount} label="Priorité CRITICAL" tone={criticalCount > 0 ? "critical" : "default"} />
+            <VulnerabilityStatistic icon={Zap} value={kevCount} label="Présentes dans KEV" tone={kevCount > 0 ? "critical" : "default"} />
           </section>
 
           <section className="vulnerability-controls">
             <div className="vulnerability-search">
               <Search size={15} strokeWidth={1.8} aria-hidden="true" />
-              <Input
-                type="search"
-                placeholder="Rechercher CVE, GHSA ou CWE..."
-                aria-label="Rechercher une vulnérabilité"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              <Input type="search" placeholder="Rechercher CVE, GHSA ou CWE..." aria-label="Rechercher une vulnérabilité" value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
 
             <div className="vulnerability-filters">
               <label className="vulnerability-filter">
                 <span>Priorité</span>
-                <select
-                  value={priorityFilter}
-                  onChange={(event) => {
-                    if (isPriorityFilter(event.target.value)) {
-                      setPriorityFilter(event.target.value);
-                    }
-                  }}
-                >
-                  <option value="all">Toutes</option>
-                  <option value="CRITICAL">Critical</option>
-                  <option value="HIGH">High</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="LOW">Low</option>
+                <select value={priorityFilter} onChange={(event) => { if (isPriorityFilter(event.target.value)) setPriorityFilter(event.target.value); }}>
+                  <option value="all">Toutes</option><option value="CRITICAL">Critical</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option>
                 </select>
               </label>
-
               <label className="vulnerability-filter">
                 <span>Applicabilité</span>
-                <select
-                  value={applicabilityFilter}
-                  onChange={(event) => {
-                    if (isApplicabilityFilter(event.target.value)) {
-                      setApplicabilityFilter(event.target.value);
-                    }
-                  }}
-                >
-                  <option value="all">Toutes</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="potential">Potential</option>
+                <select value={applicabilityFilter} onChange={(event) => { if (isApplicabilityFilter(event.target.value)) setApplicabilityFilter(event.target.value); }}>
+                  <option value="all">Toutes</option><option value="confirmed">Confirmed</option><option value="potential">Potential</option>
                 </select>
               </label>
-
               <label className="vulnerability-filter">
                 <span>Trier par</span>
-                <select
-                  value={sort}
-                  onChange={(event) => {
-                    if (isVulnerabilitySort(event.target.value)) {
-                      setSort(event.target.value);
-                    }
-                  }}
-                >
-                  <option value="priority">Priorité</option>
-                  <option value="identifier">Identifiant</option>
-                  <option value="cvss">CVSS</option>
-                  <option value="epss">EPSS</option>
-                  <option value="machines">Machines</option>
+                <select value={sort} onChange={(event) => { if (isVulnerabilitySort(event.target.value)) setSort(event.target.value); }}>
+                  <option value="priority">Priorité</option><option value="identifier">Identifiant</option><option value="cvss">CVSS</option><option value="epss">EPSS</option><option value="machines">Machines</option>
                 </select>
               </label>
-
               <label className="vulnerability-kev-toggle">
-                <input
-                  type="checkbox"
-                  checked={kevOnly}
-                  onChange={(event) => setKevOnly(event.target.checked)}
-                />
+                <input type="checkbox" checked={kevOnly} onChange={(event) => setKevOnly(event.target.checked)} />
                 <span className="vulnerability-kev-toggle__control"><span /></span>
                 <span className="vulnerability-kev-toggle__label">KEV uniquement</span>
               </label>
-
               {filtersAreActive && (
-                <button
-                  type="button"
-                  className="vulnerability-reset-filters"
-                  onClick={resetFilters}
-                >
-                  Réinitialiser
-                </button>
+                <button type="button" className="vulnerability-reset-filters" onClick={resetFilters}>Réinitialiser</button>
               )}
             </div>
           </section>
@@ -437,9 +330,7 @@ export function VulnerabilitiesPage() {
           <div className="vulnerability-results-meta">
             <span>
               {visibleVulnerabilities.length} vulnérabilité{visibleVulnerabilities.length !== 1 ? "s" : ""}
-              {visibleVulnerabilities.length !== vulnerabilities.length
-                ? ` sur ${vulnerabilities.length}`
-                : ""}
+              {visibleVulnerabilities.length !== vulnerabilities.length ? ` sur ${vulnerabilities.length}` : ""}
             </span>
           </div>
 
@@ -448,121 +339,54 @@ export function VulnerabilitiesPage() {
               <Search size={22} strokeWidth={1.6} />
               <strong>Aucun résultat</strong>
               <p>Aucune vulnérabilité ne correspond aux filtres sélectionnés.</p>
-              <button
-                type="button"
-                className="vulnerability-reset-empty"
-                onClick={resetFilters}
-              >
-                Effacer les filtres
-              </button>
+              <button type="button" className="vulnerability-reset-empty" onClick={resetFilters}>Effacer les filtres</button>
             </Card>
           ) : (
             <Table className="vulnerability-table">
               <thead>
                 <tr>
-                  <th>Vulnérabilité</th>
-                  <th>Severity</th>
-                  <th>Priorité</th>
-                  <th>CVSS</th>
-                  <th>EPSS</th>
-                  <th>Applicabilité</th>
-                  <th className="table-number">Machines</th>
-                  <th className="table-number">Composants</th>
-                  <th>CWE</th>
-                  <th>KEV</th>
+                  <th>Vulnérabilité</th><th>Severity</th><th>Priorité</th><th>CVSS</th><th>EPSS</th><th>Applicabilité</th><th className="table-number">Machines</th><th className="table-number">Composants</th><th>CWE</th><th>KEV</th>
                 </tr>
               </thead>
-
               <tbody>
                 {visibleVulnerabilities.map((item) => (
                   <tr key={item.canonical_vulnerability_id}>
                     <td>
                       <div className="vulnerability-primary-cell">
-                        <span
-                          className={
-                            item.is_kev
-                              ? "vulnerability-row-icon vulnerability-row-icon--critical"
-                              : "vulnerability-row-icon"
-                          }
-                        >
+                        <span className={item.is_kev ? "vulnerability-row-icon vulnerability-row-icon--critical" : "vulnerability-row-icon"}>
                           <ShieldOff size={14} strokeWidth={1.8} />
                         </span>
                         <div>
-                          <Link
-                            to={`/vulnerabilites/${item.canonical_vulnerability_id}`}
-                            className="vulnerability-id vulnerability-id--link"
-                          >
-                            {displayIdentifier(item)}
-                          </Link>
-                          <span className="vulnerability-short-id">
-                            {item.canonical_vulnerability_id.slice(0, 8)}
-                          </span>
+                          <Link to={`/vulnerabilites/${item.canonical_vulnerability_id}`} className="vulnerability-id vulnerability-id--link">{displayIdentifier(item)}</Link>
+                          <span className="vulnerability-short-id">{item.canonical_vulnerability_id.slice(0, 8)}</span>
                         </div>
                       </div>
                     </td>
+                    <td><span className={severityClass(item.severity)}>{item.severity ?? "—"}</span></td>
+                    <td><span className={priorityClass(item.priority)}>{item.priority ?? "—"}</span></td>
                     <td>
-                      <span className={severityClass(item.severity)}>
-                        {item.severity ?? "—"}
-                      </span>
+                      <strong className="vulnerability-score">{displayScore(item.cvss_score)}</strong>
+                      {item.cvss_version && <span className="vulnerability-score-detail">CVSS {item.cvss_version}</span>}
                     </td>
-                    <td>
-                      <span className={priorityClass(item.priority)}>
-                        {item.priority ?? "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <strong className="vulnerability-score">
-                        {displayScore(item.cvss_score)}
-                      </strong>
-                      {item.cvss_version && (
-                        <span className="vulnerability-score-detail">
-                          CVSS {item.cvss_version}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="vulnerability-epss">{displayEpss(item.epss_score)}</span>
-                    </td>
+                    <td><span className="vulnerability-epss">{displayEpss(item.epss_score)}</span></td>
                     <td>
                       <div className="vulnerability-applicability">
-                        <span className="vulnerability-applicability__confirmed">
-                          <BadgeCheck size={11} strokeWidth={1.8} />
-                          {item.confirmed_exposure_count}
-                        </span>
-                        <span className="vulnerability-applicability__potential">
-                          {item.potential_exposure_count} potential
-                        </span>
+                        <span className="vulnerability-applicability__confirmed"><BadgeCheck size={11} strokeWidth={1.8} />{item.confirmed_exposure_count}</span>
+                        <span className="vulnerability-applicability__potential">{item.potential_exposure_count} potential</span>
                       </div>
                     </td>
-                    <td className="table-number">
-                      <strong className="vulnerability-table-count">{item.machine_count}</strong>
-                    </td>
-                    <td className="table-number">
-                      <strong className="vulnerability-table-count">{item.component_count}</strong>
-                    </td>
+                    <td className="table-number"><strong className="vulnerability-table-count">{item.machine_count}</strong></td>
+                    <td className="table-number"><strong className="vulnerability-table-count">{item.component_count}</strong></td>
                     <td>
-                      {item.cwe_ids.length === 0 ? (
-                        <span className="vulnerability-muted">—</span>
-                      ) : (
+                      {item.cwe_ids.length === 0 ? <span className="vulnerability-muted">—</span> : (
                         <div className="vulnerability-cwe-list">
-                          {item.cwe_ids.slice(0, 3).map((cweId) => (
-                            <span key={cweId}>{cweId}</span>
-                          ))}
-                          {item.cwe_ids.length > 3 && (
-                            <span>+{item.cwe_ids.length - 3}</span>
-                          )}
+                          {item.cwe_ids.slice(0, 3).map((cweId) => <span key={cweId}>{cweId}</span>)}
+                          {item.cwe_ids.length > 3 && <span>+{item.cwe_ids.length - 3}</span>}
                         </div>
                       )}
                     </td>
                     <td>
-                      {item.is_kev ? (
-                        <span className="vulnerability-kev">
-                          <Zap size={11} strokeWidth={1.9} />
-                          KEV
-                        </span>
-                      ) : (
-                        <span className="vulnerability-muted">—</span>
-                      )}
+                      {item.is_kev ? <span className="vulnerability-kev"><Zap size={11} strokeWidth={1.9} />KEV</span> : <span className="vulnerability-muted">—</span>}
                     </td>
                   </tr>
                 ))}
