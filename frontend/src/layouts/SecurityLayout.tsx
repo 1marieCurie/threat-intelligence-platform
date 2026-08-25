@@ -4,12 +4,17 @@ import {
 } from "react-router";
 
 import {
+  ShieldCheck,
+} from "lucide-react";
+
+import {
   Button,
 } from "../components/ui/Button";
-
 import {
   useAuth,
 } from "../context/AuthContext";
+
+import "./layout-polish.css";
 
 
 type NavigationItem = {
@@ -17,142 +22,72 @@ type NavigationItem = {
   path: string;
 };
 
-
-const navigationItems:
-  NavigationItem[] = [
-    {
-      label: "Dashboard",
-      path: "/dashboard",
-    },
-    {
-      label: "Machines",
-      path: "/machines",
-    },
-    {
-      label: "Inventaires",
-      path: "/inventaires",
-    },
-    {
-      label: "Logiciels",
-      path: "/logiciels",
-    },
-    {
-      label: "Vulnérabilités",
-      path: "/vulnerabilites",
-    },
-    {
-      label: "Alertes",
-      path: "/alertes",
-    },
-    {
-      label: "Utilisateurs",
-      path: "/utilisateurs",
-    },
-    {
-      label: "Analyse URL",
-      path: "/analyse-url",
-    },
-    {
-      label: "Centre d'aide",
-      path: "/aide",
-    },
-  ];
+const navigationItems: NavigationItem[] = [
+  { label: "Dashboard", path: "/dashboard" },
+  { label: "Machines", path: "/machines" },
+  { label: "Inventaires", path: "/inventaires" },
+  { label: "Logiciels", path: "/logiciels" },
+  { label: "Vulnérabilités", path: "/vulnerabilites" },
+  { label: "Alertes", path: "/alertes" },
+  { label: "Utilisateurs", path: "/utilisateurs" },
+  { label: "Analyse URL", path: "/analyse-url" },
+  { label: "Centre d'aide", path: "/aide" },
+];
 
 
 export function SecurityLayout() {
-  const {
-    user,
-    logout,
-  } = useAuth();
-
+  const { user, logout } = useAuth();
 
   return (
     <div className="security-shell">
       <aside className="security-sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark">
-            TI
+          <div className="brand-mark platform-brand-mark" aria-hidden="true">
+            <ShieldCheck size={18} strokeWidth={1.8} />
           </div>
 
           <div className="sidebar-brand__text">
-            <strong>
-              Threat Intelligence
-            </strong>
-
-            <span>
-              Security Console
-            </span>
+            <strong>Threat Intelligence</strong>
+            <span>Security Console</span>
           </div>
         </div>
 
-        <div className="sidebar-section-label">
-          Navigation
-        </div>
+        <div className="sidebar-section-label">Navigation</div>
 
-        <nav
-          className="security-nav"
-          aria-label="Navigation principale"
-        >
-          {navigationItems.map(
-            (
-              item,
-            ) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({
-                  isActive,
-                }) =>
-                  isActive
-                    ? (
-                      "security-nav-link "
-                      + "security-nav-link--active"
-                    )
-                    : "security-nav-link"
-                }
-              >
-                {item.label}
-              </NavLink>
-            ),
-          )}
+        <nav className="security-nav" aria-label="Navigation principale">
+          {navigationItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                isActive
+                  ? "security-nav-link security-nav-link--active"
+                  : "security-nav-link"
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
-          <span>
-            Connecté en tant que
-          </span>
-
-          <strong>
-            {user?.display_name}
-          </strong>
-
-          <span>
-            Responsable sécurité
-          </span>
+          <span>Connecté en tant que</span>
+          <strong>{user?.display_name}</strong>
+          <span>Responsable sécurité</span>
         </div>
       </aside>
 
       <div className="security-main">
         <header className="security-topbar">
           <div className="security-topbar__context">
-            <span className="security-topbar__eyebrow">
-              Espace sécurité
-            </span>
-
-            <strong className="security-topbar__title">
-              Supervision
-            </strong>
+            <span className="security-topbar__eyebrow">Espace sécurité</span>
+            <strong className="security-topbar__title">Supervision</strong>
           </div>
 
           <div className="auth-user-actions">
             <div className="auth-user-summary">
-              <strong>
-                {user?.display_name}
-              </strong>
-
-              <span>
-                {user?.email}
-              </span>
+              <strong>{user?.display_name}</strong>
+              <span>{user?.email}</span>
             </div>
 
             <Button
