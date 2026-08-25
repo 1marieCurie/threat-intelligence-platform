@@ -74,13 +74,11 @@ function formatInventoryDate(
   ).format(date);
 }
 
-
 function displayValue(
   value: string | null,
 ): string {
   return value?.trim() || "Non renseigné";
 }
-
 
 type MachineFactProps = {
   icon: LucideIcon;
@@ -88,7 +86,6 @@ type MachineFactProps = {
   value: string | number;
   compact?: boolean;
 };
-
 
 function MachineFact({
   icon: Icon,
@@ -101,7 +98,6 @@ function MachineFact({
       <span className="machine-fact__icon" aria-hidden="true">
         <Icon size={17} strokeWidth={1.8} />
       </span>
-
       <div className="machine-fact__content">
         <strong
           className={
@@ -118,7 +114,6 @@ function MachineFact({
   );
 }
 
-
 function priorityClass(
   priority: string | null,
 ): string {
@@ -129,30 +124,24 @@ function priorityClass(
   return `priority-tag priority-tag--${priority.toLowerCase()}`;
 }
 
-
 export function MachineDetailPage() {
   const { machineId } = useParams();
 
   const [machine, setMachine] = useState<MachineDetail | null>(null);
   const [componentSearch, setComponentSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(machineId));
   const [error, setError] = useState<string | null>(null);
 
-  const loadMachine = useCallback(
+  const fetchMachine = useCallback(
     async () => {
       if (!machineId) {
-        setMachine(null);
-        setError("Identifiant machine invalide.");
-        setIsLoading(false);
         return;
       }
-
-      setIsLoading(true);
-      setError(null);
 
       try {
         const result = await getMachineDetail(machineId);
         setMachine(result);
+        setError(null);
       } catch (caughtError) {
         setMachine(null);
         setError(
@@ -167,9 +156,19 @@ export function MachineDetailPage() {
     [machineId],
   );
 
+  function reloadMachine() {
+    if (!machineId) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    void fetchMachine();
+  }
+
   useEffect(() => {
-    void loadMachine();
-  }, [loadMachine]);
+    void fetchMachine();
+  }, [fetchMachine]);
 
   const filteredComponents = useMemo(() => {
     if (!machine) {
@@ -198,6 +197,23 @@ export function MachineDetailPage() {
     });
   }, [machine, componentSearch]);
 
+  if (!machineId) {
+    return (
+      <main className="security-page">
+        <Link to="/machines" className="machine-back-link">
+          <ArrowLeft size={15} strokeWidth={1.8} />
+          Retour aux machines
+        </Link>
+        <Card>
+          <div className="error-state" role="alert">
+            <strong>Machine indisponible</strong>
+            <span>Identifiant machine invalide.</span>
+          </div>
+        </Card>
+      </main>
+    );
+  }
+
   if (isLoading) {
     return (
       <main className="security-page" aria-busy="true">
@@ -205,7 +221,6 @@ export function MachineDetailPage() {
           <ArrowLeft size={15} strokeWidth={1.8} />
           Retour aux machines
         </Link>
-
         <Card>
           <div className="loading-state machines-loading-state">
             <span className="spinner" aria-hidden="true" />
@@ -226,18 +241,12 @@ export function MachineDetailPage() {
           <ArrowLeft size={15} strokeWidth={1.8} />
           Retour aux machines
         </Link>
-
         <Card>
           <div className="error-state" role="alert">
             <strong>Machine indisponible</strong>
             <span>{error ?? "Machine introuvable."}</span>
             <div className="machine-detail-error-actions">
-              <Button
-                type="button"
-                onClick={() => {
-                  void loadMachine();
-                }}
-              >
+              <Button type="button" onClick={reloadMachine}>
                 <RefreshCw size={14} />
                 Réessayer
               </Button>
@@ -262,20 +271,14 @@ export function MachineDetailPage() {
         <div>
           <span className="machine-detail-eyebrow">Fiche machine</span>
           <h1>{machine.hostname}</h1>
-          <p>
-            Inventaire logiciel et expositions associées à cette machine.
-          </p>
+          <p>Inventaire logiciel et expositions associées à cette machine.</p>
         </div>
 
         <div className="machine-detail-header-actions">
-          <Link
-            to="/aide#inventaire"
-            className="machine-help-link"
-          >
+          <Link to="/aide#inventaire" className="machine-help-link">
             <BookOpen size={14} />
             Comprendre l'inventaire
           </Link>
-
           <span className="machine-header-id">
             <Fingerprint size={14} strokeWidth={1.8} />
             {machine.machine_id.slice(0, 8)}
@@ -283,43 +286,13 @@ export function MachineDetailPage() {
         </div>
       </header>
 
-      <section
-        className="machine-facts"
-        aria-label="Informations de la machine"
-      >
-        <MachineFact
-          icon={Monitor}
-          label="Système"
-          value={`${machine.os_name} ${machine.os_version}`}
-          compact
-        />
-        <MachineFact
-          icon={Cpu}
-          label="Architecture"
-          value={machine.architecture}
-        />
-        <MachineFact
-          icon={Clock3}
-          label="Dernier inventaire"
-          value={formatInventoryDate(machine.last_inventory_at)}
-          compact
-        />
-        <MachineFact
-          icon={Boxes}
-          label="Composants"
-          value={machine.components.length}
-        />
-        <MachineFact
-          icon={ShieldAlert}
-          label="Expositions"
-          value={machine.exposures.length}
-        />
-        <MachineFact
-          icon={Fingerprint}
-          label="Machine UID"
-          value={machine.machine_uid}
-          compact
-        />
+      <section className="machine-facts" aria-label="Informations de la machine">
+        <MachineFact icon={Monitor} label="Système" value={`${machine.os_name} ${machine.os_version}`} compact />
+        <MachineFact icon={Cpu} label="Architecture" value={machine.architecture} />
+        <MachineFact icon={Clock3} label="Dernier inventaire" value={formatInventoryDate(machine.last_inventory_at)} compact />
+        <MachineFact icon={Boxes} label="Composants" value={machine.components.length} />
+        <MachineFact icon={ShieldAlert} label="Expositions" value={machine.exposures.length} />
+        <MachineFact icon={Fingerprint} label="Machine UID" value={machine.machine_uid} compact />
       </section>
 
       <section className="machine-detail-section">
@@ -336,19 +309,13 @@ export function MachineDetailPage() {
 
           {machine.components.length > 0 && (
             <div className="machine-component-search">
-              <Search
-                size={15}
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
+              <Search size={15} strokeWidth={1.8} aria-hidden="true" />
               <Input
                 type="search"
                 placeholder="Rechercher un logiciel..."
                 aria-label="Rechercher un logiciel"
                 value={componentSearch}
-                onChange={(event) => {
-                  setComponentSearch(event.target.value);
-                }}
+                onChange={(event) => setComponentSearch(event.target.value)}
               />
             </div>
           )}
@@ -358,9 +325,7 @@ export function MachineDetailPage() {
           <Card className="machine-empty-panel">
             <Package size={22} strokeWidth={1.6} />
             <strong>Aucun composant inventorié</strong>
-            <span>
-              Le dernier inventaire de cette machine ne contient aucun logiciel exploitable.
-            </span>
+            <span>Le dernier inventaire de cette machine ne contient aucun logiciel exploitable.</span>
           </Card>
         ) : filteredComponents.length === 0 ? (
           <Card className="machine-empty-panel">
@@ -372,36 +337,17 @@ export function MachineDetailPage() {
           <Table className="machine-components-table">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Logiciel</th>
-                <th>Version</th>
-                <th>Vendor / Écosystème</th>
-                <th>Détection</th>
+                <th>Type</th><th>Logiciel</th><th>Version</th><th>Vendor / Écosystème</th><th>Détection</th>
               </tr>
             </thead>
-
             <tbody>
               {filteredComponents.map((component) => (
                 <tr key={component.component_id}>
-                  <td>
-                    <span
-                      className={
-                        `component-type component-type--${component.component_type}`
-                      }
-                    >
-                      {component.component_type}
-                    </span>
-                  </td>
-                  <td>
-                    <strong className="component-name">{component.name}</strong>
-                  </td>
+                  <td><span className={`component-type component-type--${component.component_type}`}>{component.component_type}</span></td>
+                  <td><strong className="component-name">{component.name}</strong></td>
                   <td>{displayValue(component.version)}</td>
-                  <td>
-                    {displayValue(component.vendor ?? component.ecosystem)}
-                  </td>
-                  <td>
-                    <span className="detector-value">{component.detected_by}</span>
-                  </td>
+                  <td>{displayValue(component.vendor ?? component.ecosystem)}</td>
+                  <td><span className="detector-value">{component.detected_by}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -420,11 +366,7 @@ export function MachineDetailPage() {
               <p>Vulnérabilités corrélées aux composants de cette machine.</p>
             </div>
           </div>
-
-          <Link
-            to="/aide#vulnerabilites"
-            className="machine-section-help"
-          >
+          <Link to="/aide#vulnerabilites" className="machine-section-help">
             Comment les interpréter ?
           </Link>
         </div>
@@ -433,74 +375,40 @@ export function MachineDetailPage() {
           <Card className="machine-empty-panel">
             <ShieldAlert size={22} strokeWidth={1.6} />
             <strong>Aucune exposition détectée</strong>
-            <span>
-              Aucune vulnérabilité n'est actuellement associée aux composants de cette machine.
-            </span>
+            <span>Aucune vulnérabilité n'est actuellement associée aux composants de cette machine.</span>
           </Card>
         ) : (
           <Table className="machine-exposures-table">
             <thead>
               <tr>
-                <th>Vulnérabilité</th>
-                <th>Composant</th>
-                <th>Applicabilité</th>
-                <th>Severity</th>
-                <th>Priority</th>
-                <th>KEV</th>
-                <th>Matching</th>
+                <th>Vulnérabilité</th><th>Composant</th><th>Applicabilité</th><th>Severity</th><th>Priority</th><th>KEV</th><th>Matching</th>
               </tr>
             </thead>
-
             <tbody>
               {machine.exposures.map((exposure) => (
                 <tr key={exposure.exposure_id}>
                   <td>
-                    <Link
-                      to={`/vulnerabilites/${exposure.canonical_vulnerability_id}`}
-                      className="machine-vulnerability-link"
-                    >
-                      {exposure.primary_identifier
-                        ?? exposure.canonical_vulnerability_id.slice(0, 8)}
+                    <Link to={`/vulnerabilites/${exposure.canonical_vulnerability_id}`} className="machine-vulnerability-link">
+                      {exposure.primary_identifier ?? exposure.canonical_vulnerability_id.slice(0, 8)}
                     </Link>
                   </td>
                   <td>
-                    <strong className="machine-exposure-component">
-                      {exposure.component_name}
-                    </strong>
-                    <div className="table-secondary">
-                      {exposure.component_version ?? "Version inconnue"}
-                    </div>
+                    <strong className="machine-exposure-component">{exposure.component_name}</strong>
+                    <div className="table-secondary">{exposure.component_version ?? "Version inconnue"}</div>
                   </td>
-                  <td>
-                    <span
-                      className={
-                        `applicability-badge applicability-badge--${exposure.applicability_status}`
-                      }
-                    >
-                      {exposure.applicability_status}
-                    </span>
-                  </td>
+                  <td><span className={`applicability-badge applicability-badge--${exposure.applicability_status}`}>{exposure.applicability_status}</span></td>
                   <td>{exposure.severity ?? "—"}</td>
-                  <td>
-                    <span className={priorityClass(exposure.priority)}>
-                      {exposure.priority ?? "—"}
-                    </span>
-                  </td>
+                  <td><span className={priorityClass(exposure.priority)}>{exposure.priority ?? "—"}</span></td>
                   <td>
                     {exposure.is_kev ? (
-                      <span className="kev-indicator">
-                        <Zap size={12} strokeWidth={1.9} />
-                        KEV
-                      </span>
+                      <span className="kev-indicator"><Zap size={12} strokeWidth={1.9} />KEV</span>
                     ) : (
                       <span className="machine-muted-value">—</span>
                     )}
                   </td>
                   <td>
                     <span className="detector-value">{exposure.match_rule}</span>
-                    {exposure.match_version && (
-                      <div className="table-secondary">{exposure.match_version}</div>
-                    )}
+                    {exposure.match_version && <div className="table-secondary">{exposure.match_version}</div>}
                   </td>
                 </tr>
               ))}
