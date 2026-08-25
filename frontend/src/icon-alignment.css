@@ -1,0 +1,49 @@
+/* Keep decorative icon containers optically centered across public and authenticated views. */
+.landing-brand__mark,
+.public-analysis-card__icon,
+.help-brand > span,
+.brand-mark,
+.platform-brand-mark,
+.dashboard-statistic__icon,
+.software-statistic__icon,
+.vulnerability-statistic__icon,
+.alert-statistic__icon,
+.machine-fact__icon,
+.machine-section-icon,
+.machine-row-icon,
+.software-row-icon,
+.vulnerability-row-icon,
+.alerts-event-icon,
+.activity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 0;
+}
+
+.landing-brand__mark > svg,
+.public-analysis-card__icon > svg,
+.help-brand > span > svg,
+.brand-mark > svg,
+.platform-brand-mark > svg,
+.dashboard-statistic__icon > svg,
+.software-statistic__icon > svg,
+.vulnerability-statistic__icon > svg,
+.alert-statistic__icon > svg,
+.machine-fact__icon > svg,
+.machine-section-icon > svg,
+.machine-row-icon > svg,
+.software-row-icon > svg,
+.vulnerability-row-icon > svg,
+.alerts-event-icon > svg,
+.activity-icon > svg {
+  display: block;
+  flex: 0 0 auto;
+  margin: auto;
+  transform: translate(0, 0);
+}
+
+.public-analysis-card__icon {
+  overflow: hidden;
+}
