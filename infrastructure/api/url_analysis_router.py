@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
@@ -23,6 +24,12 @@ from application.services.canonical_url_normalizer import (
 )
 from application.services.url_feature_extractor import (
     URLFeatureExtractionError,
+)
+from domain.user_account import (
+    UserAccount,
+)
+from infrastructure.api.auth_dependencies import (
+    require_authenticated_user,
 )
 
 
@@ -72,12 +79,7 @@ def create_url_analysis_router(
         tags=["url-analysis"],
     )
 
-    @router.post(
-        "/url-analysis",
-        response_model=URLAnalysisResponse,
-        status_code=status.HTTP_200_OK,
-    )
-    def analyze_url(
+    def run_analysis(
         payload: URLAnalysisRequest,
     ) -> URLAnalysisResponse:
         try:
@@ -122,6 +124,33 @@ def create_url_analysis_router(
             model_version=(
                 result.model_version
             ),
+        )
+
+    @router.post(
+        "/public/url-analysis",
+        response_model=URLAnalysisResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    def analyze_public_url(
+        payload: URLAnalysisRequest,
+    ) -> URLAnalysisResponse:
+        return run_analysis(
+            payload
+        )
+
+    @router.post(
+        "/url-analysis",
+        response_model=URLAnalysisResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    def analyze_url(
+        payload: URLAnalysisRequest,
+        _: UserAccount = Depends(
+            require_authenticated_user
+        ),
+    ) -> URLAnalysisResponse:
+        return run_analysis(
+            payload
         )
 
     return router
