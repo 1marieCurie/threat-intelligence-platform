@@ -24,6 +24,7 @@ import "./features/help/security-help.css";
 import "./security-console-polish.css";
 import "./icon-alignment.css";
 import "./security-visual-balance.css";
+import "./security-detail-readability.css";
 
 
 createRoot(
