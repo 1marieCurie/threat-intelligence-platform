@@ -20,6 +20,9 @@ import "./index.css";
 import "./minimal-theme.css";
 import "./auth.css";
 import "./final-ui-polish.css";
+import "./features/help/security-help.css";
+import "./security-console-polish.css";
+import "./icon-alignment.css";
 
 
 createRoot(
