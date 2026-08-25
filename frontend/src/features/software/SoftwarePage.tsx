@@ -48,60 +48,28 @@ import "./software.css";
 import "./software-polish.css";
 
 
-type SoftwareTypeFilter =
-  | "all"
-  | "application"
-  | "package";
+type SoftwareTypeFilter = "all" | "application" | "package";
+type SoftwareSort = "name" | "machines" | "exposures";
 
-type SoftwareSort =
-  | "name"
-  | "machines"
-  | "exposures";
-
-
-function isSoftwareTypeFilter(
-  value: string,
-): value is SoftwareTypeFilter {
-  return (
-    value === "all"
-    || value === "application"
-    || value === "package"
-  );
+function isSoftwareTypeFilter(value: string): value is SoftwareTypeFilter {
+  return value === "all" || value === "application" || value === "package";
 }
 
-
-function isSoftwareSort(
-  value: string,
-): value is SoftwareSort {
-  return (
-    value === "name"
-    || value === "machines"
-    || value === "exposures"
-  );
+function isSoftwareSort(value: string): value is SoftwareSort {
+  return value === "name" || value === "machines" || value === "exposures";
 }
 
-
-function displayVendor(
-  item: SoftwareSummary,
-): string {
-  if (item.component_type === "package") {
-    return item.ecosystem ?? "Non renseigné";
-  }
-
-  return item.vendor ?? "Non renseigné";
+function displayVendor(item: SoftwareSummary): string {
+  return item.component_type === "package"
+    ? item.ecosystem ?? "Non renseigné"
+    : item.vendor ?? "Non renseigné";
 }
 
-
-function displayVersion(
-  value: string | null,
-): string {
-  if (value === null || value.trim() === "") {
-    return "Non renseignée";
-  }
-
-  return value;
+function displayVersion(value: string | null): string {
+  return value === null || value.trim() === ""
+    ? "Non renseignée"
+    : value;
 }
-
 
 type SoftwareStatisticProps = {
   icon: LucideIcon;
@@ -109,12 +77,7 @@ type SoftwareStatisticProps = {
   label: string;
 };
 
-
-function SoftwareStatistic({
-  icon: Icon,
-  value,
-  label,
-}: SoftwareStatisticProps) {
+function SoftwareStatistic({ icon: Icon, value, label }: SoftwareStatisticProps) {
   return (
     <div className="software-statistic">
       <span className="software-statistic__icon" aria-hidden="true">
@@ -128,7 +91,6 @@ function SoftwareStatistic({
   );
 }
 
-
 export function SoftwarePage() {
   const [software, setSoftware] = useState<SoftwareSummary[]>([]);
   const [search, setSearch] = useState("");
@@ -137,118 +99,70 @@ export function SoftwarePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSoftware = useCallback(
-    async () => {
-      setIsLoading(true);
+  const fetchSoftware = useCallback(async () => {
+    try {
+      const response = await getSoftware();
+      setSoftware(response.items);
       setError(null);
+    } catch (caughtError) {
+      setSoftware([]);
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Une erreur inattendue est survenue.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-      try {
-        const response = await getSoftware();
-        setSoftware(response.items);
-      } catch (caughtError) {
-        setSoftware([]);
-        setError(
-          caughtError instanceof Error
-            ? caughtError.message
-            : "Une erreur inattendue est survenue.",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [],
-  );
+  function reloadSoftware() {
+    setIsLoading(true);
+    setError(null);
+    void fetchSoftware();
+  }
 
   useEffect(() => {
-    void loadSoftware();
-  }, [loadSoftware]);
+    void fetchSoftware();
+  }, [fetchSoftware]);
 
   const visibleSoftware = useMemo(() => {
     const searchValue = search.trim().toLowerCase();
-
     const filtered = software.filter((item) => {
-      if (
-        typeFilter !== "all"
-        && item.component_type !== typeFilter
-      ) {
+      if (typeFilter !== "all" && item.component_type !== typeFilter) {
         return false;
       }
-
       if (!searchValue) {
         return true;
       }
-
-      const searchable = [
-        item.name,
-        item.version,
-        item.vendor,
-        item.ecosystem,
-        item.component_type,
-      ]
+      const searchable = [item.name, item.version, item.vendor, item.ecosystem, item.component_type]
         .filter((value): value is string => typeof value === "string")
         .join(" ")
         .toLowerCase();
-
       return searchable.includes(searchValue);
     });
 
-    const result = [...filtered];
-
-    result.sort((left, right) => {
-      if (sort === "machines") {
-        return right.machine_count - left.machine_count;
-      }
-
-      if (sort === "exposures") {
-        return right.exposure_count - left.exposure_count;
-      }
-
-      return left.name.localeCompare(
-        right.name,
-        "fr",
-        { sensitivity: "base" },
-      );
+    return [...filtered].sort((left, right) => {
+      if (sort === "machines") return right.machine_count - left.machine_count;
+      if (sort === "exposures") return right.exposure_count - left.exposure_count;
+      return left.name.localeCompare(right.name, "fr", { sensitivity: "base" });
     });
-
-    return result;
   }, [software, search, typeFilter, sort]);
 
   const applicationCount = useMemo(
     () => software.filter((item) => item.component_type === "application").length,
     [software],
   );
-
   const packageCount = useMemo(
     () => software.filter((item) => item.component_type === "package").length,
     [software],
   );
-
   const exposureCount = useMemo(
     () => software.reduce((total, item) => total + item.exposure_count, 0),
     [software],
   );
 
-  const filtersAreActive = (
-    search.trim() !== ""
-    || typeFilter !== "all"
-    || sort !== "name"
-  );
-
-  function handleTypeFilterChange(
-    value: string,
-  ) {
-    if (isSoftwareTypeFilter(value)) {
-      setTypeFilter(value);
-    }
-  }
-
-  function handleSortChange(
-    value: string,
-  ) {
-    if (isSoftwareSort(value)) {
-      setSort(value);
-    }
-  }
+  const filtersAreActive = search.trim() !== "" || typeFilter !== "all" || sort !== "name";
 
   function resetFilters() {
     setSearch("");
@@ -262,20 +176,14 @@ export function SoftwarePage() {
         <div className="software-page-header__row">
           <div>
             <h1>Logiciels</h1>
-            <p>
-              Vue agrégée des composants logiciels inventoriés sur les machines de l'organisation.
-            </p>
+            <p>Vue agrégée des composants logiciels inventoriés sur les machines de l'organisation.</p>
           </div>
-
           <div className="software-page-header__actions">
             <Link to="/aide#inventaire" className="software-header-link">
               <BookOpen size={15} />
               En savoir plus
             </Link>
-            <Link
-              to="/inventaires"
-              className="software-header-link software-header-link--primary"
-            >
+            <Link to="/inventaires" className="software-header-link software-header-link--primary">
               <Upload size={15} />
               Nouvel inventaire
             </Link>
@@ -302,12 +210,7 @@ export function SoftwarePage() {
               <strong>Logiciels indisponibles</strong>
               <span>{error}</span>
             </div>
-            <Button
-              type="button"
-              onClick={() => {
-                void loadSoftware();
-              }}
-            >
+            <Button type="button" onClick={reloadSoftware}>
               <RefreshCw size={14} />
               Réessayer
             </Button>
@@ -319,58 +222,29 @@ export function SoftwarePage() {
         <Card className="software-empty-panel">
           <PackageOpen size={24} strokeWidth={1.6} />
           <strong>Aucun logiciel inventorié</strong>
-          <p>
-            Aucun composant logiciel n'est disponible. Importez un inventaire machine pour alimenter cette vue.
-          </p>
-          <Link to="/inventaires" className="software-empty-action">
-            Importer un inventaire
-          </Link>
+          <p>Aucun composant logiciel n'est disponible. Importez un inventaire machine pour alimenter cette vue.</p>
+          <Link to="/inventaires" className="software-empty-action">Importer un inventaire</Link>
         </Card>
       )}
 
       {!isLoading && !error && software.length > 0 && (
         <>
-          <section
-            className="software-statistics"
-            aria-label="Résumé des logiciels"
-          >
-            <SoftwareStatistic
-              icon={Boxes}
-              value={software.length}
-              label="Logiciels agrégés"
-            />
-            <SoftwareStatistic
-              icon={AppWindow}
-              value={applicationCount}
-              label="Applications"
-            />
-            <SoftwareStatistic
-              icon={Package}
-              value={packageCount}
-              label="Packages"
-            />
-            <SoftwareStatistic
-              icon={ShieldAlert}
-              value={exposureCount}
-              label="Expositions associées"
-            />
+          <section className="software-statistics" aria-label="Résumé des logiciels">
+            <SoftwareStatistic icon={Boxes} value={software.length} label="Logiciels agrégés" />
+            <SoftwareStatistic icon={AppWindow} value={applicationCount} label="Applications" />
+            <SoftwareStatistic icon={Package} value={packageCount} label="Packages" />
+            <SoftwareStatistic icon={ShieldAlert} value={exposureCount} label="Expositions associées" />
           </section>
 
           <section className="software-controls">
             <div className="software-search">
-              <Search
-                size={15}
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
+              <Search size={15} strokeWidth={1.8} aria-hidden="true" />
               <Input
                 type="search"
                 placeholder="Rechercher un logiciel..."
                 aria-label="Rechercher un logiciel"
                 value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                }}
+                onChange={(event) => setSearch(event.target.value)}
               />
             </div>
 
@@ -380,7 +254,7 @@ export function SoftwarePage() {
                 <select
                   value={typeFilter}
                   onChange={(event) => {
-                    handleTypeFilterChange(event.target.value);
+                    if (isSoftwareTypeFilter(event.target.value)) setTypeFilter(event.target.value);
                   }}
                 >
                   <option value="all">Tous</option>
@@ -394,7 +268,7 @@ export function SoftwarePage() {
                 <select
                   value={sort}
                   onChange={(event) => {
-                    handleSortChange(event.target.value);
+                    if (isSoftwareSort(event.target.value)) setSort(event.target.value);
                   }}
                 >
                   <option value="name">Nom</option>
@@ -404,11 +278,7 @@ export function SoftwarePage() {
               </label>
 
               {filtersAreActive && (
-                <button
-                  type="button"
-                  className="software-reset-filters"
-                  onClick={resetFilters}
-                >
+                <button type="button" className="software-reset-filters" onClick={resetFilters}>
                   Réinitialiser
                 </button>
               )}
@@ -418,9 +288,7 @@ export function SoftwarePage() {
           <div className="software-results-meta">
             <span>
               {visibleSoftware.length} résultat{visibleSoftware.length !== 1 ? "s" : ""}
-              {visibleSoftware.length !== software.length
-                ? ` sur ${software.length}`
-                : ""}
+              {visibleSoftware.length !== software.length ? ` sur ${software.length}` : ""}
             </span>
           </div>
 
@@ -429,11 +297,7 @@ export function SoftwarePage() {
               <Search size={22} strokeWidth={1.6} />
               <strong>Aucun résultat</strong>
               <p>Aucun logiciel ne correspond aux filtres sélectionnés.</p>
-              <button
-                type="button"
-                className="software-reset-empty"
-                onClick={resetFilters}
-              >
+              <button type="button" className="software-reset-empty" onClick={resetFilters}>
                 Effacer les filtres
               </button>
             </Card>
@@ -441,75 +305,36 @@ export function SoftwarePage() {
             <Table className="software-table">
               <thead>
                 <tr>
-                  <th>Type</th>
-                  <th>Logiciel</th>
-                  <th>Version</th>
-                  <th>Vendor / Écosystème</th>
-                  <th className="table-number">Machines</th>
-                  <th className="table-number">Expositions</th>
+                  <th>Type</th><th>Logiciel</th><th>Version</th><th>Vendor / Écosystème</th><th className="table-number">Machines</th><th className="table-number">Expositions</th>
                 </tr>
               </thead>
-
               <tbody>
                 {visibleSoftware.map((item, index) => (
-                  <tr
-                    key={[
-                      item.component_type,
-                      item.name,
-                      item.version ?? "",
-                      item.vendor ?? "",
-                      item.ecosystem ?? "",
-                      String(index),
-                    ].join(":")}
-                  >
+                  <tr key={[item.component_type, item.name, item.version ?? "", item.vendor ?? "", item.ecosystem ?? "", String(index)].join(":")}>
                     <td>
-                      <span
-                        className={`software-type software-type--${item.component_type}`}
-                      >
-                        {item.component_type === "application" ? (
-                          <AppWindow size={11} strokeWidth={1.8} />
-                        ) : (
-                          <Package size={11} strokeWidth={1.8} />
-                        )}
+                      <span className={`software-type software-type--${item.component_type}`}>
+                        {item.component_type === "application" ? <AppWindow size={11} strokeWidth={1.8} /> : <Package size={11} strokeWidth={1.8} />}
                         <span>{item.component_type}</span>
                       </span>
                     </td>
                     <td>
                       <div className="software-name-cell">
                         <span className="software-row-icon">
-                          {item.component_type === "application" ? (
-                            <AppWindow size={14} strokeWidth={1.8} />
-                          ) : (
-                            <Package size={14} strokeWidth={1.8} />
-                          )}
+                          {item.component_type === "application" ? <AppWindow size={14} strokeWidth={1.8} /> : <Package size={14} strokeWidth={1.8} />}
                         </span>
                         <strong className="software-name">{item.name}</strong>
                       </div>
                     </td>
-                    <td>
-                      <span className="software-version">
-                        {displayVersion(item.version)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="software-vendor">{displayVendor(item)}</span>
-                    </td>
-                    <td className="table-number">
-                      <span className="software-machine-count">{item.machine_count}</span>
-                    </td>
+                    <td><span className="software-version">{displayVersion(item.version)}</span></td>
+                    <td><span className="software-vendor">{displayVendor(item)}</span></td>
+                    <td className="table-number"><span className="software-machine-count">{item.machine_count}</span></td>
                     <td className="table-number">
                       {item.exposure_count > 0 ? (
-                        <Link
-                          to="/vulnerabilites"
-                          className="software-exposure-link"
-                          aria-label={`Voir les vulnérabilités associées à ${item.name}`}
-                        >
+                        <Link to="/vulnerabilites" className="software-exposure-link" aria-label={`Voir les vulnérabilités associées à ${item.name}`}>
                           <ShieldAlert size={11} strokeWidth={1.8} />
                           {item.exposure_count}
                         </Link>
-                      ) : (
-                        <span className="software-exposure-empty">0</span>
-                      )}
+                      ) : <span className="software-exposure-empty">0</span>}
                     </td>
                   </tr>
                 ))}
