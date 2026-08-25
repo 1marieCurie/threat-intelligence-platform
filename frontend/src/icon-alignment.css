@@ -21,7 +21,8 @@
 .inventory-fact__icon,
 .inventory-success-icon,
 .users-header-icon,
-.users-card-icon {
+.users-card-icon,
+.url-analysis-workspace__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -30,7 +31,6 @@
 }
 
 .landing-brand__mark > svg,
-.public-analysis-card__icon > svg,
 .help-brand > span > svg,
 .brand-mark > svg,
 .platform-brand-mark > svg,
@@ -58,6 +58,33 @@
   transform: translate(0, 0);
 }
 
-.public-analysis-card__icon {
+/* ScanSearch is visually asymmetric; absolute centering prevents inherited span/svg rules
+ * from pulling it toward the top-left of its frame. */
+.public-analysis-card__icon,
+.url-analysis-workspace__icon {
+  position: relative;
   overflow: hidden;
+}
+
+.public-analysis-card__icon > svg,
+.url-analysis-workspace__icon > svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+}
+
+.public-analysis-card__icon > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.url-analysis-workspace__icon > svg {
+  width: 18px;
+  height: 18px;
 }
