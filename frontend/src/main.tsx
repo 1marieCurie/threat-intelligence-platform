@@ -19,6 +19,7 @@ import {
 import "./index.css";
 import "./minimal-theme.css";
 import "./auth.css";
+import "./final-ui-polish.css";
 
 
 createRoot(
