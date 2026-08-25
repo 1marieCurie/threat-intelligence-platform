@@ -1,0 +1,253 @@
+.help-page {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding-bottom: 72px;
+}
+
+.help-public-nav {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--ti-border);
+}
+
+.help-public-nav > div {
+  display: flex;
+  gap: 16px;
+}
+
+.help-public-nav a,
+.help-toc a {
+  color: var(--ti-text-secondary);
+  text-decoration: none;
+}
+
+.help-public-nav a:hover,
+.help-toc a:hover {
+  color: var(--ti-blue);
+}
+
+.help-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ti-text) !important;
+}
+
+.help-brand span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #102033;
+  border-radius: 7px;
+}
+
+.help-hero {
+  max-width: 780px;
+  padding: 64px 0 42px;
+}
+
+.help-eyebrow {
+  color: var(--ti-blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.help-hero h1 {
+  margin: 10px 0 16px;
+  color: #102033;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.help-hero p,
+.help-section > p,
+.help-callout p,
+.help-definition-grid p,
+.help-section details p,
+.help-glossary dd,
+.help-steps {
+  color: var(--ti-text-secondary);
+  line-height: 1.72;
+}
+
+.help-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.help-toc {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 11px;
+  padding: 18px;
+  background: var(--ti-surface);
+  border: 1px solid var(--ti-border);
+  border-radius: 6px;
+}
+
+.help-toc strong {
+  margin-bottom: 4px;
+  color: #102033;
+}
+
+.help-content {
+  min-width: 0;
+}
+
+.help-section {
+  padding: 10px 0 54px;
+  scroll-margin-top: 24px;
+  border-bottom: 1px solid var(--ti-border);
+}
+
+.help-section + .help-section {
+  padding-top: 54px;
+}
+
+.help-section__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  color: var(--ti-blue);
+}
+
+.help-section__title > div > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ti-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.help-section__title h2 {
+  margin: 0;
+  color: #102033;
+  font-size: 1.65rem;
+}
+
+.help-section h3 {
+  margin-top: 30px;
+  color: #102033;
+}
+
+.help-callout {
+  margin-top: 20px;
+  border-left: 3px solid var(--ti-blue);
+}
+
+.help-callout p {
+  margin-bottom: 0;
+}
+
+.help-steps {
+  padding-left: 20px;
+}
+
+.help-steps li + li {
+  margin-top: 12px;
+}
+
+.help-definition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0;
+}
+
+.help-definition-grid .card {
+  margin-bottom: 0;
+}
+
+.help-definition-grid strong {
+  color: #102033;
+}
+
+.help-definition-grid p {
+  margin-bottom: 0;
+}
+
+.help-section details {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--ti-border);
+}
+
+.help-section summary {
+  cursor: pointer;
+  color: #102033;
+  font-weight: 650;
+}
+
+.help-glossary {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.help-glossary > div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ti-border);
+}
+
+.help-glossary dt {
+  color: #102033;
+  font-weight: 700;
+}
+
+.help-glossary dd {
+  margin: 0;
+}
+
+.help-section code {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--ti-surface-soft);
+}
+
+@media (max-width: 860px) {
+  .help-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .help-toc {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .help-toc strong {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .help-page {
+    width: min(100% - 24px, 1180px);
+  }
+
+  .help-definition-grid,
+  .help-toc,
+  .help-glossary > div {
+    grid-template-columns: 1fr;
+  }
+
+  .help-public-nav {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 0;
+  }
+}
