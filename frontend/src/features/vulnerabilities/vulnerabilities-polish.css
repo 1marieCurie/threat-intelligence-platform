@@ -1,0 +1,179 @@
+.vulnerability-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.vulnerability-help-link,
+.vulnerability-empty-link,
+.vulnerability-id--link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.vulnerability-help-link {
+  min-height: 38px;
+  padding: 0 11px;
+  flex: 0 0 auto;
+  color: var(--ti-text-secondary);
+  background: var(--ti-surface-soft);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+  font-size: 11px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.vulnerability-help-link:hover {
+  color: var(--ti-text);
+  background: #f4f6f8;
+}
+
+.vulnerability-loading-state,
+.vulnerability-error-state {
+  min-height: 110px;
+}
+
+.vulnerability-loading-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vulnerability-loading-state strong,
+.vulnerability-loading-state span,
+.vulnerability-error-state strong,
+.vulnerability-error-state span {
+  display: block;
+}
+
+.vulnerability-loading-state strong,
+.vulnerability-error-state strong {
+  color: var(--ti-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.vulnerability-loading-state div > span,
+.vulnerability-error-state div > span {
+  margin-top: 4px;
+  color: var(--ti-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.vulnerability-error-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vulnerability-error-state > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.vulnerability-error-state .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.vulnerability-statistics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.vulnerability-statistic {
+  min-height: 66px;
+  padding: 12px 14px;
+  background: var(--ti-surface);
+  border: 1px solid var(--ti-border);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(18, 28, 38, 0.025);
+}
+
+.vulnerability-reset-filters,
+.vulnerability-reset-empty {
+  padding: 0;
+  color: var(--ti-blue);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.vulnerability-reset-filters {
+  min-height: 36px;
+  align-self: flex-end;
+}
+
+.vulnerability-reset-filters:hover,
+.vulnerability-reset-empty:hover {
+  color: var(--ti-blue-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.vulnerability-reset-empty {
+  margin-top: 12px;
+}
+
+.vulnerability-empty-link {
+  margin-top: 14px;
+  color: var(--ti-blue);
+  font-size: 10px;
+}
+
+.vulnerability-id--link {
+  color: var(--ti-text);
+  font-size: inherit;
+}
+
+.vulnerability-id--link:hover {
+  color: var(--ti-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .vulnerability-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .vulnerability-page-header__row,
+  .vulnerability-error-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vulnerability-help-link {
+    width: fit-content;
+  }
+
+  .vulnerability-error-state .button {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 520px) {
+  .vulnerability-statistics {
+    grid-template-columns: 1fr;
+  }
+
+  .vulnerability-help-link {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+}
