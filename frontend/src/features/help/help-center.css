@@ -4,8 +4,12 @@
   padding-bottom: 72px;
 }
 
+.security-content .help-page {
+  width: min(1180px, 100%);
+}
+
 .help-public-nav {
-  min-height: 72px;
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -22,6 +26,9 @@
 .help-toc a {
   color: var(--ti-text-secondary);
   text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  transition: color 120ms ease;
 }
 
 .help-public-nav a:hover,
@@ -37,32 +44,40 @@
 }
 
 .help-brand span {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  color: white;
-  background: #102033;
-  border-radius: 7px;
+  color: #ffffff;
+  background: var(--ti-blue);
+  border-radius: 3px;
+}
+
+.help-brand strong {
+  font-size: 12px;
 }
 
 .help-hero {
   max-width: 780px;
-  padding: 64px 0 42px;
+  padding: 58px 0 40px;
+}
+
+.security-content .help-hero {
+  padding-top: 8px;
 }
 
 .help-eyebrow {
   color: var(--ti-blue);
-  font-size: 0.78rem;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .help-hero h1 {
-  margin: 10px 0 16px;
-  color: #102033;
-  font-size: clamp(2rem, 4vw, 3.4rem);
+  margin: 9px 0 14px;
+  color: var(--ti-text);
+  font-size: clamp(30px, 4vw, 48px);
   line-height: 1.08;
   letter-spacing: -0.035em;
 }
@@ -75,13 +90,14 @@
 .help-glossary dd,
 .help-steps {
   color: var(--ti-text-secondary);
-  line-height: 1.72;
+  font-size: 11px;
+  line-height: 1.7;
 }
 
 .help-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  gap: 48px;
+  gap: 42px;
   align-items: start;
 }
 
@@ -89,16 +105,18 @@
   position: sticky;
   top: 24px;
   display: grid;
-  gap: 11px;
-  padding: 18px;
+  gap: 10px;
+  padding: 16px;
   background: var(--ti-surface);
   border: 1px solid var(--ti-border);
-  border-radius: 6px;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(18, 28, 38, 0.025);
 }
 
 .help-toc strong {
   margin-bottom: 4px;
-  color: #102033;
+  color: var(--ti-text);
+  font-size: 11px;
 }
 
 .help-content {
@@ -106,20 +124,20 @@
 }
 
 .help-section {
-  padding: 10px 0 54px;
+  padding: 8px 0 50px;
   scroll-margin-top: 24px;
   border-bottom: 1px solid var(--ti-border);
 }
 
 .help-section + .help-section {
-  padding-top: 54px;
+  padding-top: 50px;
 }
 
 .help-section__title {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 11px;
+  margin-bottom: 18px;
   color: var(--ti-blue);
 }
 
@@ -127,23 +145,24 @@
   display: block;
   margin-bottom: 2px;
   color: var(--ti-text-muted);
-  font-size: 0.76rem;
+  font-size: 9px;
   font-weight: 700;
 }
 
 .help-section__title h2 {
   margin: 0;
-  color: #102033;
-  font-size: 1.65rem;
+  color: var(--ti-text);
+  font-size: 20px;
 }
 
 .help-section h3 {
-  margin-top: 30px;
-  color: #102033;
+  margin-top: 28px;
+  color: var(--ti-text);
+  font-size: 13px;
 }
 
 .help-callout {
-  margin-top: 20px;
+  margin-top: 18px;
   border-left: 3px solid var(--ti-blue);
 }
 
@@ -156,14 +175,14 @@
 }
 
 .help-steps li + li {
-  margin-top: 12px;
+  margin-top: 11px;
 }
 
 .help-definition-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin: 24px 0;
+  gap: 12px;
+  margin: 22px 0;
 }
 
 .help-definition-grid .card {
@@ -171,7 +190,8 @@
 }
 
 .help-definition-grid strong {
-  color: #102033;
+  color: var(--ti-text);
+  font-size: 11px;
 }
 
 .help-definition-grid p {
@@ -179,13 +199,14 @@
 }
 
 .help-section details {
-  padding: 15px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--ti-border);
 }
 
 .help-section summary {
   cursor: pointer;
-  color: #102033;
+  color: var(--ti-text);
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -199,12 +220,13 @@
   display: grid;
   grid-template-columns: 130px 1fr;
   gap: 18px;
-  padding: 14px 0;
+  padding: 13px 0;
   border-bottom: 1px solid var(--ti-border);
 }
 
 .help-glossary dt {
-  color: #102033;
+  color: var(--ti-text);
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -239,6 +261,10 @@
     width: min(100% - 24px, 1180px);
   }
 
+  .security-content .help-page {
+    width: 100%;
+  }
+
   .help-definition-grid,
   .help-toc,
   .help-glossary > div {
@@ -249,5 +275,9 @@
     align-items: flex-start;
     flex-direction: column;
     padding: 14px 0;
+  }
+
+  .help-hero h1 {
+    font-size: 30px;
   }
 }
